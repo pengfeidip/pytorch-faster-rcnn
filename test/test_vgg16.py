@@ -2,15 +2,14 @@ import torchvision as tv
 import torch
 import os.path as osp
 import sys
-sys.path.append('..')
+cur_dir = osp.dirname(osp.realpath(__file__))
+sys.path.append(osp.join(cur_dir, '..'))
 
 from lib import utils, config
 
 
-
-
 if __name__ == '__main__':
-    test_img = 'dog.jpg'
+    test_img = osp.join(cur_dir, 'dog.jpg')
     
     print('loading pretrained vgg16...')
     v = tv.models.vgg16(pretrained=True)

@@ -4,19 +4,22 @@ from PIL import Image
 import torchvision as tv
 
 # transform from PIL image to normalized tensor with shape [3 x H x W]
-IMG_PIL2TENSOR = tv.transforms.Compose([tv.transforms.ToTensor(), tv.transforms.Normalize(mean=config.IMG_MEAN, std=config.IMG_STD)])
+IMG_PIL2TENSOR = tv.transforms.Compose(
+    [tv.transforms.ToTensor(),
+     tv.transforms.Normalize(mean=config.IMG_MEAN, std=config.IMG_STD)])
 
 # from image file to batched input to a network
 def imread(file_path):
-    img = Image.open(file_path).convert('RGB')
+    img = Image.open(file_path)
     return IMG_PIL2TENSOR(img).unsqueeze(0)
 
+def image2tensor(file_path):
+    return imread(file_path)
 
 
 
 
-
-
+# ImageNet mapping from id to label
 ImageNet_LABEL = \
 {0: 'tench, Tinca tinca',
  1: 'goldfish, Carassius auratus',
