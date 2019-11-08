@@ -31,7 +31,7 @@ def roi_pool_op():
 
 def roi_pooling():
     print('Test ROIPooling using adaptive max pool'.center(90, '*'))
-    roi_pool = region.ROIPooling()
+    roi_pool = region.ROIPooling((7, 7))
     in_data = [
         torch.rand(1,3,10,20),
         torch.rand(1,3,21, 5),
