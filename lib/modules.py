@@ -1,6 +1,7 @@
 import torchvision as tv
 import torch
 import torch.nn as nn
+from . import config
 
 class Backbone(object):
     r"""
@@ -26,7 +27,7 @@ class VGG(Backbone):
         self.nn_module = v16.features[:-1]
 
 
-class RPN(torch.nn.Module):
+class RPN(nn.Module):
     r"""
     Region proposal network.
     """
@@ -45,7 +46,7 @@ class RPN(torch.nn.Module):
         x = self.conv(in_data)
         return self.classifier(x), self.regressor(x)
 
-class Head(torch.nn.Module):
+class Head(nn.Module):
     r"""
     Takes ROIs and return class and bbox adjustment.
     """
@@ -58,7 +59,7 @@ class Head(torch.nn.Module):
         self.classifier = nn.Linear(4096, num_classes+1)
         self.regressor  = nn.Linear(4096, (num_classes+1)*4)
 
-    # roi_batch is a batch of fixed tensors which are results of ROIPooling
+    # roi_batch is a batch of fixed tensors which is the result of ROIPooling
     def forward(self, roi_batch):
         batch_size = roi_batch.shape[0]
         # flatten input rois
@@ -67,5 +68,4 @@ class Head(torch.nn.Module):
         x = self.fc2(roi_batch)
         return self.classifier(x), self.regressor(x)
 
-class ROIPooling(torch.nn.Module):
-    pass
+
