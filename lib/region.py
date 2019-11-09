@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+import copy, random
 from . import config
+
 
 
 class BBox(object):
@@ -100,7 +102,20 @@ def calc_iou(a, b):
     overlap_area = abs(p1[0]-p2[0]) * abs(p1[1]-p2[1])
     return overlap_area / (a.get_area() + b.get_area() - overlap_area)
 
-
+class GroundTruth(object):
+    r"""
+    Input is a tensor of (1, n, 5) that contains n ground truth bboxes in an image 
+    """
+    def __init__(self, bboxes, iid=None):
+        bboxes = bboxes.squeeze(0)
+        self.iid = iid
+        self.bboxes = []
+        self.categories = []
+        for bbox in bboxes:
+            cate = bbox[-1]
+            self.categories.append(cate)
+            self.bboxes.append(BBox(xywh=tuple([x.item() for x in bbox[:4]])))
+    
 class AnchorGenerator(object):
     r"""
     Generate a list of BBox objects that represents anchors of a certain setting.
@@ -110,23 +125,24 @@ class AnchorGenerator(object):
         self.aspect_ratios = aspect_ratios
         self.aspect_ratios_sqrt = [x**0.5 for x in aspect_ratios]
         
-    def generate_anchors(self, img_size, grid, allow_cross=False):
+    def anchors(self, img_size, grid, allow_cross=False):
+        ret_list = []
         assert len(img_size)==2 and len(grid)==2
         assert img_size[0]>=0 and img_size[1]>=0 and grid[0]>=0 and grid[1]>=0
         h_img,  w_img  = img_size
         h_grid, w_grid = grid
         grid_dist_h, grid_dist_w = h_img/h_grid, w_img/w_grid
+        idx = 0
         for i in range(h_grid):
             for j in range(w_grid):
                 i_center = grid_dist_h/2 + grid_dist_h*i
                 j_center = grid_dist_w/2 + grid_dist_w*j
-                same_center = {
-                    'center': Point(y=i_center, x=j_center),
-                    'bboxes': [], 
-                    'feat_loc': Point(y=i, x=j)
-                }
                 for scale in self.scales:
                     for ar_sqrt in self.aspect_ratios:
+                        anchor = {
+                            'center': Point(y=i_center, x=j_center),
+                            'feat_loc': Point(y=i, x=j),
+                        }
                         anchor_h = scale / ar_sqrt
                         anchor_w = scale * ar_sqrt
                         bbox = BBox(center_xywh=(j_center,
@@ -135,15 +151,96 @@ class AnchorGenerator(object):
                                                  anchor_h))
                         x1,y1,x2,y2 = bbox.get_xyxy()
                         # get rid of cross boundary anchors
-                        if allow_cross or \
-                           x1>=0 and x2>=0 and y1>=0 and y2>=0 and \
-                           x1<w_img and x2<w_img and y1<h_img and y2<h_img:
-                            same_center['bboxes'].append(bbox)
+                        if allow_cross or (x1>=0 and x2>=0 and y1>=0 and y2>=0 and x1<w_img and x2<w_img and y1<h_img and y2<h_img):
+                            anchor['bbox'] = bbox
+                            anchor['id'] = idx
+                            yield anchor
+                            idx += 1
+    def anchors_list(self, img_size, grid, allow_cross=False):
+        return list(self.anchors(img_size, grid, allow_cross))
                             
-                if len(same_center['bboxes']) > 0:
-                    yield same_center
+class AnchorTargetCreator(object):
+    r"""
+    Given ground truth bboxes and a set of anchors, find 256 training targets for RPN network.
+    Anchor has following members: center, feat_loc, bbox and id.
+    """
+    def __init__(self, img_size, grid, anchor_generator, ground_truth, pos_iou=0.7,
+                 neg_iou=0.3, max_pos=128, max_targets=256, allow_cross=False):
+        self.img_size = img_size
+        self.grid = grid
+        self.anchor_generator = anchor_generator
+        self.ground_truth = ground_truth
+        self.pos_iou = pos_iou
+        self.neg_iou = neg_iou
+        self.max_pos = max_pos
+        self.max_targets = max_targets
+        self.allow_cross = allow_cross
 
-        
+    def targets(self):
+        anchors = [x for x in self.anchor_generator.anchors(self.img_size, self.grid, self.allow_cross)]
+        all_anchor_ids = [x['id'] for x in anchors]
+        # find positive targets for training
+        pos_targets = []
+        for gt_bbox, category in zip(self.ground_truth.bboxes, self.ground_truth.categories):
+            max_iou = -1
+            max_anchor = None
+            large_iou_anchors = []
+            for anchor in anchors:
+                iou = calc_iou(gt_bbox, anchor['bbox'])
+                xx, yy, ww, hh = anchor['bbox'].get_xywh()
+                if iou > max_iou:
+                    max_iou = iou
+                    max_anchor = anchor
+                if iou >= self.pos_iou:
+                    large_iou_anchors.append([iou, anchor])
+            # first add the anchor of max iou to the positive target list
+            pos_targets.append({
+                'anchor': max_anchor,
+                'gt_bbox': gt_bbox,
+                'gt_label': 1,
+                'category': category,
+                'iou': max_iou
+            })
+            # sort the anchors of iou larger than pos_iou by iou
+            large_iou_anchors = sorted(large_iou_anchors, key=lambda x: x[0], reverse=True)
+            # look down the list and add anchor that is not the max anchor to the positive target list
+            for iou, anchor in large_iou_anchors:
+                if anchor['id'] != max_anchor['id']:
+                    pos_targets.append({
+                        'anchor': anchor,
+                        'gt_bbox': gt_bbox,
+                        'gt_label': 1,
+                        'category': category,
+                        'iou': iou})
+                    break
+        # limit the positive targets to max_pos
+        pos_targets = pos_targets[:self.max_pos]
+        pos_anchor_ids = set((x['anchor']['id'] for x in pos_targets))
+        # to find negative targets for training
+        max_neg = self.max_targets - len(pos_targets)
+        neg_targets = []
+        # shuffle the anchors so that selection of negative targets are random
+        random.shuffle(anchors)
+        for anchor in anchors:
+            if len(neg_targets) >= max_neg:
+                break
+            small_iou = True
+            for gt_bbox in self.ground_truth.bboxes:
+                iou = calc_iou(gt_bbox, anchor['bbox'])
+                if iou > self.neg_iou:
+                    small_iou = False
+                    break
+            if small_iou and anchor['id'] not in pos_anchor_ids:
+                neg_targets.append({
+                    'anchor': anchor,
+                    'gt_bbox': None,
+                    'gt_label': 0,
+                    'category': None,
+                    'iou': None
+                })
+        return pos_targets + neg_targets
+            
+                            
 class ROIPooling(nn.Module):
     r"""
     Accepts a list of crops from the feature map of various spatial size(same channels)

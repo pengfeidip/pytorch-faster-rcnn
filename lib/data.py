@@ -113,7 +113,16 @@ class CocoDetDataset(torch.utils.data.Dataset):
         iid = self.img_ids[i]
         fname = self.anno_imgs[iid]
         img_data = Image.open(osp.join(self.img_dir, fname))
+        w, h = img_data.width, img_data.height
         img_data = self.transform(img_data)
-        bboxes_data = torch.tensor(self.anno_bboxes[iid])
+        h2, w2 = img_data.shape[-2:]
+        w_amp = w2 / w
+        h_amp = h2 / h
+        bboxes_data = self.anno_bboxes[iid]
+        trans_bboxes = []
+        for bbox in bboxes_data:
+            x,y,w,h = bbox[:4]
+            trans_bboxes.append([round(x*w_amp), round(y*h_amp), round(w*w_amp), round(h*h_amp), bbox[-1]])
+        bboxes_data = torch.tensor(trans_bboxes)
         return img_data, bboxes_data
         
