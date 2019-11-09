@@ -2,10 +2,15 @@ import torch
 import torch.nn as nn
 from . import config
 
+
 class BBox(object):
     r"""
-    Represent a bounding box, it accepts various input and provide conversion.
+    Represent a bounding box, it accepts various input and convert to xywh inside.
+    It also provides conversions to various formats, the conversion is simply applying 
+    conversion formula and does not do round up, so it is up to the users to do round up 
+    before or after the conversion if users want integer results. 
     x, y here is upper left corner of the box.
+    x, y in center_xywh is coordinates of the center
     """
     def __init__(self, xywh=None, xyxy=None, xxyy=None, center_xywh=None):
         self.center_xywh = center_xywh
@@ -23,13 +28,10 @@ class BBox(object):
         elif center_xywh is not None:
             assert len(center_xywh) == 4
             cx,cy,w,h = center_xywh
-            self.xywh = (round(cx - w/2), round(cy - h/2), w, h)
+            self.xywh = (cx - w/2, cy - h/2, w, h)
             self.center_xywh = center_xywh
         else:
-            raise ValueError('No coordinates provided to init of bbox.')
-        
-        #self._validate_()
-        
+            raise ValueError('No coordinates provided to __init__ of bbox.')
 
     def xywh2xyxy(self, xywh):
         x,y,w,h = xywh
@@ -47,20 +49,57 @@ class BBox(object):
         if self.center_xywh is not None:
             return self.center_xywh
         x,y,w,h = self.xywh
-        return (round(x+w/2), round(y+h/w), w, h)
-    def _validate_(self):
+        return (x+w/2, y+h/w, w, h)
+    def is_valid(self):
         x,y,w,h = self.xywh
-        assert x>=0 and y>=0 and w>=0 and h>=0
+        if x>=0 and y>=0 and w>=0 and h>=0:
+            return True
+        return False
+    def round_xywh(self):
+        return tuple((round(x) for x in self.get_xywh()))
+    def round_center_xywh(self):
+        return tuple((round(x) for x in self.get_center_xywh()))
+    def contain_point(self, x, y):
+        xx, yy, ww, hh = self.get_xywh()
+        return x>=xx and x<=xx+ww and y>=yy and y<=yy+hh
+    def get_area(self):
+        x, y, w, h = self.get_xywh()
+        return w * h
         
     def __str__(self):
         return 'xywh:'+str(self.get_xywh())
 
+# Provide an abstraction of a point 2D space so that users do not get confused whether to (w,h) or (x,y) notation.
 class Point(object):
     def __init__(self, x=None, y=None, w=None, h=None):
-        self.x = x
-        self.y = y
-        self.h = h
-        self.w = w
+        if x is not None and y is not None:
+            self.x, self.y, self.w, self.h = x, y, x, y
+        elif w is not None and h is not None:
+            self.x, self.y, self.w, self.h = w, h, w, h
+        else:
+            raise ValueError('Provide valid values for Point class.')
+    def __str__(self):
+        return 'xy:{}'.format((self.x, self.y))
+    
+# a and b are BBox objects
+def calc_iou(a, b):
+    pts = []
+    ax1, ay1, ax2, ay2 = a.get_xyxy()
+    if b.contain_point(x=ax1, y=ay1):
+        pts.append((ax1, ay1))
+    if b.contain_point(x=ax2, y=ay2):
+        pts.append((ax2, ay2))
+    bx1, by1, bx2, by2 = b.get_xyxy()
+    if a.contain_point(x=bx1, y=by1):
+        pts.append((bx1, by1))
+    if a.contain_point(x=bx2, y=by2):
+        pts.append((bx2, by2))
+    if len(pts)<2:
+        return 0
+    p1, p2 = pts[:2]
+    overlap_area = abs(p1[0]-p2[0]) * abs(p1[1]-p2[1])
+    return overlap_area / (a.get_area() + b.get_area() - overlap_area)
+
 
 class AnchorGenerator(object):
     r"""
@@ -71,7 +110,7 @@ class AnchorGenerator(object):
         self.aspect_ratios = aspect_ratios
         self.aspect_ratios_sqrt = [x**0.5 for x in aspect_ratios]
         
-    def generate_anchors(self, img_size, grid):
+    def generate_anchors(self, img_size, grid, allow_cross=False):
         assert len(img_size)==2 and len(grid)==2
         assert img_size[0]>=0 and img_size[1]>=0 and grid[0]>=0 and grid[1]>=0
         h_img,  w_img  = img_size
@@ -81,24 +120,28 @@ class AnchorGenerator(object):
             for j in range(w_grid):
                 i_center = grid_dist_h/2 + grid_dist_h*i
                 j_center = grid_dist_w/2 + grid_dist_w*j
-                same_center = {'center': Point(y=round(i_center), x=round(j_center)),
-                               'anchors': []}
+                same_center = {
+                    'center': Point(y=i_center, x=j_center),
+                    'bboxes': [], 
+                    'feat_loc': Point(y=i, x=j)
+                }
                 for scale in self.scales:
-                    for ar_sqrt in self.aspect_ratios_sqrt:
+                    for ar_sqrt in self.aspect_ratios:
                         anchor_h = scale / ar_sqrt
                         anchor_w = scale * ar_sqrt
-                        anchor = BBox(center_xywh=(round(j_center),
-                                                   round(i_center),
-                                                   round(anchor_w),
-                                                   round(anchor_h)))
-                        x1,y1,x2,y2 = anchor.get_xyxy()
+                        bbox = BBox(center_xywh=(j_center,
+                                                 i_center,
+                                                 anchor_w,
+                                                 anchor_h))
+                        x1,y1,x2,y2 = bbox.get_xyxy()
                         # get rid of cross boundary anchors
-                        if x1>=0 and x2>=0 and y1>=0 and y2>=0 and \
+                        if allow_cross or \
+                           x1>=0 and x2>=0 and y1>=0 and y2>=0 and \
                            x1<w_img and x2<w_img and y1<h_img and y2<h_img:
-                            same_center['anchors'].append(anchor)
-                if len(same_center['anchors']) > 0:
+                            same_center['bboxes'].append(bbox)
+                            
+                if len(same_center['bboxes']) > 0:
                     yield same_center
-
 
         
 class ROIPooling(nn.Module):

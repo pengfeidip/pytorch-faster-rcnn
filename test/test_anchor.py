@@ -12,18 +12,32 @@ import time
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
 
 def anchor_generator():
-    print('Test anchor generator'.center(90, '*'))
+    print('Test anchor generator complex'.center(90, '*'))
     gen = region.AnchorGenerator(scales=[128, 256, 512],
                                  aspect_ratios=[1, 0.5, 2])
     tot_anchors = 0
-    for res in gen.generate_anchors((1000, 600), (60, 40)):
+    for res in gen.generate_anchors((1000, 600), (62, 37), allow_cross=False):
         print('-'*10)
-        print('Center: x:', res['center'].x, 'y:', res['center'].y)
+        print('Center:', res['center'])
         print('Anchors:')
-        for a in res['anchors']:
+        for a in res['bboxes']:
             print(a)
-        tot_anchors += len(res['anchors'])
+        tot_anchors += len(res['bboxes'])
     print('Total anchors:', tot_anchors)
+
+    print('Test anchor generator simple'.center(90, '*'))
+    gen = region.AnchorGenerator(scales=[1],
+                                 aspect_ratios=[1])
+    tot_anchors = 0
+    for res in gen.generate_anchors((3, 4), (3, 4), allow_cross=True):
+        print('-'*10)
+        print('Center:', res['center'])
+        print('Anchors:')
+        for a in res['bboxes']:
+            print(a)
+        tot_anchors += len(res['bboxes'])
+    print('Total anchors:', tot_anchors)
+    
     
 
 if __name__ == '__main__':
