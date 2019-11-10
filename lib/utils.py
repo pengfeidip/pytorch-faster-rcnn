@@ -16,7 +16,8 @@ def imread(file_path):
 def image2tensor(file_path):
     return imread(file_path)
 
-
+def dict2str(d):
+    return ', '.join(['{}:{}'.format(k, v) for k, v in d.items()])
 
 
 # ImageNet mapping from id to label

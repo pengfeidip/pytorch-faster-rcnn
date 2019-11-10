@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import copy, random
-from . import config
+from . import config, utils
 
 
 
@@ -64,12 +64,12 @@ class BBox(object):
     def contain_point(self, x, y):
         xx, yy, ww, hh = self.get_xywh()
         return x>=xx and x<=xx+ww and y>=yy and y<=yy+hh
-    def get_area(self):
+    def area(self):
         x, y, w, h = self.get_xywh()
         return w * h
         
     def __str__(self):
-        return 'xywh:'+str(self.get_xywh())
+        return 'BBox:xywh'+'({})'.format(', '.join([str(round(x, 2)) for x in self.get_xywh()]))
 
 # Provide an abstraction of a point 2D space so that users do not get confused whether to (w,h) or (x,y) notation.
 class Point(object):
@@ -81,10 +81,10 @@ class Point(object):
         else:
             raise ValueError('Provide valid values for Point class.')
     def __str__(self):
-        return 'xy:{}'.format((self.x, self.y))
+        return 'xy:{}'.format((round(self.x, 2), round(self.y, 2)))
     
-# a and b are BBox objects
-def calc_iou(a, b):
+# previous wrong version
+def calc_iou_v2(a, b):
     pts = []
     ax1, ay1, ax2, ay2 = a.get_xyxy()
     if b.contain_point(x=ax1, y=ay1):
@@ -100,7 +100,24 @@ def calc_iou(a, b):
         return 0
     p1, p2 = pts[:2]
     overlap_area = abs(p1[0]-p2[0]) * abs(p1[1]-p2[1])
-    return overlap_area / (a.get_area() + b.get_area() - overlap_area)
+    return overlap_area / (a.area() + b.area() - overlap_area)
+
+# a and b are BBox objects
+def calc_iou(a, b):
+    bboxes = [a, b]
+    x_coor = []
+    y_coor = []
+    for bbox in bboxes:
+        x1, y1, x2, y2 = bbox.get_xyxy()
+        x_coor += [[x1, bbox], [x2, bbox]]
+        y_coor += [[y1, bbox], [y2, bbox]]
+    x_coor.sort(key=lambda x: x[0])
+    y_coor.sort(key=lambda x: x[0])
+    if x_coor[0][1] == x_coor[1][1] or y_coor[0][1] == y_coor[1][1]:
+        return 0
+    overlap = abs(x_coor[1][0] - x_coor[2][0]) * abs(y_coor[1][0] - y_coor[2][0])
+    return overlap / (a.area() + b.area() - overlap)
+        
 
 class GroundTruth(object):
     r"""
@@ -113,7 +130,7 @@ class GroundTruth(object):
         self.categories = []
         for bbox in bboxes:
             cate = bbox[-1]
-            self.categories.append(cate)
+            self.categories.append(cate.item())
             self.bboxes.append(BBox(xywh=tuple([x.item() for x in bbox[:4]])))
     
 class AnchorGenerator(object):
@@ -138,13 +155,13 @@ class AnchorGenerator(object):
                 i_center = grid_dist_h/2 + grid_dist_h*i
                 j_center = grid_dist_w/2 + grid_dist_w*j
                 for scale in self.scales:
-                    for ar_sqrt in self.aspect_ratios:
+                    for ar in self.aspect_ratios:
                         anchor = {
                             'center': Point(y=i_center, x=j_center),
                             'feat_loc': Point(y=i, x=j),
                         }
-                        anchor_h = scale / ar_sqrt
-                        anchor_w = scale * ar_sqrt
+                        anchor_h = scale / ar
+                        anchor_w = scale * ar
                         bbox = BBox(center_xywh=(j_center,
                                                  i_center,
                                                  anchor_w,
@@ -164,24 +181,42 @@ class AnchorTargetCreator(object):
     Given ground truth bboxes and a set of anchors, find 256 training targets for RPN network.
     Anchor has following members: center, feat_loc, bbox and id.
     """
-    def __init__(self, img_size, grid, anchor_generator, ground_truth, pos_iou=0.7,
-                 neg_iou=0.3, max_pos=128, max_targets=256, allow_cross=False):
-        self.img_size = img_size
-        self.grid = grid
+    def __init__(self, anchor_generator, pos_iou=0.7,
+                 neg_iou=0.3, max_pos=128, max_targets=256):
         self.anchor_generator = anchor_generator
-        self.ground_truth = ground_truth
         self.pos_iou = pos_iou
         self.neg_iou = neg_iou
         self.max_pos = max_pos
         self.max_targets = max_targets
-        self.allow_cross = allow_cross
 
-    def targets(self):
-        anchors = [x for x in self.anchor_generator.anchors(self.img_size, self.grid, self.allow_cross)]
+    def targets(self, img_size, grid, ground_truth, allow_cross=False):
+        anchors = [x for x in self.anchor_generator.anchors(img_size, grid, allow_cross)]
         all_anchor_ids = [x['id'] for x in anchors]
         # find positive targets for training
         pos_targets = []
-        for gt_bbox, category in zip(self.ground_truth.bboxes, self.ground_truth.categories):
+
+        '''
+        print('FOR BUGGING'.center(90, '*'))
+        gt_bbox = ground_truth.bboxes[-1]
+        print('gt_bbox of interest:', gt_bbox)
+        gt_center_x, gt_center_y, _, _ = gt_bbox.get_center_xywh()
+        close_centers = []
+        for anchor in anchors:
+            center = anchor['center']
+            close_centers.append([
+                abs(gt_center_x - center.x) + abs(gt_center_y - center.y),
+                anchor
+            ])
+        print('Number of all anchors:', len(close_centers))
+        close_centers.sort(key=lambda x: x[0])
+        for dist, anchor in close_centers[:5]:
+            print('Dist:', dist)
+            print('center:', anchor['center'], 'feat_loc:', anchor['feat_loc'], 'bbox:', anchor['bbox'])
+        
+        print('FOR BUGGING'.center(90, '*'))
+        '''
+        
+        for gt_bbox, category in zip(ground_truth.bboxes, ground_truth.categories):
             max_iou = -1
             max_anchor = None
             large_iou_anchors = []
@@ -225,7 +260,7 @@ class AnchorTargetCreator(object):
             if len(neg_targets) >= max_neg:
                 break
             small_iou = True
-            for gt_bbox in self.ground_truth.bboxes:
+            for gt_bbox in ground_truth.bboxes:
                 iou = calc_iou(gt_bbox, anchor['bbox'])
                 if iou > self.neg_iou:
                     small_iou = False
