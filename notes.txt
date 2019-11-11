@@ -1,0 +1,26 @@
+
+* Do I use aspect_ratio or aspect_ratio_sqrt. Mmdetection uses extra 32 and 64 for anchor scales.
+
+* Within ProposalTargetCreator, paired gt bboxes are re-matched, even though proposals are anchor bboxes
+adjusted. Some of those anchor bboxes are already paired with gt bboxes in RPN. Do we utilize this information?
+
+* Regression loss in RPN loss is averaged over number of positive training anchors. This is different than in the paper?
+
+* So far it supports training 1 image at a time.
+
+* Some design alternative: right now results of AnchorTargetCreator contains anchor as a member as oppose to adding extra
+members to the original anchor dict.
+
+* No non-linear layer is added to RPN's classifier or regressor.
+
+* Does nn.Linear contain bias?
+
+* Do we add BN or dropout after FC layers in Head as VGG does?
+
+* So far x, y in xywh is the upper left point, does it make a difference?
+
+* Better Class design, using OOP.
+
+* ProposalCreator does not need 'adjustment' and 'objectness' to calculate loss, get rid them to reduce compute graph size.
+
+

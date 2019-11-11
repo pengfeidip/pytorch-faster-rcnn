@@ -279,6 +279,8 @@ def param2xywh(param, anchor_bbox):
     x_a, y_a, w_a, h_a = anchor_bbox.get_xywh()
     return [x_p*w_a+x_a, y_p*h_a+y_a, np.exp(w_p)*w_a, np.exp(h_p)*h_a]
 
+
+# TODO: improve performance
 def apply_nms(anchors, score_map, bbox_map, iou_thr):
     num_anchors = len(anchors)
     deleted = [0 for i in range(num_anchors)]
@@ -336,7 +338,7 @@ class ProposalCreator(object):
 
             # next put extra information to anchor
             anchor['obj_score'] = obj_score
-            anchor['adj_bbox']  = adj_bbox
+            anchor['adj_bbox']  = BBox(xywh=adj_bbox)
             anchor['objectness'] = objectness
             anchor['adjustment'] = adjustment
         return anchors
@@ -355,7 +357,67 @@ class ProposalCreator(object):
         return props_nms[:max_after_nms]
     
 class ProposalTargetCreator(object):
-    pass
+    r"""
+    From selected ROIs(around 2000, by ProposalCreator), choose 128 samples for training Head.
+    """
+    def __init__(self, max_pos=32, max_targets=128, pos_iou=0.5, neg_iou=0.1):
+        self.max_pos = max_pos
+        self.max_targets = max_targets
+        self.pos_iou = pos_iou
+        self.neg_iou = neg_iou
+
+    # proposal keys: 'bbox', 'center', 'feat_loc', 'scale_idx', 'ar_idx', 'id', 'obj_score',
+    # 'adj_bbox', 'objectness', 'adjustment'
+    def targets(self, proposals, gt):
+        print('Number of proposals:', len(proposals))
+        print(proposals[0])
+        pos_targets = []
+        neg_targets = []
+        for gt_bbox, category in zip(gt.bboxes, gt.categories):
+            for prop in proposals:
+                adj_bbox = prop['adj_bbox']
+                iou = calc_iou(adj_bbox, gt_bbox)
+                if iou >= self.pos_iou:
+                    prop['gt_bbox'] = gt_bbox
+                    prop['gt_label'] = 1
+                    prop['category'] = category
+                    prop['iou'] = iou
+                    pos_targets.append(prop)
+                elif iou <= self.neg_iou:
+                    prop['gt_bbox'] = None
+                    prop['gt_label'] = 0
+                    prop['category'] = 0
+                    prop['iou'] = iou
+                    neg_targets.append(prop)
+        print('num pos_targets:', len(pos_targets))
+        print('num neg_targets:', len(neg_targets))
+
+        pos_targets = []
+        neg_targets = []
+        for prop in proposals:
+            max_iou = -1
+            for gt_bbox, category in zip(gt.bboxes, gt.categories):
+                adj_bbox = prop['adj_bbox']
+                iou = calc_iou(adj_bbox, gt_bbox)
+                if iou >= self.pos_iou:
+                    prop['gt_bbox'] = gt_bbox
+                    prop['gt_label'] = 1
+                    prop['category'] = category
+                    prop['iou'] = iou
+                    pos_targets.append(prop)
+                max_iou = max(max_iou, iou)
+            if max_iou <= self.neg_iou:
+                prop['gt_bbox'] = None
+                prop['gt_label'] = 0
+                prop['category'] = 0
+                prop['iou'] = iou
+                neg_targets.append(prop)
+            
+        print('num pos_targets:', len(pos_targets))
+        print('num neg_targets:', len(neg_targets))
+        pass
+    
+
         
                             
 class ROIPooling(nn.Module):
