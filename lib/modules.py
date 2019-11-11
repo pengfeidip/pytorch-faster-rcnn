@@ -39,7 +39,7 @@ class RPN(nn.Module):
             nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.ReLU()
         )
-        self.classifier = nn.Conv2d(512, (num_classes+1)*2, kernel_size=(1, 1))
+        self.classifier = nn.Conv2d(512, num_anchors*2, kernel_size=(1, 1))
         self.regressor  = nn.Conv2d(512, num_anchors*4, kernel_size=(1, 1))
 
     def forward(self, in_data):

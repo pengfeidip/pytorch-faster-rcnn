@@ -10,8 +10,10 @@ from lib import data, modules, utils, region
 import time
 
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
-TEST_IMG_DIR = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
-TEST_COCO_JSON = '../data/voc2007_trainval.json'
+TEST_IMG_DIR \
+    = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages'
+TEST_COCO_JSON \
+    = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval.json'
 
 
 def dict2str(d):
@@ -38,7 +40,8 @@ def test_iou():
 def test_anchor_target_creator():
     NUM_WORKERS = 0
     print('Test AnchorTargetCreator'.center(90, '*'))
-    dataset = data.CocoDetDataset(TEST_IMG_DIR, TEST_COCO_JSON, transform=data.faster_transform(1000, 600))
+    dataset = data.CocoDetDataset(TEST_IMG_DIR, TEST_COCO_JSON,
+                                  transform=data.faster_transform(1000, 600))
     dataloader = data.torch.utils.data.DataLoader(
         dataset,
         batch_size=1,
@@ -67,7 +70,8 @@ def test_anchor_target_creator():
             if tar['gt_label'] == 0:
                 continue
             print('gt_label:', tar['gt_label'], 'anchor:', tar['anchor']['bbox'],
-                  'gt_bbox:',  tar['gt_bbox'], 'id:', tar['anchor']['id'], 'iou:', tar['iou'])
+                  'gt_bbox:',  tar['gt_bbox'], 'id:', tar['anchor']['id'],
+                  'iou:', tar['iou'])
             if tar['gt_label'] == 1:
                 print('IOU:', region.calc_iou(tar['anchor']['bbox'], tar['gt_bbox']))
         num_imgs = num_imgs - 1

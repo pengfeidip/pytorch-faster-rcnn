@@ -19,6 +19,17 @@ def image2tensor(file_path):
 def dict2str(d):
     return ', '.join(['{}:{}'.format(k, v) for k, v in d.items()])
 
+def split_list(lst, size):
+    assert size > 0
+    _len_ = len(lst)
+    start = 0
+    while True:
+        end = min(_len_, start + size)
+        yield lst[start:end]
+        if end == _len_:
+            break
+        start = end
+
 
 # ImageNet mapping from id to label
 ImageNet_LABEL = \

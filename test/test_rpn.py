@@ -28,6 +28,9 @@ def test_rpn():
     print('Fake image shape:', img_fake.shape)
     feat = vgg(img_fake)
     print('Output feature size:', feat.shape)
+    cls, reg = rpn(feat)
+    print('Classifier out shape:', cls.shape)
+    print('Regressor out shape:', reg.shape)
     
     
 
