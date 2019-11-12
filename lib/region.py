@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import copy, random
 import numpy as np
+import time, sys, os
+import os.path as osp
 from . import config, utils
 
 
@@ -70,7 +72,8 @@ class BBox(object):
         return w * h
         
     def __str__(self):
-        return 'BBox:xywh'+'({})'.format(', '.join([str(round(x, 2)) for x in self.get_xywh()]))
+        return 'BBox:xywh'+'({})'.format(', '.join([str(round(x, 2)) \
+                                                    for x in self.get_xywh()]))
 
 # Provide an abstraction of a point 2D space so that users do not get confused whether to (w,h) or (x,y) notation.
 class Point(object):
@@ -281,18 +284,23 @@ def param2xywh(param, anchor_bbox):
 
 
 # TODO: improve performance
+# argument anchors is a list of anchors, score_map is a function that
+# maps items in anchors to score and bbox_map maps to bbox which is of BBox class.
 def apply_nms(anchors, score_map, bbox_map, iou_thr):
+    start = time.time()
     num_anchors = len(anchors)
-    deleted = [0 for i in range(num_anchors)]
-    anchors.sort(key = score_map, reverse=True)
+    # third flag is meaning 'deleted'
+    anchors = [[score_map(anchor), bbox_map(anchor), 0, anchor] for anchor in anchors]
+    anchors.sort(key = lambda x:x[0], reverse=True)
     for i, anchor in enumerate(anchors):
-        if not deleted[i]:
-            cur_bbox = bbox_map(anchor)
+        if not anchor[2]:
+            cur_bbox = anchor[1]
             for j in range(i+1, num_anchors):
-                if not deleted[j] and \
-                   calc_iou(cur_bbox, bbox_map(anchors[j]))>=iou_thr:
-                    deleted[j] = 1
-    return [anchors[i] for i, de in enumerate(deleted) if not de]
+                if not anchors[j][2] and \
+                   calc_iou(cur_bbox, anchors[j][1])>=iou_thr:
+                    anchors[j][2] = 1
+    ret_val = [anchor[3] for i, anchor in enumerate(anchors) if not anchor[2]]
+    return ret_val
 
 class ProposalCreator(object):
     r"""
@@ -303,7 +311,7 @@ class ProposalCreator(object):
     4, apply NMS and choose top M(2000)
 
     After this, anchor will add members: 
-        'obj_score': int,
+        'obj_score': float,
         'adj_bbox': BBox,
         'objectness': torch.tensor # for backprop
         'adjustment': torch.tensor # for backprop
@@ -358,7 +366,8 @@ class ProposalCreator(object):
     
 class ProposalTargetCreator(object):
     r"""
-    From selected ROIs(around 2000, by ProposalCreator), choose 128 samples for training Head.
+    From selected ROIs(around 2000, by ProposalCreator), 
+    choose 128 samples for training Head.
     """
     def __init__(self, max_pos=32, max_targets=128, pos_iou=0.5, neg_iou=0.1):
         self.max_pos = max_pos
@@ -371,26 +380,6 @@ class ProposalTargetCreator(object):
     def targets(self, proposals, gt):
         print('Number of proposals:', len(proposals))
         print(proposals[0])
-        pos_targets = []
-        neg_targets = []
-        for gt_bbox, category in zip(gt.bboxes, gt.categories):
-            for prop in proposals:
-                adj_bbox = prop['adj_bbox']
-                iou = calc_iou(adj_bbox, gt_bbox)
-                if iou >= self.pos_iou:
-                    prop['gt_bbox'] = gt_bbox
-                    prop['gt_label'] = 1
-                    prop['category'] = category
-                    prop['iou'] = iou
-                    pos_targets.append(prop)
-                elif iou <= self.neg_iou:
-                    prop['gt_bbox'] = None
-                    prop['gt_label'] = 0
-                    prop['category'] = 0
-                    prop['iou'] = iou
-                    neg_targets.append(prop)
-        print('num pos_targets:', len(pos_targets))
-        print('num neg_targets:', len(neg_targets))
 
         pos_targets = []
         neg_targets = []
@@ -412,12 +401,66 @@ class ProposalTargetCreator(object):
                 prop['category'] = 0
                 prop['iou'] = iou
                 neg_targets.append(prop)
+        pos_targets.sort(key=lambda x: x['iou'], reverse=True)
+        pos_targets = pos_targets[:self.max_pos]
+        random.shuffle(neg_targets)
+        neg_targets = neg_targets[:self.max_targets - len(pos_targets)]
             
         print('num pos_targets:', len(pos_targets))
         print('num neg_targets:', len(neg_targets))
-        pass
-    
+        print('pos_targets iou:', ','.join([str(tar['iou']) for tar in pos_targets]))
+        print('neg_targets iou:', ','.join([str(tar['iou']) for tar in neg_targets]))
+        return pos_targets + neg_targets
 
+def image2feature(img_size, feat_size, img_bbox):
+    x,y,w,h = img_bbox.get_xywh()
+    h_rat, w_rat = feat_size[0]/img_size[0], feat_size[1]/img_size[1]
+    feat_bbox = (x*w_rat, y*h_rat, w*w_rat, h*h_rat)
+    return feat_bbox
+def feature2image(img_size, feat_size, feat_bbox):
+    x,y,w,h = feat_bbox.get_xywh()
+    # TODO: do we do make sure of non-zero feature area here?
+    h_rat = img_size[0] / feat_size[0]
+    w_rat = img_size[1] / feat_size[1]
+    img_bbox = (x*w_rat, y*h_rat, w*w_rat, h*h_rat)
+    return img_bbox
+    
+class ROICropping(object):
+    r"""
+    It accepts a feature map and region proposals and return a list
+    of crops from the feature map, the cropped areas usually have different
+    spatial sizes.
+    It does not involve any trainable parameter so no need to inherite nn.Module
+    """
+    def __init__(self):
+        pass
+
+    # proposals are results of ProposalTargetCreator, which has member:
+    # 'bbox', 'feat_loc', 'obj_score', 'adj_bbox', 'gt_bbox', 'gt_label', 'category', 'iou'
+    def crop(self, img_size, feature, proposals):
+        img_h, img_w = img_size
+        feat_size = feature.shape[-2:]
+        crops, category_labels, gt_bboxes, adj_bboxes = [], [], [], []
+        for prop in proposals:
+            adj_bbox = prop['adj_bbox']
+            feat_bbox = image2feature(img_size, feat_size, adj_bbox)
+            adj_x, adj_y, adj_w, adj_h = feat_bbox
+            # odd that round does not always returns integers
+            crop = feature[:,
+                           :,
+                           int(round(adj_y)):int(round(adj_y+adj_h)),
+                           int(round(adj_x)):int(round(adj_x+adj_w))]
+            # get rid of zero size feature crops
+            # this may happen if adjusted bbox is out of image bounds
+            # TODO: do we use a little piece next to the boundary instead of
+            # ignoring?
+            if crop.numel() == 0:
+                continue
+            crops.append(crop)
+            category_labels.append(prop['category'])
+            gt_bboxes.append(prop['gt_bbox'])
+            adj_bboxes.append(adj_bbox)
+        return crops, adj_bboxes, gt_bboxes, category_labels
         
                             
 class ROIPooling(nn.Module):

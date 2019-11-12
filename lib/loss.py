@@ -40,15 +40,38 @@ def rpn_loss(rpn_cls_res, rpn_reg_res, anchor_generator, targets, lamb):
     
     cls_out_tsr = torch.stack(cls_out)
     cls_labels_tsr = torch.tensor(cls_labels)
-
     ce_loss = torch.nn.CrossEntropyLoss()
     cls_loss = ce_loss(cls_out_tsr, cls_labels_tsr)
-
     reg_out_tsr = torch.stack(reg_out)
     reg_params_tsr = torch.tensor(reg_params)
-    
     sm_loss = torch.nn.SmoothL1Loss()
     reg_loss = sm_loss(reg_out_tsr, reg_params_tsr)
     return cls_loss + lamb * reg_loss
 
-    
+def head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, category_labels, lamb):
+    print('gt_bboxes[0]', gt_bboxes[0])
+    print('category_labels:', category_labels)
+    ce_loss = torch.nn.CrossEntropyLoss()
+    labels = torch.tensor(category_labels)
+    print('labels.shape:', labels.shape)
+    cls_loss = ce_loss(cls_out, labels)
+    print('cls_loss:', cls_loss)
+
+
+    smL1_loss = torch.nn.SmoothL1Loss()
+    pos_reg_out = []
+    gt_params = []
+    for i, gt_bbox in enumerate(gt_bboxes):
+        if gt_bbox is None:
+            continue
+        adj_bbox = adj_bboxes[i]
+        category = category_labels[i]
+        pos_reg_out.append(reg_out[i][category*4:(category+1)*4])
+        gt_params.append(region.xywh2param(gt_bbox.get_xywh(), adj_bbox))
+    pos_reg_out_tsr = torch.stack(pos_reg_out)
+    gt_params_tsr = torch.tensor(gt_params)
+    print('pos_reg_out_tsr.shape:', pos_reg_out_tsr.shape)
+    print('gt_params_tsr.shape:', gt_params_tsr.shape)
+    reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
+
+    return cls_loss + lamb * reg_loss

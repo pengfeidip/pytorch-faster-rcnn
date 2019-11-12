@@ -23,4 +23,9 @@ members to the original anchor dict.
 
 * ProposalCreator does not need 'adjustment' and 'objectness' to calculate loss, get rid them to reduce compute graph size.
 
+* For training head, do we add bbox for background which takes the whole image?
 
+* Better to calculate difference btw bboxes, the difference is like a vector which has
+directions, and the direction is using another bbox as center. In region.xywh2param,
+it calculates direction of 'xywh' with respect to 'anchor_bbox'. And the regressor is trying
+to regress this difference direction. 

@@ -64,8 +64,8 @@ class Head(nn.Module):
         batch_size = roi_batch.shape[0]
         # flatten input rois
         x = roi_batch.view(batch_size, -1)
-        x = self.fc1(roi_batch)
-        x = self.fc2(roi_batch)
+        x = self.fc1(x)
+        x = self.fc2(x)
         return self.classifier(x), self.regressor(x)
 
 

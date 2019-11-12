@@ -14,10 +14,10 @@ TEST_IMG_DIR \
     = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages'
 TEST_COCO_JSON \
     = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval.json'
-TEST_IMG_DIR \
-    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
-TEST_COCO_JSON \
-    = '../data/voc2007_trainval.json'
+#TEST_IMG_DIR \
+#    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
+#TEST_COCO_JSON \
+#    = '../data/voc2007_trainval.json'
                
 
 def dict2str(d):
@@ -84,7 +84,7 @@ def test_proposal_target_creator():
     aspect_ratios = [1, 0.5, 2]
     anchor_gen = region.AnchorGenerator(scales, aspect_ratios)
     target_gen = region.AnchorTargetCreator(anchor_gen)
-    num_imgs = 1
+    num_imgs = 100
     for train_data in dataloader:
         print('\nA new image:', num_imgs)
         img_data, bboxes_data = train_data
@@ -114,15 +114,39 @@ def test_proposal_target_creator():
         print('rpn loss:', rpn_loss)
 
         props_gen = region.ProposalCreator(anchor_gen)
-        props = props_gen.proposals_filtered(cls_out, reg_out, img_size, grid, 12000, 2000, 0.7)
+        props = props_gen.proposals_filtered(cls_out, reg_out, img_size, grid,
+                                             12000, 2000, 0.7)
         print('generated filtered proposals')
         print('Test ProposalTargetCreator'.center(90, '*'))
         prop_target_gen = region.ProposalTargetCreator()
         prop_targets = prop_target_gen.targets(props, gt)
+        print('number of proposal targets for training head:', len(prop_targets))
+
+        print('Test ROICropping'.center(90, '*'))
+        roi_crop = region.ROICropping()
+        crops, adj_bboxes, gt_bboxes, cates = roi_crop.crop(img_size, feat, prop_targets)
+
+        print('len crops:', len(crops),
+              'len categories:', len(cates),
+              'len gts:', len(gt_bboxes),
+              'len adj_bboxes:', len(adj_bboxes))
+
+        roi_pool = region.ROIPooling(output_size=(7,7))
+        roi_pool_res = roi_pool(crops)
+        print('roi_pool_res.shape:', roi_pool_res.shape)
+
+        head = modules.Head(num_classes=20)
+        cls_out, reg_out = head(roi_pool_res)
+        print('Head cls_out.shape:', cls_out.shape)
+        print('Head reg_out.shape:', reg_out.shape)
+
+        head_loss = loss.head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, cates, lamb=10)
+        print('head_loss:', head_loss)
         
         num_imgs = num_imgs - 1
         if num_imgs == 0:
             break
+
     
     pass
 

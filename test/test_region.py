@@ -97,7 +97,19 @@ def debug_one_case():
         print('anchor:', dict2str(tar['anchor']))
         print('gt_bbox:', tar['gt_bbox'], 'gt_label:', tar['gt_label'], 'category:', tar['category'], 'iou:', tar['iou'])
 
+def test_feature_image():
+    img_size = (1000, 600)
+    feat_size = (61, 37)
+    img_bbox = region.BBox(xywh=(35, 64, 256, 321))
+    print('img_size:', img_size, 'feat_size:', feat_size, 'img_bbox:', img_bbox)
+    feat_bbox = region.image2feature(img_size, feat_size, img_bbox)
+    print('feat_bbox:', feat_bbox)
+
+    img_bbox2 = region.feature2image(img_size, feat_size, region.BBox(xywh=feat_bbox))
+    print('img_bbox2:', img_bbox2)
+
 if __name__ == '__main__':
     #test_iou()
-    test_anchor_target_creator()
+    #test_anchor_target_creator()
     #debug_one_case()
+    test_feature_image()
