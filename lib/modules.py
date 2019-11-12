@@ -22,9 +22,9 @@ class VGG(Backbone):
     def __init__(self, pretrained=True, device=torch.device('cpu')):
         self.pretrained=pretrained
         self.device=device
-        v16 = tv.models.vgg16(pretrained=pretrained)
-        v16.to(device=device)
-        self.nn_module = v16.features[:-1]
+        self.vgg16 = tv.models.vgg16(pretrained=pretrained)
+        self.vgg16.to(device=device)
+        self.nn_module = self.vgg16.features[:-1]
 
 
 class RPN(nn.Module):
@@ -48,14 +48,19 @@ class RPN(nn.Module):
 
 class Head(nn.Module):
     r"""
-    Takes ROIs and return class and bbox adjustment.
+    The Fast RCNN or RCNN part of the detector, takes ROIs and classify them and adjust bboxes.
+    Use weights of FC layers of a CNN backbone to initialize FC layers of the head, if possible.
     """
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, fc1_state_dict=None, fc2_state_dict=None):
         super(Head, self).__init__()
         # in_features is 128 x 512 x 7 x 7 where 128 is batch size
         # TO-DO: initialize fc layers with fc layers in VGG16
         self.fc1 = nn.Linear(512*7*7, 4096)
+        if fc1_state_dict is not None:
+            self.fc1.load_state_dict(fc1_state_dict)
         self.fc2 = nn.Linear(4096, 4096)
+        if fc2_state_dict is not None:
+            self.fc2.load_state_dict(fc2_state_dict)
         self.classifier = nn.Linear(4096, num_classes+1)
         self.regressor  = nn.Linear(4096, (num_classes+1)*4)
 

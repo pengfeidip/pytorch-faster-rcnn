@@ -13,14 +13,18 @@ TEST_DIR = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/'
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
 TEST_IMG_DIR = osp.join(TEST_DIR, 'VOC2007/JPEGImages')
 TEST_COCO_JSON =osp.join(TEST_DIR, 'voc2007_trainval.json')
-#TEST_IMG_DIR \
-#    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
-#TEST_COCO_JSON \
-#    = '../data/voc2007_trainval.json'
+TEST_IMG_DIR \
+    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
+TEST_COCO_JSON \
+    = '../data/voc2007_trainval.json'
                
 
 def dict2str(d):
-    return ', '.join(['{}:{}'.format(k,v) for k, v in d.items()])
+    ret = ''
+    if not isinstance(d, dict):
+        return str(d)
+    else:
+        return ','.join(['{{{}:{}}}'.format(k, dict2str(v)) for k,v in d.items()])
 
 
 import random
@@ -49,7 +53,11 @@ def pass_data():
     roi_pool = region.ROIPooling(output_size=roi_pooling_size)
     vgg = modules.VGG()
     rpn = modules.RPN(num_classes=20, num_anchors=len(scales)*len(aspect_ratios))
-    head = modules.Head(num_classes=20)
+    vgg16 = vgg.vgg16
+    head = modules.Head(num_classes=20,
+                        fc1_state_dict=vgg16.classifier[0].state_dict(),
+                        fc2_state_dict=vgg16.classifier[3].state_dict())
+    print('Initialized head with VGG fully connected layers.')
     print('Number of images to test:', num_imgs)
     for train_data in dataloader:
         print('\nA new image:', img_id)
@@ -63,35 +71,49 @@ def pass_data():
         anchor_targets = anchor_target_gen.targets(img_size, grid, gt)
         print('Number of anchor targets:', len(anchor_targets))
         print('{} of anchor targets:'.format(5))
-        print(', '.join(['{}:{}'.format(k, v) for k, v in anchor_targets[5].items()]))
+        print(dict2str(anchor_targets[5]))
             
-        print('Apply rpn...')
+        print('Test RPN'.center(90, '*'))
         cls_out, reg_out = rpn(feat)
         print('cls_out shape:', cls_out.shape)
         print('reg_out shape:', reg_out.shape)
-        rpn_loss = loss.rpn_loss(cls_out, reg_out, anchor_gen, anchor_targets, lamb=10)
-        print('rpn loss:', rpn_loss)
+        print('cls_out:', cls_out.flatten()[:20], '...')
+        print('reg_out:', reg_out.flatten()[:20], '...')
+
+        rpn_loss = loss.RPNLoss(anchor_gen, lamb=10)
+        rloss = rpn_loss(cls_out, reg_out, anchor_targets)
+        #rpn_loss = loss.rpn_loss(cls_out, reg_out, anchor_gen, anchor_targets, lamb=10)
+        print('rpn loss:', rloss)
         props = props_gen.proposals_filtered(cls_out, reg_out, img_size, grid,
                                              12000, 2000, 0.7)
-        print('generated filtered proposals')
+        print('Filtered proposals generated:', len(props))
+        print('Filtered proposals[10]', dict2str(props[10]))
         print('Test ProposalTargetCreator'.center(90, '*'))
         prop_targets = props_target_gen.targets(props, gt)
         print('number of proposal targets for training head:', len(prop_targets))
+        print('Proposal targets[20]:', dict2str(prop_targets[20]))
         print('Test ROICropping'.center(90, '*'))
         crops, adj_bboxes, gt_bboxes, cates = roi_crop.crop(img_size, feat, prop_targets)
         print('len crops:', len(crops),
               'len categories:', len(cates),
               'len gts:', len(gt_bboxes),
               'len adj_bboxes:', len(adj_bboxes))
+        print('gt_bboxes:', ', '.join([str(ii) for ii in gt_bboxes[:10]]))
+        print('adj_bboxes[:5]:', ', '.join([str(ii) for ii in adj_bboxes[:5]]))
         roi_pool_res = roi_pool(crops)
         print('roi_pool_res.shape:', roi_pool_res.shape)
+        print('roi_pool_res:', roi_pool_res.flatten()[:30], '...')
 
         cls_out, reg_out = head(roi_pool_res)
         print('Head cls_out.shape:', cls_out.shape)
         print('Head reg_out.shape:', reg_out.shape)
+        print('cls_out:', cls_out.flatten()[:20], '...')
+        print('reg_out:', reg_out.flatten()[:40], '...')
 
-        head_loss = loss.head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, cates, lamb=10)
-        print('head_loss:', head_loss)
+        head_loss = loss.HeadLoss(lamb=10)
+        hloss = head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, cates)
+        #head_loss = loss.head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, cates, lamb=10)
+        print('head_loss:', hloss)
         
         img_id += 1
         if img_id >= num_imgs:
