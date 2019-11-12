@@ -72,10 +72,11 @@ def head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, category_labels, lamb):
         category = category_labels[i]
         pos_reg_out.append(reg_out[i][category*4:(category+1)*4])
         gt_params.append(region.xywh2param(gt_bbox.get_xywh(), adj_bbox))
-    pos_reg_out_tsr = torch.stack(pos_reg_out)
-    gt_params_tsr = torch.tensor(gt_params)
-    print('pos_reg_out_tsr.shape:', pos_reg_out_tsr.shape)
-    print('gt_params_tsr.shape:', gt_params_tsr.shape)
-    if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
-        reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
+    if len(gt_params) != 0:
+        pos_reg_out_tsr = torch.stack(pos_reg_out)
+        gt_params_tsr = torch.tensor(gt_params)
+        print('pos_reg_out_tsr.shape:', pos_reg_out_tsr.shape)
+        print('gt_params_tsr.shape:', gt_params_tsr.shape)
+        if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
+            reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
     return cls_loss + lamb * reg_loss
