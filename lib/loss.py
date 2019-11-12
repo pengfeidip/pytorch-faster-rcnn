@@ -37,26 +37,30 @@ def rpn_loss(rpn_cls_res, rpn_reg_res, anchor_generator, targets, lamb):
             gt_params = region.xywh2param(gt_bbox.get_xywh(), anchor_bbox)
             reg_out.append(adjustment)
             reg_params.append(gt_params)
-    
+
+    cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
     cls_out_tsr = torch.stack(cls_out)
     cls_labels_tsr = torch.tensor(cls_labels)
     ce_loss = torch.nn.CrossEntropyLoss()
-    cls_loss = ce_loss(cls_out_tsr, cls_labels_tsr)
+    if cls_out_tsr.numel() !=0 and cls_labels_tsr.numel() != 0:
+        cls_loss = ce_loss(cls_out_tsr, cls_labels_tsr)
     reg_out_tsr = torch.stack(reg_out)
     reg_params_tsr = torch.tensor(reg_params)
     sm_loss = torch.nn.SmoothL1Loss()
-    reg_loss = sm_loss(reg_out_tsr, reg_params_tsr)
+    if reg_out_tsr.numel() != 0 and reg_params_tsr.numel() != 0:
+        reg_loss = sm_loss(reg_out_tsr, reg_params_tsr)
     return cls_loss + lamb * reg_loss
 
 def head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, category_labels, lamb):
+    cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
     print('gt_bboxes[0]', gt_bboxes[0])
     print('category_labels:', category_labels)
     ce_loss = torch.nn.CrossEntropyLoss()
     labels = torch.tensor(category_labels)
     print('labels.shape:', labels.shape)
-    cls_loss = ce_loss(cls_out, labels)
+    if cls_out.numel() != 0 and labels.numel() != 0:
+        cls_loss = ce_loss(cls_out, labels)
     print('cls_loss:', cls_loss)
-
 
     smL1_loss = torch.nn.SmoothL1Loss()
     pos_reg_out = []
@@ -72,6 +76,6 @@ def head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, category_labels, lamb):
     gt_params_tsr = torch.tensor(gt_params)
     print('pos_reg_out_tsr.shape:', pos_reg_out_tsr.shape)
     print('gt_params_tsr.shape:', gt_params_tsr.shape)
-    reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
-
+    if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
+        reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
     return cls_loss + lamb * reg_loss
