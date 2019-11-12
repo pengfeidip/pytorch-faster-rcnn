@@ -12,7 +12,7 @@ TEST_COCO_JSON = osp.join(TEST_DATA_DIR, 'voc2007_trainval/voc2007_trainval.json
 TEST_IMG = osp.join(TEST_IMG_DIR, '009894.jpg')
 
 # increase this will save loading time
-NUM_WORKERS = 4
+NUM_WORKERS = 3
 
 def test_resize():
     print('Test resizing'.center(90, '*'))
@@ -56,8 +56,8 @@ def test_dataloader():
         img_data = train_data[0]
         bboxes_data = train_data[1]
     secs_used = time.time() - start
-    print('Finished loading one batch using {} workers, time used: {} mins'\
-          .format(NUM_WORKERS, secs_used/60))
+    print('Finished loading one batch using {} workers, time used: {} seconds.'\
+          .format(NUM_WORKERS, secs_used))
 
 
 if __name__ == '__main__':
