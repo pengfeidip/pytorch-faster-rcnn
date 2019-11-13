@@ -41,4 +41,7 @@ if __name__ == '__main__':
     print('output by pass through each component of the network:')
     print(out2[0][:10], ' ...')
 
+    for p in v.parameters():
+        print(p.requires_grad)
+
     

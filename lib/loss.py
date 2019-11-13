@@ -57,26 +57,28 @@ class RPNLoss(object):
         
         
 
-class HeadLoss(object):
+class RCNNLoss(object):
     def __init__(self, lamb):
         self.lamb = lamb
-    def __call__(self, cls_out, reg_out, adj_bboxes, gt_bboxes, category_labels):
+    def __call__(self, cls_out, reg_out, props_targets):
         cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
         ce_loss = torch.nn.CrossEntropyLoss()
-        labels = torch.tensor(category_labels)
+        labels = torch.tensor([tar['category'] for tar in props_targets])
         if cls_out.numel() != 0 and labels.numel() != 0:
             cls_loss = ce_loss(cls_out, labels)
 
         smL1_loss = torch.nn.SmoothL1Loss()
         pos_reg_out = []
         gt_params = []
-        for i, gt_bbox in enumerate(gt_bboxes):
-            if gt_bbox is None:
+        for i, tar in enumerate(props_targets):
+            if tar['gt_bbox'] is None:
                 continue
-            adj_bbox = adj_bboxes[i]
-            category = category_labels[i]
+            adj_bbox = tar['adj_bbox']
+            category = tar['category']
+            gt_bbox = tar['gt_bbox']
             pos_reg_out.append(reg_out[i][category*4:(category+1)*4])
             gt_params.append(region.xywh2param(gt_bbox.get_xywh(), adj_bbox))
+            
         if len(gt_params) != 0:
             pos_reg_out_tsr = torch.stack(pos_reg_out)
             gt_params_tsr = torch.tensor(gt_params)

@@ -24,7 +24,7 @@ def dict2str(d):
     if not isinstance(d, dict):
         return str(d)
     else:
-        return ','.join(['{{{}:{}}}'.format(k, dict2str(v)) for k,v in d.items()])
+        return '{' + ','.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()]) + '}'
 
 
 import random
@@ -47,17 +47,24 @@ def pass_data():
 
     anchor_gen = region.AnchorGenerator(scales, aspect_ratios)
     anchor_target_gen = region.AnchorTargetCreator(anchor_gen)
-    props_gen = region.ProposalCreator(anchor_gen)
+    props_gen = region.ProposalCreator(anchor_gen, max_by_score=12000,
+                                       max_after_nms=2000, nms_iou=0.7)
     props_target_gen = region.ProposalTargetCreator()
     roi_crop = region.ROICropping()
     roi_pool = region.ROIPooling(output_size=roi_pooling_size)
-    vgg = modules.VGG()
+    vgg = modules.VGGBackbone()
+    print('VGG'.center(90, '-'))
+    print(vgg)
     rpn = modules.RPN(num_classes=20, num_anchors=len(scales)*len(aspect_ratios))
-    vgg16 = vgg.vgg16
-    head = modules.Head(num_classes=20,
+    print('RPN'.center(90, '-'))
+    print(rpn)
+    vgg16 = vgg.vgg16[0]
+    rcnn = modules.RCNN(num_classes=20,
                         fc1_state_dict=vgg16.classifier[0].state_dict(),
                         fc2_state_dict=vgg16.classifier[3].state_dict())
-    print('Initialized head with VGG fully connected layers.')
+    print(rcnn)
+    print('RCNN'.center(90, '-'))
+    print('Initialized rcc with VGG fully connected layers.')
     print('Number of images to test:', num_imgs)
     for train_data in dataloader:
         print('\nA new image:', img_id)
@@ -84,36 +91,32 @@ def pass_data():
         rloss = rpn_loss(cls_out, reg_out, anchor_targets)
         #rpn_loss = loss.rpn_loss(cls_out, reg_out, anchor_gen, anchor_targets, lamb=10)
         print('rpn loss:', rloss)
-        props = props_gen.proposals_filtered(cls_out, reg_out, img_size, grid,
-                                             12000, 2000, 0.7)
+        props = props_gen.proposals_filtered(cls_out, reg_out, img_size, grid)
         print('Filtered proposals generated:', len(props))
         print('Filtered proposals[10]', dict2str(props[10]))
         print('Test ProposalTargetCreator'.center(90, '*'))
         prop_targets = props_target_gen.targets(props, gt)
-        print('number of proposal targets for training head:', len(prop_targets))
+        print('number of proposal targets for training RCNN:', len(prop_targets))
         print('Proposal targets[20]:', dict2str(prop_targets[20]))
         print('Test ROICropping'.center(90, '*'))
-        crops, adj_bboxes, gt_bboxes, cates = roi_crop.crop(img_size, feat, prop_targets)
+        #crops, adj_bboxes, gt_bboxes, cates = roi_crop.crop(img_size, feat, prop_targets)
+        crops, prop_targets = roi_crop.crop(img_size, feat, prop_targets)
+        
         print('len crops:', len(crops),
-              'len categories:', len(cates),
-              'len gts:', len(gt_bboxes),
-              'len adj_bboxes:', len(adj_bboxes))
-        print('gt_bboxes:', ', '.join([str(ii) for ii in gt_bboxes[:10]]))
-        print('adj_bboxes[:5]:', ', '.join([str(ii) for ii in adj_bboxes[:5]]))
+              'len prop_targets:', len(prop_targets))
         roi_pool_res = roi_pool(crops)
         print('roi_pool_res.shape:', roi_pool_res.shape)
         print('roi_pool_res:', roi_pool_res.flatten()[:30], '...')
 
-        cls_out, reg_out = head(roi_pool_res)
-        print('Head cls_out.shape:', cls_out.shape)
-        print('Head reg_out.shape:', reg_out.shape)
+        cls_out, reg_out = rcnn(roi_pool_res)
+        print('RCNN cls_out.shape:', cls_out.shape)
+        print('RCNN reg_out.shape:', reg_out.shape)
         print('cls_out:', cls_out.flatten()[:20], '...')
         print('reg_out:', reg_out.flatten()[:40], '...')
 
-        head_loss = loss.HeadLoss(lamb=10)
-        hloss = head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, cates)
-        #head_loss = loss.head_loss(cls_out, reg_out, adj_bboxes, gt_bboxes, cates, lamb=10)
-        print('head_loss:', hloss)
+        rcnn_loss = loss.RCNNLoss(lamb=10)
+        rcnnloss = rcnn_loss(cls_out, reg_out, prop_targets)
+        print('head_loss:', rcnnloss)
         
         img_id += 1
         if img_id >= num_imgs:

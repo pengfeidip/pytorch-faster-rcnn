@@ -143,6 +143,8 @@ class GroundTruth(object):
 class AnchorGenerator(object):
     r"""
     Generate a list of BBox objects that represents anchors of a certain setting.
+    An anchor is a dict that has members: 
+        'center', 'feat_loc', 'scale_idx', 'ar_idx', 'bbox', 'id'
     """
     def __init__(self, scales, aspect_ratios, allow_cross=False):
         self.allow_cross = allow_cross
@@ -313,16 +315,17 @@ class ProposalCreator(object):
     After this, anchor will add members: 
         'obj_score': float,
         'adj_bbox': BBox,
-        'objectness': torch.tensor # for backprop
-        'adjustment': torch.tensor # for backprop
     """
-    def __init__(self, anchor_generator):
+    def __init__(self, anchor_generator, max_by_score, max_after_nms, nms_iou):
         self.anchor_generator = anchor_generator
+        self.max_by_score = max_by_score
+        self.max_after_nms = max_after_nms
+        self.nms_iou = nms_iou
 
     def proposals(self, rpn_cls_res, rpn_reg_res, img_size, grid):
         grid = tuple(grid)
-        cls_res_size = tuple([rpn_cls_res.shape[-2], rpn_cls_res.shape[-1]])
-        reg_res_size = tuple([rpn_reg_res.shape[-2], rpn_reg_res.shape[-1]])
+        cls_res_size = (rpn_cls_res.shape[-2], rpn_cls_res.shape[-1])
+        reg_res_size = (rpn_reg_res.shape[-2], rpn_reg_res.shape[-1])
         assert grid == cls_res_size and grid == reg_res_size
         anchors = list(self.anchor_generator.anchors(img_size, grid))
         # put score and adjusted bbox to anchors
@@ -347,22 +350,19 @@ class ProposalCreator(object):
             # next put extra information to anchor
             anchor['obj_score'] = obj_score
             anchor['adj_bbox']  = BBox(xywh=adj_bbox)
-            anchor['objectness'] = objectness
-            anchor['adjustment'] = adjustment
         return anchors
 
-    def proposals_filtered(self, rpn_cls_res, rpn_reg_res, img_size, grid,
-                           max_by_score, max_after_nms, nms_iou):
-        assert max_by_score > 0 and max_after_nms > 0
+    def proposals_filtered(self, rpn_cls_res, rpn_reg_res, img_size, grid):
+        assert self.max_by_score > 0 and self.max_after_nms > 0
         props = self.proposals(rpn_cls_res, rpn_reg_res, img_size, grid)
         props.sort(key=lambda x: x['obj_score'], reverse=True)
-        props = props[:max_by_score]
+        props = props[:self.max_by_score]
         props_nms = apply_nms(
             props,
             score_map=lambda x: x['obj_score'],
             bbox_map=lambda x: x['bbox'],
-            iou_thr=nms_iou)
-        return props_nms[:max_after_nms]
+            iou_thr=self.nms_iou)
+        return props_nms[:self.max_after_nms]
     
 class ProposalTargetCreator(object):
     r"""
@@ -376,7 +376,8 @@ class ProposalTargetCreator(object):
         self.neg_iou = neg_iou
 
     # proposal keys: 'bbox', 'center', 'feat_loc', 'scale_idx', 'ar_idx', 'id', 'obj_score',
-    # 'adj_bbox', 'objectness', 'adjustment'
+    # 'adj_bbox'.
+    # will add member after this: 'gt_bbox', 'category', 'iou'
     def targets(self, proposals, gt):
         pos_targets = []
         neg_targets = []
@@ -405,6 +406,7 @@ class ProposalTargetCreator(object):
             
         return pos_targets + neg_targets
 
+# conversion btw bbox in image and in feature map
 def image2feature(img_size, feat_size, img_bbox):
     x,y,w,h = img_bbox.get_xywh()
     h_rat, w_rat = feat_size[0]/img_size[0], feat_size[1]/img_size[1]
@@ -427,10 +429,9 @@ class ROICropping(object):
     """
     def __init__(self):
         pass
-
-    # proposals are results of ProposalTargetCreator, which has member:
-    # 'bbox', 'feat_loc', 'obj_score', 'adj_bbox', 'gt_bbox', 'gt_label', 'category', 'iou'
-    def crop(self, img_size, feature, proposals):
+    # proposals are results of ProposalTargetCreator or ProposalTargetCreator, 
+    # which must have member: 'adj_bbox'
+    def crop_v2(self, img_size, feature, proposals):
         img_h, img_w = img_size
         feat_size = feature.shape[-2:]
         crops, category_labels, gt_bboxes, adj_bboxes = [], [], [], []
@@ -454,7 +455,31 @@ class ROICropping(object):
             gt_bboxes.append(prop['gt_bbox'])
             adj_bboxes.append(adj_bbox)
         return crops, adj_bboxes, gt_bboxes, category_labels
-        
+    
+    # cropping does not depend on if proposals are with targets or not
+    def crop(self, img_size, feature, proposals):
+        img_h, img_w = img_size
+        feat_size = feature.shape[-2:]
+        crops, props = [], []
+        for prop in proposals:
+            adj_bbox = prop['adj_bbox']
+            feat_bbox = image2feature(img_size, feat_size, adj_bbox)
+            adj_x, adj_y, adj_w, adj_h = feat_bbox
+            # odd that round does not always returns integers
+            crop = feature[:,
+                           :,
+                           int(round(adj_y)):int(round(adj_y+adj_h)),
+                           int(round(adj_x)):int(round(adj_x+adj_w))]
+            # get rid of zero size feature crops
+            # this may happen if adjusted bbox is out of image bounds
+            # TODO: do we use a little piece next to the boundary instead of
+            # ignoring?
+            if crop.numel() == 0:
+                continue
+            crops.append(crop)
+            props.append(prop)
+        return crops, props
+
                             
 class ROIPooling(nn.Module):
     r"""
@@ -469,6 +494,10 @@ class ROIPooling(nn.Module):
             = nn.AdaptiveMaxPool2d(output_size)
     # rois is a list of roi, which has shape like [1, 512, 26, 32]
     def forward(self, rois):
+        print('In ROIPooling forward')
+        print('len of rois', len(rois))
+        rois = [roi for roi in rois if roi.numel()>0]
+        print('len of rois after get rid of non-zero elements', len(rois))
         batch_size = len(rois)
         outs = [self.adaptive_pool(roi) for roi in rois]
         return torch.cat(outs)
