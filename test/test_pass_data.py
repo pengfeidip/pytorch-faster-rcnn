@@ -13,10 +13,10 @@ TEST_DIR = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/'
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
 TEST_IMG_DIR = osp.join(TEST_DIR, 'VOC2007/JPEGImages')
 TEST_COCO_JSON =osp.join(TEST_DIR, 'voc2007_trainval.json')
-#TEST_IMG_DIR \
-#    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
-#TEST_COCO_JSON \
-#    = '../data/voc2007_trainval.json'
+TEST_IMG_DIR \
+    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
+TEST_COCO_JSON \
+    = '../data/voc2007_trainval.json'
                
 
 def dict2str(d):
