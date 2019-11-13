@@ -1,0 +1,51 @@
+Scales: [128, 256, 512] Aspect ratios: [1, 0.5, 2] Roi pooling size: (7, 7)
+Initialized head with VGG fully connected layers.
+Number of images to test: 1
+
+A new image: 0
+Image shape: torch.Size([1, 3, 600, 800]) BBoxes data shape: torch.Size([1, 5, 5])
+BBox data: tensor([[[419, 336,  99, 206,   1],
+         [262, 421, 142, 174,   1],
+         [  6, 389, 101, 210,   1],
+         [384, 309,  88, 170,   1],
+         [442, 296,  58,  56,   1]]])
+Feature map size: torch.Size([1, 512, 37, 50])
+Number of anchor targets: 256
+5 of anchor targets:
+{anchor:{center:xy:(88.0, 397.3)},{feat_loc:xy:(5, 24)},{scale_idx:0},{ar_idx:1},{bbox:BBox:xywh(56.0, 269.3, 64.0, 256.0)},{id:3533}},{gt_bbox:None},{gt_label:0},{category:None},{iou:None}
+*****************************************Test RPN*****************************************
+cls_out shape: torch.Size([1, 18, 37, 50])
+reg_out shape: torch.Size([1, 36, 37, 50])
+cls_out: tensor([ 0.0709,  0.0581,  0.0052, -0.0120, -0.0347,  0.0890,  0.1610,  0.1057,
+         0.0505, -0.0033, -0.0049,  0.0094,  0.0124,  0.0057,  0.0050, -0.0025,
+        -0.0056, -0.0106, -0.0026,  0.0144], grad_fn=<SliceBackward>) ...
+reg_out: tensor([-0.0971, -0.0910, -0.0345, -0.0762, -0.0596, -0.0835, -0.1309, -0.1576,
+        -0.1136, -0.0872, -0.0921, -0.0370, -0.0267, -0.0248, -0.0271, -0.0305,
+        -0.0375, -0.0418, -0.0366, -0.0359], grad_fn=<SliceBackward>) ...
+rpn loss: tensor(1.6140, grad_fn=<AddBackward0>)
+Filtered proposals generated: 1306
+Filtered proposals[10] {center:xy:(344.0, 348.65)},{feat_loc:xy:(21, 21)},{scale_idx:0},{ar_idx:1},{bbox:BBox:xywh(312.0, 220.65, 64.0, 256.0)},{id:3074},{obj_score:0.6206178069114685},{adj_bbox:BBox:xywh(308.68, 234.1, 66.14, 283.56)},{objectness:tensor([-0.0667,  0.4255], grad_fn=<SelectBackward>)},{adjustment:tensor([-0.0519,  0.0526,  0.0329,  0.1023], grad_fn=<SelectBackward>)}
+********************************Test ProposalTargetCreator********************************
+number of proposal targets for training head: 128
+Proposal targets[20]: {center:xy:(40.0, 462.16)},{feat_loc:xy:(2, 28)},{scale_idx:0},{ar_idx:1},{bbox:BBox:xywh(8.0, 334.16, 64.0, 256.0)},{id:4224},{obj_score:0.5331526398658752},{adj_bbox:BBox:xywh(-1.14, 362.88, 73.71, 222.74)},{objectness:tensor([0.2678, 0.4006], grad_fn=<SelectBackward>)},{adjustment:tensor([-0.1428,  0.1122,  0.1413, -0.1392], grad_fn=<SelectBackward>)},{gt_bbox:BBox:xywh(6, 389, 101, 210)},{gt_label:1},{category:1},{iou:0.5334470123961833}
+*************************************Test ROICropping*************************************
+len crops: 125 len categories: 125 len gts: 125 len adj_bboxes: 125
+gt_bboxes: BBox:xywh(262, 421, 142, 174), BBox:xywh(262, 421, 142, 174), BBox:xywh(262, 421, 142, 174), BBox:xywh(262, 421, 142, 174), BBox:xywh(419, 336, 99, 206), BBox:xywh(262, 421, 142, 174), BBox:xywh(384, 309, 88, 170), BBox:xywh(384, 309, 88, 170), BBox:xywh(419, 336, 99, 206), BBox:xywh(262, 421, 142, 174)
+adj_bboxes[:5]: BBox:xywh(275.35, 445.15, 130.38, 158.37), BBox:xywh(274.06, 407.1, 149.55, 182.74), BBox:xywh(234.95, 432.17, 154.71, 156.4), BBox:xywh(248.48, 406.16, 136.46, 166.68), BBox:xywh(448.16, 313.09, 69.56, 246.6)
+roi_pool_res.shape: torch.Size([125, 512, 7, 7])
+roi_pool_res: tensor([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0.], grad_fn=<SliceBackward>) ...
+Head cls_out.shape: torch.Size([125, 21])
+Head reg_out.shape: torch.Size([125, 84])
+cls_out: tensor([  0.3016,   6.6757,  -9.2429,  -0.6906,   5.5736,  -3.9157,  -4.1219,
+         -0.3932,  -3.5132,   0.9278,   3.9164,  11.5962,  -1.4032, -13.4873,
+         -2.8175,   1.0516,  -6.0651,   4.4920,   4.3983,   7.1655],
+       grad_fn=<SliceBackward>) ...
+reg_out: tensor([  1.9514,   1.1577,   2.5550,  -6.3631, -13.3916,  -2.8034,   1.6176,
+         14.4174,  -3.9128,  -1.0623,  -0.2662,  11.2741,  -4.0577,  -0.5275,
+        -11.3663,   3.4234,  -0.0253,  -0.7467,   1.5876,  10.4332,  11.2910,
+         20.2408,  12.4211,  -2.6547,  -7.8641,   6.8497,  -2.8390, -18.3238,
+         -7.4077, -14.1677,  11.2584,  -1.5200,   8.8945,   3.5737, -17.5371,
+         -6.7157,   8.2925,   2.5791,  -1.4786,   9.8237],
+       grad_fn=<SliceBackward>) ...
+head_loss: tensor(47.4851, grad_fn=<AddBackward0>)

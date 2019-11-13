@@ -378,9 +378,6 @@ class ProposalTargetCreator(object):
     # proposal keys: 'bbox', 'center', 'feat_loc', 'scale_idx', 'ar_idx', 'id', 'obj_score',
     # 'adj_bbox', 'objectness', 'adjustment'
     def targets(self, proposals, gt):
-        print('Number of proposals:', len(proposals))
-        print(proposals[0])
-
         pos_targets = []
         neg_targets = []
         for prop in proposals:
@@ -406,10 +403,6 @@ class ProposalTargetCreator(object):
         random.shuffle(neg_targets)
         neg_targets = neg_targets[:self.max_targets - len(pos_targets)]
             
-        print('num pos_targets:', len(pos_targets))
-        print('num neg_targets:', len(neg_targets))
-        print('pos_targets iou:', ','.join([str(tar['iou']) for tar in pos_targets]))
-        print('neg_targets iou:', ','.join([str(tar['iou']) for tar in neg_targets]))
         return pos_targets + neg_targets
 
 def image2feature(img_size, feat_size, img_bbox):
