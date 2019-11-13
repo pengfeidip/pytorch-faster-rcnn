@@ -1,7 +1,7 @@
 import sys, os
 import torch
 import os.path as osp
-import math
+import math, statistics
 
 cur_dir = osp.dirname(osp.realpath(__file__))
 sys.path.append(osp.join(cur_dir, '..'))
@@ -13,10 +13,10 @@ TEST_DIR = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/'
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
 TEST_IMG_DIR = osp.join(TEST_DIR, 'VOC2007/JPEGImages')
 TEST_COCO_JSON =osp.join(TEST_DIR, 'voc2007_trainval.json')
-#TEST_IMG_DIR \
-#    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
-#TEST_COCO_JSON \
-#    = '../data/voc2007_trainval.json'
+TEST_IMG_DIR \
+    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
+TEST_COCO_JSON \
+    = '../data/voc2007_trainval.json'
                
 
 def dict2str(d):
@@ -24,13 +24,31 @@ def dict2str(d):
     if not isinstance(d, dict):
         return str(d)
     else:
-        return '{' + ','.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()]) + '}'
+        return '{ ' + ', '.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()]) + ' }'
 
 
 import random
 random.seed(2019)
 torch.manual_seed(2019)
 
+def mean(nums):
+    if len(nums) == 0:
+        return None
+    return statistics.mean(nums)
+
+def max_(nums):
+    if len(nums) == 0:
+        return None
+    return max(nums)
+
+def min_(nums):
+    if len(nums) == 0:
+        return None
+    return min(nums)
+
+def stats(nums):
+    sts = [x(nums) for x  in [len, max_, min_, mean]]
+    return 'len, max, min, mean: ' + str(sts)
 
 def pass_data():
     print('Test train fasterRCNN'.center(90, '*'))
@@ -46,13 +64,14 @@ def pass_data():
     print(faster)
     rpn_loss = loss.RPNLoss(faster.anchor_gen, 10)
     rcnn_loss = loss.RCNNLoss(10)
-    num_imgs = 50
-    img_id = 0
     optimizer = torch.optim.SGD(faster.parameters(), lr=0.0025, momentum=0.9, weight_decay=0.0001)
-    for train_data in dataloader:
+    dataset_size = len(dataset)
+    for i in range(dataset_size):
         optimizer.zero_grad()
-        print('\nA new image:', img_id)
-        img_data, bboxes_data = train_data
+        print('\nA new image:', i)
+        img_data, bboxes_data = dataset[i]
+        img_data = img_data.unsqueeze(0)
+        bboxes_data = bboxes_data.unsqueeze(0)
         print('Image shape:', img_data.shape, 'BBoxes data shape:', bboxes_data.shape)
         gt = region.GroundTruth(bboxes_data)
         print('BBox data:', bboxes_data)
@@ -66,10 +85,37 @@ def pass_data():
         print('rpn_reg_out.shape', rpn_reg_out.shape)
         print('rcnn_cls_out.shape', rcnn_cls_out.shape)
         print('rcnn_reg_out.shape', rcnn_reg_out.shape)
-        print('anchor_targets.__len__', len(anchor_targets) if anchor_targets is not None else None)
-        print('props', len(props))
-        print('props_targets', len(props_targets) if props_targets is not None else None)
+        
+        print('anchor_targets'.center(50, '*'))
+        if anchor_targets is not None:
+            print('Anchor_targets[0]:', dict2str(anchor_targets[0]))
+            print('Number of anchor_targets:', len(anchor_targets))
+            print('Positive anchor_targets:', sum([1 for ii in anchor_targets if ii['gt_label']==1]))
+            print('Stats of positive IOU:', stats([ii['iou'] for ii in anchor_targets if ii['gt_label']==1]))
+            print('Stats of negative IOU:', stats([ii['iou'] for ii in anchor_targets if ii['gt_label']==0]))
+        else:
+            print('anchor_gargets: None')
+            
+        print('proposals'.center(50, '*'))
+        print('Number of props:', len(props))
+        print('props[0]', dict2str(props[0]))
+        print('Stats of props area:', stats([ii['adj_bbox'].area() for ii in props]))
 
+        
+        print('props_targets'.center(50, '*'))
+        if props_targets is not None:
+            print('Number of props_targets:', len(props_targets))
+            print('props_targets[0]:', dict2str(props_targets[0]))
+            print('Stats of all IOU:', stats([ii['iou'] for ii in props_targets]))
+            print('Stats of positive IOU:', stats([ii['iou'] for ii in props_targets if ii['gt_label']==1]))
+            print('Stats of negative IOU:', stats([ii['iou'] for ii in props_targets if ii['gt_label']==0]))
+            print('Stats of props_targets area:', stats([ii['adj_bbox'].area() for ii in props]))
+            print('Stats of posirive props_targets area:', stats([ii['adj_bbox'].area() for ii in props_targets if ii['gt_label']==1]))
+            print('Stats of negative props_targets area:', stats([ii['adj_bbox'].area() for ii in props_targets if ii['gt_label']==0]))
+        else:
+            print('props_targets: None')
+
+        print('LOSS'.center(50, '*'))
         rpnloss = rpn_loss(rpn_cls_out, rpn_reg_out, anchor_targets)
         rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
         print('RPN loss:', rpnloss)
@@ -79,9 +125,6 @@ def pass_data():
 
         comb_loss.backward()
         optimizer.step()
-        img_id += 1
-        if img_id >= num_imgs:
-            break
 
 
 if __name__ == '__main__':

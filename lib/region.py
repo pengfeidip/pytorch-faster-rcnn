@@ -255,19 +255,17 @@ class AnchorTargetCreator(object):
         for anchor in anchors:
             if len(neg_targets) >= max_neg:
                 break
-            small_iou = True
+            max_iou = -1.0
             for gt_bbox in ground_truth.bboxes:
                 iou = calc_iou(gt_bbox, anchor['bbox'])
-                if iou > self.neg_iou:
-                    small_iou = False
-                    break
-            if small_iou and anchor['id'] not in pos_anchor_ids:
+                max_iou = max(max_iou, iou)
+            if max_iou < self.neg_iou and anchor['id'] not in pos_anchor_ids:
                 neg_targets.append({
                     'anchor': anchor,
                     'gt_bbox': None,
                     'gt_label': 0,
                     'category': None,
-                    'iou': None
+                    'iou': max_iou
                 })
         return pos_targets + neg_targets
 
