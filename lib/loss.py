@@ -62,6 +62,9 @@ class RCNNLoss(object):
     def __init__(self, lamb):
         self.lamb = lamb
     def __call__(self, cls_out, reg_out, props_targets):
+        if cls_out is None or reg_out is None:
+            # return an isolated tensor meaning no training is involved
+            return torch.tensor(0)
         device = cls_out.device
         cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
         ce_loss = torch.nn.CrossEntropyLoss()

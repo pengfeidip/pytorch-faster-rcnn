@@ -28,6 +28,7 @@ def dict2str(d):
 import random
 random.seed(2019)
 torch.manual_seed(2019)
+torch.cuda.manual_seed(2019)
 
 def mean(nums):
     if len(nums) == 0:
@@ -153,13 +154,16 @@ def main():
             torch.save(faster_state_dict, saved_model)
         print('Encounter an error at image {}, previous state_dict is stored at {}'\
               .format(i, saved_model))
+    model_1epoch = 'saved_model_cuda_epoch_1.pth'
+    print('Finished 1 epoch of training, save model to {}'.format(model_1epoch))
+    torch.save(faster_state_dict, model_1epoch)
         
 def reproduce():
     net = faster_rcnn.FasterRCNNModule()
-    state = torch.load('saved_model.pth')
+    state = torch.load('saved_model_cuda.pth')
     net.load_state_dict(state)
     dataset = data.CocoDetDataset(TEST_IMG_DIR, TEST_COCO_JSON)
-    img, bboxes, img_info = dataset[23]
+    img, bboxes, img_info = dataset[27]
     img = img.unsqueeze(0)
     bboxes = bboxes.unsqueeze(0)
     print('Image:', img.shape)

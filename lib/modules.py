@@ -58,6 +58,8 @@ class RCNN(nn.Module):
 
     # roi_batch is a batch of fixed tensors which is the result of ROIPooling
     def forward(self, roi_batch):
+        if roi_batch is None or len(roi_batch) == 0:
+            return None, None
         batch_size = roi_batch.shape[0]
         # flatten input rois
         x = roi_batch.view(batch_size, -1)

@@ -504,6 +504,8 @@ class ROIPooling(nn.Module):
         rois = [roi for roi in rois if roi.numel()>0]
         batch_size = len(rois)
         outs = [self.adaptive_pool(roi) for roi in rois]
+        if len(outs) == 0:
+            return None
         return torch.cat(outs)
                                                                         
 
