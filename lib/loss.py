@@ -18,6 +18,7 @@ class RPNLoss(object):
         self.anchor_generator = anchor_generator
         self.lamb = lamb
     def __call__(self, rpn_cls_out, rpn_reg_out, targets):
+        device = rpn_cls_out.device
         cls_out, cls_labels = [], []
         reg_out, reg_params = [], []
         num_scales = len(self.anchor_generator.scales)
@@ -42,14 +43,14 @@ class RPNLoss(object):
                 reg_out.append(adjustment)
                 reg_params.append(gt_params)
                 
-        cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
+        cls_loss, reg_loss = torch.tensor(0, device=device), torch.tensor(0, device=device)
         cls_out_tsr = torch.stack(cls_out)
-        cls_labels_tsr = torch.tensor(cls_labels)
+        cls_labels_tsr = torch.tensor(cls_labels, device=device)
         ce_loss = torch.nn.CrossEntropyLoss()
         if cls_out_tsr.numel() !=0 and cls_labels_tsr.numel() != 0:
             cls_loss = ce_loss(cls_out_tsr, cls_labels_tsr)
         reg_out_tsr = torch.stack(reg_out)
-        reg_params_tsr = torch.tensor(reg_params)
+        reg_params_tsr = torch.tensor(reg_params, device=device)
         sm_loss = torch.nn.SmoothL1Loss()
         if reg_out_tsr.numel() != 0 and reg_params_tsr.numel() != 0:
             reg_loss = sm_loss(reg_out_tsr, reg_params_tsr)
@@ -61,9 +62,10 @@ class RCNNLoss(object):
     def __init__(self, lamb):
         self.lamb = lamb
     def __call__(self, cls_out, reg_out, props_targets):
+        device = cls_out.device
         cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
         ce_loss = torch.nn.CrossEntropyLoss()
-        labels = torch.tensor([tar['category'] for tar in props_targets])
+        labels = torch.tensor([tar['category'] for tar in props_targets], device=device)
         if cls_out.numel() != 0 and labels.numel() != 0:
             cls_loss = ce_loss(cls_out, labels)
 
@@ -81,7 +83,7 @@ class RCNNLoss(object):
             
         if len(gt_params) != 0:
             pos_reg_out_tsr = torch.stack(pos_reg_out)
-            gt_params_tsr = torch.tensor(gt_params)
+            gt_params_tsr = torch.tensor(gt_params, device=device)
             if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
                 reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
         return cls_loss + self.lamb * reg_loss

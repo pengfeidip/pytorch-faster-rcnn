@@ -139,6 +139,25 @@ class FasterRCNNModule(nn.Module):
 
 
     def train(self):
+        super(FasterRCNNModule, self).train()
         self.training = True
     def eval(self):
+        super(FasterRCNNModule, self).eval()
         self.training = False
+
+
+class FasterRCNNTrain(object):
+    r"""
+    Utility to train a faster rcnn
+    """
+    def __init__(self, module, dataloader, worker_dir):
+        
+        pass
+    pass
+
+
+class FasterRCNNTest():
+    r"""
+    Utility to test a faster rcnn
+    """
+    pass

@@ -330,6 +330,7 @@ class ProposalCreator(object):
         # it is convenient that anchors are defined as a dictionaries
         num_scales = len(self.anchor_generator.scales)
         num_ars = len(self.anchor_generator.aspect_ratios)
+        processed = []
         for anchor in anchors:
             feat_loc = anchor['feat_loc']
             anchor_bbox = anchor['bbox']
@@ -344,11 +345,19 @@ class ProposalCreator(object):
             # need to apply softmax to get the real score
             obj_score = torch.softmax(objectness, dim=0)[1].item()
             adj_bbox  = param2xywh(adjustment, anchor_bbox)
+            is_finite = True
+            for n in adj_bbox:
+                if not np.isfinite(n):
+                    is_finite = False
+                    break
+            if not is_finite:
+                break
 
             # next put extra information to anchor
             anchor['obj_score'] = obj_score
             anchor['adj_bbox']  = BBox(xywh=adj_bbox)
-        return anchors
+            processed.append(anchor)
+        return processed
 
     def proposals_filtered(self, rpn_cls_res, rpn_reg_res, img_size, grid):
         assert self.max_by_score > 0 and self.max_after_nms > 0
@@ -492,10 +501,7 @@ class ROIPooling(nn.Module):
             = nn.AdaptiveMaxPool2d(output_size)
     # rois is a list of roi, which has shape like [1, 512, 26, 32]
     def forward(self, rois):
-        print('In ROIPooling forward')
-        print('len of rois', len(rois))
         rois = [roi for roi in rois if roi.numel()>0]
-        print('len of rois after get rid of non-zero elements', len(rois))
         batch_size = len(rois)
         outs = [self.adaptive_pool(roi) for roi in rois]
         return torch.cat(outs)
