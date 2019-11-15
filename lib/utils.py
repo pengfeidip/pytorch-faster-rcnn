@@ -17,7 +17,8 @@ def image2tensor(file_path):
     return imread(file_path)
 
 def dict2str(d):
-    return ', '.join(['{}:{}'.format(k, v) for k, v in d.items()])
+    return '{ '+', '.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()])+' }' \
+        if isinstance(d, dict) else str(d)
 
 def split_list(lst, size):
     assert size > 0

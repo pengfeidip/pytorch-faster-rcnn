@@ -1,6 +1,9 @@
 from . import region, modules, loss
+import logging, random, traceback
 import torch
 import torch.nn as nn
+import os.path as osp
+
 
 FASTER_ANCHOR_SCALES = [128, 256, 512]
 FASTER_ANCHOR_ASPECT_RATIOS = [1.0, 0.5, 2.0]
@@ -136,7 +139,50 @@ class FasterRCNNModule(nn.Module):
         return \
             rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out,\
             anchor_targets, props, props_targets
+    
+    # WARNING: Notice that some of the configs can not be updated
+    # Only allow following configs to change:
+    #   anchor_scales, only the specific scales, not the number
+    #   anchor_aspect_ratios, only the specific ratios, not the number
+    #   anchor_pos_iou, anchor_neg_iou,     # for training RPN
+    #   anchor_max_pos, anchor_max_targets  # for training RPN
+    #   train_props_pre_nms, train_props_post_nms, train_props_nms_iou  
+    #   test_props_pre_nms, test_props_post_nms, test_props_nms_iou
+    #   props_pos_iou, props_neg_iou, props_max_pos, props_max_targets
+    def update_config(self,
+                      anchor_scales=None,
+                      anchor_aspect_ratios=None,
+                      anchor_pos_iou=None,
+                      anchor_neg_iou=None,
+                      anchor_max_pos=None,
+                      anchor_max_targets=None,
+                      train_props_pre_nms=None,
+                      train_props_post_nms=None,
+                      train_props_nms_iou=None,
+                      test_props_pre_nms=None,
+                      test_props_post_nms=None,
+                      test_props_nms_iou=None,
+                      props_pos_iou=None,
+                      props_neg_iou=None,
+                      props_max_pos=None,
+                      props_max_targets=None):
+        new_anchor_scales = self.anchor_scales
+        if anchor_scales is not None:
+            assert len(anchor_scales) == len(self.anchor_scales)
+            new_anchor_scales = anchor_scales
+        new_anchor_aspect_ratios = self.anchor_aspect_ratios
+        if anchor_aspect_ratios is not None:
+            assert len(anchor_aspect_ratios) == len(self.anchor_aspect_ratios)
+            new_anchor_aspect_ratios = anchor_aspect_ratios
+        if anchor_scale is not None or anchor_aspect_ratios is not None:
+            self.anchor_scales = new_anchor_scales
+            self.anchor_aspect_ratios = new_anchor_aspect_ratios
+            self.anchor_gen = region.AnchorGenerator(anchor_scales, anchor_aspect_ratios)
 
+        # TODO: update the other configs, remember to re-init the affected generators
+            
+
+        pass
 
     def train(self):
         super(FasterRCNNModule, self).train()
@@ -145,16 +191,169 @@ class FasterRCNNModule(nn.Module):
         super(FasterRCNNModule, self).eval()
         self.training = False
 
+def ckpt_name(n):
+    return 'epoch_{}.pth'.format(n)
 
 class FasterRCNNTrain(object):
     r"""
-    Utility to train a faster rcnn
+    Provide a utility to train a faster rcnn.
+    
+    Args:
+      faster_net  # faster rcnn net
+      dataloader  # dataloader
+      work_dir    # to keep log, saved epochs, saved model before crash
+      logger      # Turn Python's logging on and output to this file
+                  # Turn logging off if it is None
     """
-    def __init__(self, module, dataloader, worker_dir):
+    def __init__(self,
+                 faster_configs,
+                 dataloader,
+                 work_dir,
+                 max_epochs,
+                 optim=torch.optim.SGD,
+                 optim_kwargs=dict(lr=0.001,momentum=0.9,weight_decay=0.0005),
+                 rpn_loss_lambda=10.0,
+                 rcnn_loss_lambda=10.0,
+                 loss_lambda=1.0,
+                 log_file=None,
+                 seed=None,
+                 log_level=logging.INFO,
+                 device=torch.device('cpu')
+    ):
+        # get real path
+        work_dir = osp.realpath(work_dir)
         
-        pass
-    pass
+        # set model level configs
+        self.faster_configs = faster_configs
+        self.dataloader = dataloader
+        self.max_epochs = max_epochs
+        self.work_dir = work_dir
+        assert osp.isdir(work_dir), 'work_dir not exists: {}'.format(work_dir)
+        self.optim = optim
+        self.optim_kwargs = optim_kwargs
 
+        # set logging
+        self.log_file = log_file
+        self.log_level = log_level
+        if log_file is None:
+            logging.getLogger().disabled = True
+        else:
+            self.log_file = osp.join(work_dir, log_file)
+            logging.basicConfig(filename=self.log_file,
+                                format='%(asctime)s: %(message)s\t[%(levelname)s]',
+                                datefmt='%y%m%d_%H%M%S_%a',
+                                level=log_level)
+        # set random seed, for all RNGs
+        self.seed = seed
+        if seed is not None:
+            random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+        # do not init the net yet
+        self.faster_rcnn = None
+        self.current_epoch = 1
+        self.device=device
+        self.rpn_loss_lambda = rpn_loss_lambda
+        self.rcnn_loss_lambda = rcnn_loss_lambda
+        self.loss_lambda = loss_lambda
+
+    def to(self, device):
+        self.device=device
+
+    def init_module(self):
+        self.faster_rcnn = FasterRCNNModule(**(self.faster_configs))
+        logging.info('Initialized faster rcnn in FasterRCNNTrain')
+        logging.info(self.faster_rcnn)
+
+    def resume_from(self, epoch):
+        ckpt = self.get_ckpt(epoch)
+        self.faster_rcnn.load_state_dict(torch.load(ckpt))
+        self.current_epoch = epoch
+        logging.info('Resume from epoch: {}, ckpt: {}'.format(epoch, ckpt))
+        logging.info(self.faster_rcnn)
+
+    def get_ckpt(self, epoch):
+        return osp.join(self.work_dir, ckpt_name(epoch))
+
+    def train_one_iter(self, iter_i, epoch, train_data, optimizer, rpn_loss, rcnn_loss):
+        logging.info('At epoch {}, iteration {}.'.format(epoch, iter_i))
+        optimizer.zero_grad()
+        img_data, bboxes_data, img_info = train_data
+        img_data = img_data.to(self.device)
+        bboxes_data = bboxes_data.to(self.device)
+        gt = region.GroundTruth(bboxes_data)
+        logging.debug('Image shape: {}'.format(img_data.shape))
+        logging.debug('GT bboxes: {}'.format(bboxes_data))
+        logging.debug('Image info: {}'.format(img_info))
+        rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out, \
+            anchor_targets, props, props_targets = self.faster_rcnn(img_data, gt)
+        if rpn_cls_out is None:
+            logging.warning('rpn_cls_out is None')
+        else:
+            logging.info('rpn_cls_out shape: {}'.format(rpn_cls_out.shape))
+        if rpn_reg_out is None:
+            logging.warning('rpn_reg_out is None')
+        else:
+            logging.info('rpn_reg_out shape: {}'.format(rpn_reg_out.shape))
+        if rcnn_cls_out is None:
+            logging.warning('rcnn_cls_out is None')
+        else:
+            logging.info('rcnn_cls_out shape: {}'.format(rcnn_cls_out.shape))
+        if rcnn_reg_out is None:
+            logging.warning('rcnn_reg_out is None')
+        else:
+            logging.info('rcnn_reg_out shape: {}'.format(rcnn_reg_out.shape))
+        logging.info('anchor targets: {}'.format(len(anchor_targets)))
+        logging.info('proposals: {}'.format(len(props)))
+        logging.info('proposal targets: {}'.format(len(props_targets)))
+        
+        rpnloss = rpn_loss(rpn_cls_out, rpn_reg_out, anchor_targets)
+        rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
+        combloss = rpnloss + self.loss_lambda * rcnnloss
+        logging.info('RPN loss: {}'.format(rpnloss.item()))
+        logging.info('RCNN loss: {}'.format(rcnnloss.item()))
+        logging.info('Combined loss: {}'.format(combloss.item()))
+        combloss.backward()
+        optimizer.step()
+
+    def train(self):
+        optimizer = self.optim(self.faster_rcnn.parameters(),
+                               **(self.optim_kwargs))
+        logging.info('Start a new round of training, start with epoch {}'\
+                     .format(self.current_epoch))
+        logging.info('Optimizer:'.format(optimizer))
+        rpn_loss = loss.RPNLoss(self.faster_rcnn.anchor_gen, self.rpn_loss_lambda)
+        rcnn_loss = loss.RCNNLoss(self.rcnn_loss_lambda)
+        self.faster_rcnn.to(device=self.device)
+        self.faster_rcnn.train()
+        
+        for epoch in range(self.current_epoch, self.max_epochs+1):
+            logging.info('Start to train epoch: {}.'.format(epoch))
+            for iter_i, train_data in enumerate(self.dataloader):
+                # train one image
+                try:
+                    self.train_one_iter(iter_i, epoch, train_data, optimizer, rpn_loss, rcnn_loss)
+                except:
+                    logging.error('Traceback:')
+                    logging.error(traceback.format_exc())
+                    error_model = osp.join(self.work_dir, 'error_epoch{}_iter{}.pth'.format(
+                        epoch, iter_i))
+                    torch.save(self.faster_rcnn.state_dict(), error_model)
+                    logging.error(
+                        'Encounter an error at epoch {}, iter {}, saved current model to {}.'\
+                        .format(epoch, iter_i, error_model))
+                    print('Training is interrupted by an error, :(.')
+                    exit()
+                    
+            epoch_model = osp.join(self.work_dir, ckpt_name(epoch))
+            logging.info('Finished traning epoch {}, save trained model to {}'.format(
+                epoch, epoch_model))
+            torch.save(self.faster_rcnn.state_dict(), epoch_model)
+        print('Finished Training!!!')
+
+
+'''
+'''
 
 class FasterRCNNTest():
     r"""

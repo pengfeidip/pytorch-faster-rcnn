@@ -1,0 +1,1138 @@
+191115_144337_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_144337_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_144459_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_144459_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_144459_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_144606_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_144606_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_144606_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_144627_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_144627_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_144627_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_144627_Fri: Start to train epoch: 1.	[INFO]
+191115_144627_Fri: At epoch 1, iteration 0.	[INFO]
+191115_144627_Fri: Image info:	[DEBUG]
+191115_144635_Fri: Traceback:	[ERROR]
+191115_144635_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 327, in train
+    combloss = rpn_loss + self.loss_lambda * rcnnloss
+TypeError: add(): argument 'other' (position 1) must be Tensor, not RPNLoss
+	[ERROR]
+191115_144654_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_144654_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_144654_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_144654_Fri: Start to train epoch: 1.	[INFO]
+191115_144654_Fri: At epoch 1, iteration 0.	[INFO]
+191115_144654_Fri: Image info:	[DEBUG]
+191115_144701_Fri: Traceback:	[ERROR]
+191115_144701_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 327, in train
+    combloss = rpn_loss + self.loss_lambda * rcnnloss
+TypeError: add(): argument 'other' (position 1) must be Tensor, not RPNLoss
+	[ERROR]
+191115_144702_Fri: Encounter an error at epoch 1, iter 0, saved current model to /home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/work_dirs/error_epoch{}_iter().pth.	[ERROR]
+191115_144707_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_144707_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_144707_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_144707_Fri: Start to train epoch: 1.	[INFO]
+191115_144707_Fri: At epoch 1, iteration 0.	[INFO]
+191115_144707_Fri: Image info:	[DEBUG]
+191115_144714_Fri: Traceback:	[ERROR]
+191115_144714_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 327, in train
+    combloss = rpn_loss + self.loss_lambda * rcnnloss
+TypeError: add(): argument 'other' (position 1) must be Tensor, not RPNLoss
+	[ERROR]
+191115_144716_Fri: Encounter an error at epoch 1, iter 0, saved current model to /home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/work_dirs/error_epoch{}_iter().pth.	[ERROR]
+191115_145238_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_145238_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_145238_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_145238_Fri: Start to train epoch: 1.	[INFO]
+191115_145238_Fri: Traceback:	[ERROR]
+191115_145238_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 335, in train
+    self.train_one_iter(iter_i, train_data, optimizer, rpn_loss, rcnn_loss)
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 280, in train_one_iter
+    logging.info('At epoch {}, iteration {}.'.format(epoch, iter_i))
+NameError: name 'epoch' is not defined
+	[ERROR]
+191115_145240_Fri: Encounter an error at epoch 1, iter 0, saved current model to /home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/work_dirs/error_epoch{}_iter().pth.	[ERROR]
+191115_145941_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_145941_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_145941_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_145941_Fri: Start to train epoch: 1.	[INFO]
+191115_145941_Fri: Traceback:	[ERROR]
+191115_145941_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 335, in train
+    self.train_one_iter(iter_i, train_data, optimizer, rpn_loss, rcnn_loss)
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 280, in train_one_iter
+    logging.info('At epoch {}, iteration {}.'.format(epoch, iter_i))
+NameError: name 'epoch' is not defined
+	[ERROR]
+191115_145943_Fri: Encounter an error at epoch 1, iter 0, saved current model to /home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/work_dirs/error_epoch{}_iter().pth.	[ERROR]
+191115_150006_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150006_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150006_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150006_Fri: Optimizer:	[INFO]
+191115_150006_Fri: Start to train epoch: 1.	[INFO]
+191115_150006_Fri: Traceback:	[ERROR]
+191115_150006_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 335, in train
+    self.train_one_iter(iter_i, train_data, optimizer, rpn_loss, rcnn_loss)
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 280, in train_one_iter
+    logging.info('At epoch {}, iteration {}.'.format(epoch, iter_i))
+NameError: name 'epoch' is not defined
+	[ERROR]
+191115_150008_Fri: Encounter an error at epoch 1, iter 0, saved current model to /home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/work_dirs/error_epoch{}_iter().pth.	[ERROR]
+191115_150020_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150020_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150020_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150020_Fri: Optimizer:	[INFO]
+191115_150020_Fri: Start to train epoch: 1.	[INFO]
+191115_150020_Fri: Traceback:	[ERROR]
+191115_150020_Fri: Traceback (most recent call last):
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 335, in train
+    self.train_one_iter(iter_i, train_data, optimizer, rpn_loss, rcnn_loss)
+  File "/home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/test/../lib/faster_rcnn.py", line 280, in train_one_iter
+    logging.info('At epoch {}, iteration {}.'.format(epoch, iter_i))
+NameError: name 'epoch' is not defined
+	[ERROR]
+191115_150022_Fri: Encounter an error at epoch 1, iter 0, saved current model to /home/server2/4T/liyiqing/projects/pytorch-faster-rcnn/work_dirs/error_epoch{}_iter().pth.	[ERROR]
+191115_150229_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150229_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150229_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150229_Fri: Optimizer:	[INFO]
+191115_150229_Fri: Start to train epoch: 1.	[INFO]
+191115_150300_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150300_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150300_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150300_Fri: Optimizer:	[INFO]
+191115_150300_Fri: Start to train epoch: 1.	[INFO]
+191115_150352_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150352_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150352_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150352_Fri: Optimizer:	[INFO]
+191115_150352_Fri: Start to train epoch: 1.	[INFO]
+191115_150459_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150459_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150459_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150459_Fri: Optimizer:	[INFO]
+191115_150459_Fri: Start to train epoch: 1.	[INFO]
+191115_150500_Fri: At epoch 1, iteration 0.	[INFO]
+191115_150522_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150522_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150522_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150522_Fri: Optimizer:	[INFO]
+191115_150522_Fri: Start to train epoch: 1.	[INFO]
+191115_150522_Fri: At epoch 1, iteration 0.	[INFO]
+191115_150522_Fri: Image shape: torch.Size([1, 3, 600, 800])	[DEBUG]
+191115_150522_Fri: GT bboxes: tensor([[[419, 336,  99, 206,   1],
+         [262, 421, 142, 174,   1],
+         [  6, 389, 101, 210,   1],
+         [384, 309,  88, 170,   1],
+         [442, 296,  58,  56,   1]]])	[DEBUG]
+191115_150522_Fri: Image info: {'iid': tensor([5]), 'file_name': ['000005.jpg'], 'original_tensor_wh': [tensor([500]), tensor([375])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000005.jpg']}	[DEBUG]
+191115_150530_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 50])	[INFO]
+191115_150530_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 50])	[INFO]
+191115_150530_Fri: rcnn_cls_out shape: torch.Size([127, 21])	[INFO]
+191115_150530_Fri: rcnn_reg_out shape: torch.Size([127, 84])	[INFO]
+191115_150530_Fri: anchor targets: 256	[INFO]
+191115_150530_Fri: proposals: 1339	[INFO]
+191115_150530_Fri: proposal targets: 127	[INFO]
+191115_150557_Fri: Initialized faster rcnn in FasterRCNNTrain	[INFO]
+191115_150557_Fri: FasterRCNNModule(
+  (roi_pool): ROIPooling(
+    (adaptive_pool): AdaptiveMaxPool2d(output_size=(7, 7))
+  )
+  (backbone): VGGBackbone(
+    (backbone): Sequential(
+      (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (1): ReLU(inplace=True)
+      (2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (3): ReLU(inplace=True)
+      (4): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (5): Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (6): ReLU(inplace=True)
+      (7): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (8): ReLU(inplace=True)
+      (9): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (10): Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (11): ReLU(inplace=True)
+      (12): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (13): ReLU(inplace=True)
+      (14): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (15): ReLU(inplace=True)
+      (16): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (17): Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (18): ReLU(inplace=True)
+      (19): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (20): ReLU(inplace=True)
+      (21): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (22): ReLU(inplace=True)
+      (23): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+      (24): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (25): ReLU(inplace=True)
+      (26): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (27): ReLU(inplace=True)
+      (28): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      (29): ReLU(inplace=True)
+    )
+  )
+  (rpn): RPN(
+    (conv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (classifier): Conv2d(512, 18, kernel_size=(1, 1), stride=(1, 1))
+    (regressor): Conv2d(512, 36, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (rcnn): RCNN(
+    (fc1): Linear(in_features=25088, out_features=4096, bias=True)
+    (fc2): Linear(in_features=4096, out_features=4096, bias=True)
+    (classifier): Linear(in_features=4096, out_features=21, bias=True)
+    (regressor): Linear(in_features=4096, out_features=84, bias=True)
+  )
+)	[INFO]
+191115_150557_Fri: Start a new round of training, start with epoch 1	[INFO]
+191115_150557_Fri: Optimizer:	[INFO]
+191115_150557_Fri: Start to train epoch: 1.	[INFO]
+191115_150557_Fri: At epoch 1, iteration 0.	[INFO]
+191115_150557_Fri: Image shape: torch.Size([1, 3, 600, 800])	[DEBUG]
+191115_150557_Fri: GT bboxes: tensor([[[419, 336,  99, 206,   1],
+         [262, 421, 142, 174,   1],
+         [  6, 389, 101, 210,   1],
+         [384, 309,  88, 170,   1],
+         [442, 296,  58,  56,   1]]])	[DEBUG]
+191115_150557_Fri: Image info: {'iid': tensor([5]), 'file_name': ['000005.jpg'], 'original_tensor_wh': [tensor([500]), tensor([375])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000005.jpg']}	[DEBUG]
+191115_150605_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 50])	[INFO]
+191115_150605_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 50])	[INFO]
+191115_150605_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150605_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150605_Fri: anchor targets: 256	[INFO]
+191115_150605_Fri: proposals: 1345	[INFO]
+191115_150605_Fri: proposal targets: 128	[INFO]
+191115_150605_Fri: RPN loss: 1.643399715423584	[INFO]
+191115_150605_Fri: RCNN loss: 3.8157260417938232	[INFO]
+191115_150605_Fri: Combined loss: 5.459125518798828	[INFO]
+191115_150607_Fri: At epoch 1, iteration 1.	[INFO]
+191115_150607_Fri: Image shape: torch.Size([1, 3, 600, 901])	[DEBUG]
+191115_150607_Fri: GT bboxes: tensor([[[252,  88, 649, 506,   2]]])	[DEBUG]
+191115_150607_Fri: Image info: {'iid': tensor([7]), 'file_name': ['000007.jpg'], 'original_tensor_wh': [tensor([500]), tensor([333])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000007.jpg']}	[DEBUG]
+191115_150617_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 56])	[INFO]
+191115_150617_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 56])	[INFO]
+191115_150617_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150617_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150617_Fri: anchor targets: 256	[INFO]
+191115_150617_Fri: proposals: 1544	[INFO]
+191115_150617_Fri: proposal targets: 128	[INFO]
+191115_150617_Fri: RPN loss: 0.8382353186607361	[INFO]
+191115_150617_Fri: RCNN loss: 3.765618085861206	[INFO]
+191115_150617_Fri: Combined loss: 4.603853225708008	[INFO]
+191115_150618_Fri: At epoch 1, iteration 2.	[INFO]
+191115_150618_Fri: Image shape: torch.Size([1, 3, 600, 800])	[DEBUG]
+191115_150618_Fri: GT bboxes: tensor([[[109, 274, 323, 254,   3],
+         [238, 224, 128, 230,   4],
+         [454, 320,  69, 210,   4],
+         [411, 315,  64, 211,   4]]])	[DEBUG]
+191115_150618_Fri: Image info: {'iid': tensor([9]), 'file_name': ['000009.jpg'], 'original_tensor_wh': [tensor([500]), tensor([375])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000009.jpg']}	[DEBUG]
+191115_150626_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 50])	[INFO]
+191115_150626_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 50])	[INFO]
+191115_150626_Fri: rcnn_cls_out shape: torch.Size([126, 21])	[INFO]
+191115_150626_Fri: rcnn_reg_out shape: torch.Size([126, 84])	[INFO]
+191115_150626_Fri: anchor targets: 256	[INFO]
+191115_150626_Fri: proposals: 1323	[INFO]
+191115_150626_Fri: proposal targets: 126	[INFO]
+191115_150626_Fri: RPN loss: 0.8455407023429871	[INFO]
+191115_150626_Fri: RCNN loss: 3.871094226837158	[INFO]
+191115_150626_Fri: Combined loss: 4.716634750366211	[INFO]
+191115_150628_Fri: At epoch 1, iteration 3.	[INFO]
+191115_150628_Fri: Image shape: torch.Size([1, 3, 600, 901])	[DEBUG]
+191115_150628_Fri: GT bboxes: tensor([[[279, 173, 353, 314,   2]]])	[DEBUG]
+191115_150628_Fri: Image info: {'iid': tensor([12]), 'file_name': ['000012.jpg'], 'original_tensor_wh': [tensor([500]), tensor([333])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000012.jpg']}	[DEBUG]
+191115_150637_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 56])	[INFO]
+191115_150637_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 56])	[INFO]
+191115_150637_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150637_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150637_Fri: anchor targets: 256	[INFO]
+191115_150637_Fri: proposals: 1565	[INFO]
+191115_150637_Fri: proposal targets: 128	[INFO]
+191115_150637_Fri: RPN loss: 0.9785988330841064	[INFO]
+191115_150637_Fri: RCNN loss: 3.7937469482421875	[INFO]
+191115_150637_Fri: Combined loss: 4.772345542907715	[INFO]
+191115_150639_Fri: At epoch 1, iteration 4.	[INFO]
+191115_150639_Fri: Image shape: torch.Size([1, 3, 898, 600])	[DEBUG]
+191115_150639_Fri: GT bboxes: tensor([[[163, 128, 384, 722,   5]]])	[DEBUG]
+191115_150639_Fri: Image info: {'iid': tensor([16]), 'file_name': ['000016.jpg'], 'original_tensor_wh': [tensor([334]), tensor([500])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000016.jpg']}	[DEBUG]
+191115_150649_Fri: rpn_cls_out shape: torch.Size([1, 18, 56, 37])	[INFO]
+191115_150649_Fri: rpn_reg_out shape: torch.Size([1, 36, 56, 37])	[INFO]
+191115_150649_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150649_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150649_Fri: anchor targets: 256	[INFO]
+191115_150649_Fri: proposals: 1548	[INFO]
+191115_150649_Fri: proposal targets: 128	[INFO]
+191115_150649_Fri: RPN loss: 1.0080246925354004	[INFO]
+191115_150649_Fri: RCNN loss: 4.839737892150879	[INFO]
+191115_150649_Fri: Combined loss: 5.847762584686279	[INFO]
+191115_150651_Fri: At epoch 1, iteration 5.	[INFO]
+191115_150651_Fri: Image shape: torch.Size([1, 3, 600, 791])	[DEBUG]
+191115_150651_Fri: GT bboxes: tensor([[[303, 101, 157, 227,   4],
+         [147, 127, 517, 427,   3]]])	[DEBUG]
+191115_150651_Fri: Image info: {'iid': tensor([17]), 'file_name': ['000017.jpg'], 'original_tensor_wh': [tensor([480]), tensor([364])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000017.jpg']}	[DEBUG]
+191115_150658_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 49])	[INFO]
+191115_150658_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 49])	[INFO]
+191115_150658_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150658_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150658_Fri: anchor targets: 256	[INFO]
+191115_150658_Fri: proposals: 1284	[INFO]
+191115_150658_Fri: proposal targets: 128	[INFO]
+191115_150658_Fri: RPN loss: 0.9051823019981384	[INFO]
+191115_150658_Fri: RCNN loss: 2.8283450603485107	[INFO]
+191115_150658_Fri: Combined loss: 3.733527421951294	[INFO]
+191115_150700_Fri: At epoch 1, iteration 6.	[INFO]
+191115_150700_Fri: Image shape: torch.Size([1, 3, 600, 800])	[DEBUG]
+191115_150700_Fri: GT bboxes: tensor([[[368, 139, 405, 270,   6],
+         [ 16, 179, 410, 235,   6]]])	[DEBUG]
+191115_150700_Fri: Image info: {'iid': tensor([19]), 'file_name': ['000019.jpg'], 'original_tensor_wh': [tensor([500]), tensor([375])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000019.jpg']}	[DEBUG]
+191115_150707_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 50])	[INFO]
+191115_150707_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 50])	[INFO]
+191115_150707_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150707_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150707_Fri: anchor targets: 256	[INFO]
+191115_150707_Fri: proposals: 1344	[INFO]
+191115_150707_Fri: proposal targets: 128	[INFO]
+191115_150707_Fri: RPN loss: 0.9472832679748535	[INFO]
+191115_150707_Fri: RCNN loss: 3.204036235809326	[INFO]
+191115_150707_Fri: Combined loss: 4.15131950378418	[INFO]
+191115_150708_Fri: At epoch 1, iteration 7.	[INFO]
+191115_150709_Fri: Image shape: torch.Size([1, 3, 800, 600])	[DEBUG]
+191115_150709_Fri: GT bboxes: tensor([[[ 51, 235, 542, 430,   2]]])	[DEBUG]
+191115_150709_Fri: Image info: {'iid': tensor([20]), 'file_name': ['000020.jpg'], 'original_tensor_wh': [tensor([375]), tensor([500])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000020.jpg']}	[DEBUG]
+191115_150716_Fri: rpn_cls_out shape: torch.Size([1, 18, 50, 37])	[INFO]
+191115_150716_Fri: rpn_reg_out shape: torch.Size([1, 36, 50, 37])	[INFO]
+191115_150716_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150716_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150716_Fri: anchor targets: 256	[INFO]
+191115_150716_Fri: proposals: 1322	[INFO]
+191115_150716_Fri: proposal targets: 128	[INFO]
+191115_150716_Fri: RPN loss: 0.7580694556236267	[INFO]
+191115_150716_Fri: RCNN loss: 13.330728530883789	[INFO]
+191115_150716_Fri: Combined loss: 14.088797569274902	[INFO]
+191115_150717_Fri: At epoch 1, iteration 8.	[INFO]
+191115_150717_Fri: Image shape: torch.Size([1, 3, 893, 600])	[DEBUG]
+191115_150717_Fri: GT bboxes: tensor([[[  0, 418, 325, 275,   7],
+         [373,  63, 227, 798,   4],
+         [ 80, 145, 223, 507,   4],
+         [ 18, 321, 236, 427,   4]]])	[DEBUG]
+191115_150717_Fri: Image info: {'iid': tensor([21]), 'file_name': ['000021.jpg'], 'original_tensor_wh': [tensor([336]), tensor([500])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000021.jpg']}	[DEBUG]
+191115_150727_Fri: rpn_cls_out shape: torch.Size([1, 18, 55, 37])	[INFO]
+191115_150727_Fri: rpn_reg_out shape: torch.Size([1, 36, 55, 37])	[INFO]
+191115_150727_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150727_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150727_Fri: anchor targets: 256	[INFO]
+191115_150727_Fri: proposals: 1515	[INFO]
+191115_150727_Fri: proposal targets: 128	[INFO]
+191115_150727_Fri: RPN loss: 1.0967864990234375	[INFO]
+191115_150727_Fri: RCNN loss: 2.7569267749786377	[INFO]
+191115_150727_Fri: Combined loss: 3.853713274002075	[INFO]
+191115_150728_Fri: At epoch 1, iteration 9.	[INFO]
+191115_150728_Fri: Image shape: torch.Size([1, 3, 898, 600])	[DEBUG]
+191115_150728_Fri: GT bboxes: tensor([[[ 14, 411, 426, 487,   5],
+         [411, 393, 189, 505,   5],
+         [  2, 318, 160, 580,   5],
+         [  2,   0, 208, 663,   4],
+         [  4,   2, 433, 828,   4],
+         [402,   0, 198, 873,   4]]])	[DEBUG]
+191115_150728_Fri: Image info: {'iid': tensor([23]), 'file_name': ['000023.jpg'], 'original_tensor_wh': [tensor([334]), tensor([500])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000023.jpg']}	[DEBUG]
+191115_150738_Fri: rpn_cls_out shape: torch.Size([1, 18, 56, 37])	[INFO]
+191115_150738_Fri: rpn_reg_out shape: torch.Size([1, 36, 56, 37])	[INFO]
+191115_150738_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150738_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150738_Fri: anchor targets: 256	[INFO]
+191115_150738_Fri: proposals: 1508	[INFO]
+191115_150738_Fri: proposal targets: 128	[INFO]
+191115_150738_Fri: RPN loss: 0.9090623259544373	[INFO]
+191115_150738_Fri: RCNN loss: 5.150668144226074	[INFO]
+191115_150738_Fri: Combined loss: 6.059730529785156	[INFO]
+191115_150739_Fri: At epoch 1, iteration 10.	[INFO]
+191115_150739_Fri: Image shape: torch.Size([1, 3, 600, 896])	[DEBUG]
+191115_150739_Fri: GT bboxes: tensor([[[349, 294, 527, 149,   8]]])	[DEBUG]
+191115_150739_Fri: Image info: {'iid': tensor([24]), 'file_name': ['000024.jpg'], 'original_tensor_wh': [tensor([500]), tensor([335])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000024.jpg']}	[DEBUG]
+191115_150749_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 56])	[INFO]
+191115_150749_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 56])	[INFO]
+191115_150749_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150749_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150749_Fri: anchor targets: 256	[INFO]
+191115_150749_Fri: proposals: 1523	[INFO]
+191115_150749_Fri: proposal targets: 128	[INFO]
+191115_150749_Fri: RPN loss: 0.728123664855957	[INFO]
+191115_150749_Fri: RCNN loss: 2.0127480030059814	[INFO]
+191115_150749_Fri: Combined loss: 2.7408716678619385	[INFO]
+191115_150750_Fri: At epoch 1, iteration 11.	[INFO]
+191115_150750_Fri: Image shape: torch.Size([1, 3, 600, 901])	[DEBUG]
+191115_150750_Fri: GT bboxes: tensor([[[160, 223, 447, 159,   2]]])	[DEBUG]
+191115_150750_Fri: Image info: {'iid': tensor([26]), 'file_name': ['000026.jpg'], 'original_tensor_wh': [tensor([500]), tensor([333])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000026.jpg']}	[DEBUG]
+191115_150759_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 56])	[INFO]
+191115_150759_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 56])	[INFO]
+191115_150759_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150759_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150759_Fri: anchor targets: 256	[INFO]
+191115_150759_Fri: proposals: 1555	[INFO]
+191115_150759_Fri: proposal targets: 128	[INFO]
+191115_150759_Fri: RPN loss: 0.8024559617042542	[INFO]
+191115_150759_Fri: RCNN loss: 2.3154401779174805	[INFO]
+191115_150759_Fri: Combined loss: 3.11789608001709	[INFO]
+191115_150801_Fri: At epoch 1, iteration 12.	[INFO]
+191115_150801_Fri: Image shape: torch.Size([1, 3, 600, 800])	[DEBUG]
+191115_150801_Fri: GT bboxes: tensor([[[ 56, 326, 232, 136,   5],
+         [ 80, 254, 160, 213,   4],
+         [470, 219, 250, 245,   4]]])	[DEBUG]
+191115_150801_Fri: Image info: {'iid': tensor([30]), 'file_name': ['000030.jpg'], 'original_tensor_wh': [tensor([500]), tensor([375])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000030.jpg']}	[DEBUG]
+191115_150808_Fri: rpn_cls_out shape: torch.Size([1, 18, 37, 50])	[INFO]
+191115_150808_Fri: rpn_reg_out shape: torch.Size([1, 36, 37, 50])	[INFO]
+191115_150808_Fri: rcnn_cls_out shape: torch.Size([128, 21])	[INFO]
+191115_150808_Fri: rcnn_reg_out shape: torch.Size([128, 84])	[INFO]
+191115_150808_Fri: anchor targets: 256	[INFO]
+191115_150808_Fri: proposals: 1352	[INFO]
+191115_150808_Fri: proposal targets: 128	[INFO]
+191115_150808_Fri: RPN loss: 0.922426700592041	[INFO]
+191115_150808_Fri: RCNN loss: 2.2702155113220215	[INFO]
+191115_150808_Fri: Combined loss: 3.1926422119140625	[INFO]
+191115_150810_Fri: At epoch 1, iteration 13.	[INFO]
+191115_150810_Fri: Image shape: torch.Size([1, 3, 562, 1000])	[DEBUG]
+191115_150810_Fri: GT bboxes: tensor([[[206, 154, 544, 212,   9],
+         [264, 174, 130,  72,   9],
+         [388, 358,  38, 100,   4],
+         [ 50, 376,  38, 100,   4]]])	[DEBUG]
+191115_150810_Fri: Image info: {'iid': tensor([32]), 'file_name': ['000032.jpg'], 'original_tensor_wh': [tensor([500]), tensor([281])], 'img_loc': ['/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages/000032.jpg']}	[DEBUG]
