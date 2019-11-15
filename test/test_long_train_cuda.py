@@ -66,14 +66,13 @@ def train_one(i, dataset, faster, rpn_loss, rcnn_loss, optimizer, device):
     faster_out = [
         rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out, \
         anchor_targets, props, props_targets]
-    print('rpn_cls_out.shape', rpn_cls_out.shape)
-    print('rpn_reg_out.shape', rpn_reg_out.shape)
-    print('rcnn_cls_out.shape', rcnn_cls_out.shape)
-    print('rcnn_reg_out.shape', rcnn_reg_out.shape)
+    print('rpn_cls_out.shape', rpn_cls_out.shape if rpn_cls_out is not None else None)
+    print('rpn_reg_out.shape', rpn_reg_out.shape if rpn_reg_out is not None else None)
+    print('rcnn_cls_out.shape', rcnn_cls_out.shape if rcnn_cls_out is not None else None)
+    print('rcnn_reg_out.shape', rcnn_reg_out.shape if rcnn_reg_out is not None else None)
     
     print('anchor_targets'.center(50, '-'))
     if anchor_targets is not None:
-        print('Anchor_targets[0]:', dict2str(anchor_targets[0]))
         print('Number of anchor_targets:', len(anchor_targets))
         print('Positive anchor_targets:',
               sum([1 for ii in anchor_targets if ii['gt_label']==1]))
@@ -86,14 +85,12 @@ def train_one(i, dataset, faster, rpn_loss, rcnn_loss, optimizer, device):
             
     print('proposals'.center(50, '-'))
     print('Number of props:', len(props))
-    print('props[0]', dict2str(props[0]))
     print('Stats of props area:', stats([ii['adj_bbox'].area() for ii in props]))
 
         
     print('props_targets'.center(50, '-'))
     if props_targets is not None:
         print('Number of props_targets:', len(props_targets))
-        print('props_targets[0]:', dict2str(props_targets[0]))
         print('Stats of all IOU:', stats([ii['iou'] for ii in props_targets]))
         print('Stats of positive IOU:',
               stats([ii['iou'] for ii in props_targets if ii['gt_label']==1]))
@@ -136,7 +133,7 @@ def main():
     print(faster)
     rpn_loss = loss.RPNLoss(faster.anchor_gen, 10)
     rcnn_loss = loss.RCNNLoss(10)
-    optim_sgd = torch.optim.SGD(faster.parameters(), lr=0.0025, momentum=0.9, weight_decay=0.0001)
+    optim_sgd = torch.optim.SGD(faster.parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
     optim_adam = torch.optim.Adam(faster.parameters(), lr=0.0001)
     optimizer = optim_sgd
     print('Optimizer:', optimizer)
@@ -154,6 +151,7 @@ def main():
             torch.save(faster_state_dict, saved_model)
         print('Encounter an error at image {}, previous state_dict is stored at {}'\
               .format(i, saved_model))
+        exit()
     model_1epoch = 'saved_model_cuda_epoch_1.pth'
     print('Finished 1 epoch of training, save model to {}'.format(model_1epoch))
     torch.save(faster_state_dict, model_1epoch)
