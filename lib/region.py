@@ -1,4 +1,4 @@
-import torch
+import torch, torchvision
 import torch.nn as nn
 import copy, random
 import numpy as np
@@ -286,9 +286,10 @@ def param2xywh(param, anchor_bbox):
 # TODO: improve performance
 # argument anchors is a list of anchors, score_map is a function that
 # maps items in anchors to score and bbox_map maps to bbox which is of BBox class.
-def apply_nms(anchors, score_map, bbox_map, iou_thr):
+def apply_nms_(anchors, score_map, bbox_map, iou_thr):
     start = time.time()
     num_anchors = len(anchors)
+    print('number of anchors:', num_anchors)
     # third flag is meaning 'deleted'
     anchors = [[score_map(anchor), bbox_map(anchor), 0, anchor] for anchor in anchors]
     anchors.sort(key = lambda x:x[0], reverse=True)
@@ -300,6 +301,16 @@ def apply_nms(anchors, score_map, bbox_map, iou_thr):
                    calc_iou(cur_bbox, anchors[j][1])>=iou_thr:
                     anchors[j][2] = 1
     ret_val = [anchor[3] for i, anchor in enumerate(anchors) if not anchor[2]]
+    return ret_val
+
+def apply_nms(anchors, score_map, bbox_map, iou_thr):
+    start = time.time()
+    bboxes = [bbox_map(anchor).get_xyxy() for anchor in anchors]
+    scores = [score_map(anchor) for anchor in anchors]
+    bboxes = torch.tensor(bboxes)
+    scores = torch.tensor(scores)
+    keep = torchvision.ops.nms(bboxes, scores, iou_thr)
+    ret_val = [anchors[i] for i in keep.numpy()]
     return ret_val
 
 class ProposalCreator(object):

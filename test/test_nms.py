@@ -30,11 +30,11 @@ def test_train():
     dataset = data.CocoDetDataset(TEST_IMG_DIR, TEST_COCO_JSON,
                                   transform=data.faster_transform(1000, 600))
     dataloader = data.torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=2,
-                                                  shuffle=False)
+                                                  shuffle=True)
     
     faster_configs = dict()
     trainer = faster_rcnn.FasterRCNNTrain(faster_configs, dataloader,
-                                          '../work_dirs', 1,
+                                          '../work_dirs/test_nms', 12,
                                           log_file='train.log',
                                           log_level=logging.DEBUG,
                                           device=torch.device('cuda:1'),

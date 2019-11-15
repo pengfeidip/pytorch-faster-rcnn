@@ -1,5 +1,5 @@
 from . import region, modules, loss
-import logging, random, traceback
+import logging, random, traceback, time
 import torch
 import torch.nn as nn
 import os.path as osp
@@ -321,11 +321,18 @@ class FasterRCNNTrain(object):
                                **(self.optim_kwargs))
         logging.info('Start a new round of training, start with epoch {}'\
                      .format(self.current_epoch))
-        logging.info('Optimizer:'.format(optimizer))
+        logging.info('Optimizer: {}'.format(optimizer))
         rpn_loss = loss.RPNLoss(self.faster_rcnn.anchor_gen, self.rpn_loss_lambda)
         rcnn_loss = loss.RCNNLoss(self.rcnn_loss_lambda)
         self.faster_rcnn.to(device=self.device)
         self.faster_rcnn.train()
+
+        dataset_size = len(self.dataloader)
+        tot_iters = dataset_size * (self.max_epochs - self.current_epoch)
+        eta_iters = 50
+        eta_ct = 0
+        iter_ct = 0
+        start = time.time()
         
         for epoch in range(self.current_epoch, self.max_epochs+1):
             logging.info('Start to train epoch: {}.'.format(epoch))
@@ -333,6 +340,14 @@ class FasterRCNNTrain(object):
                 # train one image
                 try:
                     self.train_one_iter(iter_i, epoch, train_data, optimizer, rpn_loss, rcnn_loss)
+                    eta_ct += 1
+                    iter_ct += 1
+                    if eta_ct == eta_iters:
+                        secs = time.time() - start
+                        logging.info('Eta time: {} mins.'\
+                                     .format((tot_iters - iter_ct) / eta_iters * secs / 60))
+                        eta_ct = 0
+                        start = time.time()
                 except:
                     logging.error('Traceback:')
                     logging.error(traceback.format_exc())
@@ -349,13 +364,13 @@ class FasterRCNNTrain(object):
             logging.info('Finished traning epoch {}, save trained model to {}'.format(
                 epoch, epoch_model))
             torch.save(self.faster_rcnn.state_dict(), epoch_model)
-        print('Finished Training!!!')
+        print('Finished Training:)!!!')
 
 
 '''
 '''
 
-class FasterRCNNTest():
+class FasterRCNNTest(object):
     r"""
     Utility to test a faster rcnn
     """
