@@ -12,6 +12,7 @@ import time
 
 TEST_DIR = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/'
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
+TEST_IMG = osp.join('/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/VOC2007/JPEGImages', '000945.jpg')
 TEST_IMG_DIR = osp.join(TEST_DIR, 'VOC2007/JPEGImages')
 TEST_COCO_JSON =osp.join(TEST_DIR, 'voc2007_trainval.json')
 #TEST_IMG_DIR \
@@ -26,23 +27,20 @@ def dict2str(d):
     else:
         return '{ ' + ', '.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()]) + ' }'
 
-def test_train():
+def test_inference():
     dataset = data.CocoDetDataset(TEST_IMG_DIR, TEST_COCO_JSON,
                                   transform=data.faster_transform(1000, 600))
     dataloader = data.torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=2,
                                                   shuffle=True)
     
     faster_configs = dict()
-    trainer = faster_rcnn.FasterRCNNTrain(faster_configs, dataloader,
-                                          '../work_dirs/test_nms', 20,
-                                          log_file='train.log',
-                                          log_level=logging.DEBUG,
-                                          device=torch.device('cuda:1'),
-                                          optim_kwargs=dict(lr=0.0001, momentum=0.9, weight_decay=0.0005),
-                                          seed=2019)
-    trainer.init_module()
-    trainer.resume_from(12)
-    trainer.train()
+    work_dir = '../work_dirs/test_nms'
+    tester = faster_rcnn.FasterRCNNTest(work_dir, faster_configs,
+                                        dataloader, torch.device('cuda:0'))
+    tester.load_epoch(14)
+    tester.inference(TEST_IMG)
+    
+
 
 if __name__ == '__main__':
-    test_train()
+    test_inference()

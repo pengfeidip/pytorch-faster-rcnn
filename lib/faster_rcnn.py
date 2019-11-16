@@ -1,8 +1,9 @@
 from . import region, modules, loss
 import logging, random, traceback, time
-import torch
+import torch, torchvision
 import torch.nn as nn
 import os.path as osp
+from PIL import Image
 
 
 FASTER_ANCHOR_SCALES = [128, 256, 512]
@@ -28,7 +29,7 @@ class FasterRCNNModule(nn.Module):
                  train_props_nms_iou=0.7,
                  test_props_pre_nms=6000,
                  test_props_post_nms=300,
-                 test_props_nms_iou=0.7,
+                 test_props_nms_iou=0.5,
                  props_pos_iou=0.5,
                  props_neg_iou=0.1,
                  props_max_pos=32,
@@ -184,10 +185,10 @@ class FasterRCNNModule(nn.Module):
 
         pass
 
-    def train(self):
+    def train_mode(self):
         super(FasterRCNNModule, self).train()
         self.training = True
-    def eval(self):
+    def eval_mode(self):
         super(FasterRCNNModule, self).eval()
         self.training = False
 
@@ -268,7 +269,7 @@ class FasterRCNNTrain(object):
     def resume_from(self, epoch):
         ckpt = self.get_ckpt(epoch)
         self.faster_rcnn.load_state_dict(torch.load(ckpt))
-        self.current_epoch = epoch
+        self.current_epoch = epoch + 1
         logging.info('Resume from epoch: {}, ckpt: {}'.format(epoch, ckpt))
         logging.info(self.faster_rcnn)
 
@@ -325,7 +326,7 @@ class FasterRCNNTrain(object):
         rpn_loss = loss.RPNLoss(self.faster_rcnn.anchor_gen, self.rpn_loss_lambda)
         rcnn_loss = loss.RCNNLoss(self.rcnn_loss_lambda)
         self.faster_rcnn.to(device=self.device)
-        self.faster_rcnn.train()
+        self.faster_rcnn.train_mode()
 
         dataset_size = len(self.dataloader)
         tot_iters = dataset_size * (self.max_epochs - self.current_epoch)
@@ -367,11 +368,84 @@ class FasterRCNNTrain(object):
         print('Finished Training:)!!!')
 
 
-'''
-'''
+
+# turn RCNN output into prediction result
+# apply nms here indepently to each category
+def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
+    logging.info('Interpret RCNN output(apply NMS with iou_thr={})'.format(nms_iou))
+    batch_size, num_cates = rcnn_cls_out.shape
+
+    bboxes = []
+    scores = []
+    cates = []
+    for i, cls_out in enumerate(rcnn_cls_out):
+        prop = props[i]
+        max_arg = torch.argmax(cls_out)
+        cate = max_arg.item()
+        if cate == 0:
+            continue
+        cates.append(cate)
+        soft = torch.softmax(cls_out, -1)
+        scores.append(soft[cate])
+        bbox_param = rcnn_reg_out[i][cate:cate+4]
+        bboxes.append(region.param2xywh(bbox_param, prop['adj_bbox']))
+    print('pos bboxes:', len(bboxes))
+    bboxes_xyxy = [region.BBox(xywh=bbox).get_xyxy() for bbox in bboxes]
+    keep = torchvision.ops.nms(torch.tensor(bboxes_xyxy), torch.tensor(scores), nms_iou)
+    print('after NMS:', len(keep))
+    print('keep:')
+    ret_bboxes = [bboxes[k] for k in keep]
+    ret_scores = [scores[k] for k in keep]
+    ret_cates  = [cates[k] for k in keep]
+    ious = []
+    for i in range(len(ret_bboxes)):
+        for j in range(i+1, len(ret_bboxes)):
+            ious.append(region.calc_iou(region.BBox(xywh=ret_bboxes[i]),
+                                        region.BBox(xywh=ret_bboxes[j])))
+    print(max(ious), min(ious))
+    return ret_bboxes, ret_scores, ret_cates
 
 class FasterRCNNTest(object):
     r"""
     Utility to test a faster rcnn
     """
+    def __init__(self, work_dir, faster_configs, dataloader, device):
+        self.work_dir = work_dir
+        self.device = device
+        self.faster_configs = faster_configs
+        self.faster_rcnn = FasterRCNNModule(**faster_configs)
+        self.dataloader = dataloader
+
+
+    def load_epoch(self, epoch):
+        # TODO
+        saved = osp.join(self.work_dir, ckpt_name(epoch))
+        self.faster_rcnn.load_state_dict(torch.load(saved))
+        self.faster_rcnn.to(self.device)
+
+    def inference(self, img):
+        self.faster_rcnn.eval_mode()
+        trans = self.dataloader.dataset.transform
+        img = Image.open(img)
+        img_data = trans(img).unsqueeze(0)
+        img_data = img_data.to(self.device)
+        rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out,\
+            anchor_targets, props, props_targets = self.faster_rcnn(img_data, None)
+        print('rpn_cls_out.shape:', rpn_cls_out.shape)
+        print('rpn_reg_out.shape:', rpn_reg_out.shape)
+        print('rcnn_cls_out.shape:', rcnn_cls_out.shape)
+        print('rcnn_reg_out.shape:', rcnn_reg_out.shape)
+        print('props:', len(props))
+        print('props[0]:', props[0])
+        print('Next interpret the rcnn results')
+        bboxes, scores, cates = interpret_rcnn_output(rcnn_cls_out,
+                                                      rcnn_reg_out, props,
+                                                      self.faster_rcnn.test_props_nms_iou)
+        resize_rat = img_data.shape[2] / img.height
+        print('resize rat:', resize_rat)
+        bboxes = [[i/resize_rat for i in bbox] for bbox in bboxes]
+        for i, bbox in enumerate(bboxes):
+            print(bbox, scores[i], cates[i])
+        
+        
     pass

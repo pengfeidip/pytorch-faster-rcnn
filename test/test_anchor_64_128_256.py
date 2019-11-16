@@ -32,16 +32,18 @@ def test_train():
     dataloader = data.torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=2,
                                                   shuffle=True)
     
-    faster_configs = dict()
-    trainer = faster_rcnn.FasterRCNNTrain(faster_configs, dataloader,
-                                          '../work_dirs/test_nms', 20,
+    faster_configs = dict(anchor_scales=[64, 128, 256])
+    trainer = faster_rcnn.FasterRCNNTrain(faster_configs,
+                                          dataloader,
+                                          '../work_dirs/anchor_scales_64_128_256/',
+                                          12,
                                           log_file='train.log',
                                           log_level=logging.DEBUG,
-                                          device=torch.device('cuda:1'),
-                                          optim_kwargs=dict(lr=0.0001, momentum=0.9, weight_decay=0.0005),
+                                          device=torch.device('cuda:2'),
+                                          optim_kwargs=dict(lr=0.001, momentum=0.9, weight_decay=0.0005),
                                           seed=2019)
     trainer.init_module()
-    trainer.resume_from(12)
+    #trainer.resume_from(12)
     trainer.train()
 
 if __name__ == '__main__':
