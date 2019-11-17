@@ -14,10 +14,10 @@ TEST_DIR = '/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/'
 TEST_IMG = osp.join(cur_dir, 'dog.jpg')
 TEST_IMG_DIR = osp.join(TEST_DIR, 'VOC2007/JPEGImages')
 TEST_COCO_JSON =osp.join(TEST_DIR, 'voc2007_trainval.json')
-#TEST_IMG_DIR \
-#    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
-#TEST_COCO_JSON \
-#    = '../data/voc2007_trainval.json'
+TEST_IMG_DIR \
+    = '/home/lee/datasets/VOCdevkit/VOC2007/JPEGImages'
+TEST_COCO_JSON \
+    = '../data/voc2007_trainval.json'
                
 def dict2str(d):
     ret = ''
@@ -39,7 +39,7 @@ def test_train():
                                           12,
                                           log_file='train.log',
                                           log_level=logging.DEBUG,
-                                          device=torch.device('cuda:2'),
+                                          device=torch.device('cuda:0'),
                                           optim_kwargs=dict(lr=0.001, momentum=0.9, weight_decay=0.0005),
                                           seed=2019)
     trainer.init_module()

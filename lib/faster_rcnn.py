@@ -198,13 +198,6 @@ def ckpt_name(n):
 class FasterRCNNTrain(object):
     r"""
     Provide a utility to train a faster rcnn.
-    
-    Args:
-      faster_net  # faster rcnn net
-      dataloader  # dataloader
-      work_dir    # to keep log, saved epochs, saved model before crash
-      logger      # Turn Python's logging on and output to this file
-                  # Turn logging off if it is None
     """
     def __init__(self,
                  faster_configs,
@@ -217,7 +210,6 @@ class FasterRCNNTrain(object):
                  rcnn_loss_lambda=10.0,
                  loss_lambda=1.0,
                  log_file=None,
-                 seed=None,
                  log_level=logging.INFO,
                  device=torch.device('cpu')
     ):
@@ -244,12 +236,6 @@ class FasterRCNNTrain(object):
                                 format='%(asctime)s: %(message)s\t[%(levelname)s]',
                                 datefmt='%y%m%d_%H%M%S_%a',
                                 level=log_level)
-        # set random seed, for all RNGs
-        self.seed = seed
-        if seed is not None:
-            random.seed(seed)
-            torch.manual_seed(seed)
-            torch.cuda.manual_seed(seed)
         # do not init the net yet
         self.faster_rcnn = None
         self.current_epoch = 1
@@ -409,8 +395,11 @@ class FasterRCNNTest(object):
     r"""
     Utility to test a faster rcnn
     """
-    def __init__(self, work_dir, faster_configs, dataloader, device):
-        self.work_dir = work_dir
+    def __init__(self,
+                 faster_configs,
+                 img_dir,
+                 device):
+        self.img_dir = img_dir
         self.device = device
         self.faster_configs = faster_configs
         self.faster_rcnn = FasterRCNNModule(**faster_configs)
