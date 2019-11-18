@@ -6,7 +6,7 @@ import torchvision as tv
 # transform from PIL image to normalized tensor with shape [3 x H x W]
 IMG_PIL2TENSOR = tv.transforms.Compose(
     [tv.transforms.ToTensor(),
-     tv.transforms.Normalize(mean=config.IMG_MEAN, std=config.IMG_STD)])
+     tv.transforms.Normalize(mean=config.IMGNET_MEAN, std=config.IMGNET_STD)])
 
 # from image file to batched input to a network
 def imread(file_path):

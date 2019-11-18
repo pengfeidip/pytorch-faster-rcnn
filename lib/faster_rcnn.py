@@ -335,7 +335,7 @@ class FasterRCNNTrain(object):
                                      .format((tot_iters - iter_ct) / eta_iters * secs / 60))
                         eta_ct = 0
                         start = time.time()
-                except:
+                except Exception as e:
                     logging.error('Traceback:')
                     logging.error(traceback.format_exc())
                     error_model = osp.join(self.work_dir, 'error_epoch{}_iter{}.pth'.format(
@@ -357,39 +357,47 @@ class FasterRCNNTrain(object):
 
 # turn RCNN output into prediction result
 # apply nms here indepently to each category
+# returned bboxes are in xywh coordinates
 def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
     logging.info('Interpret RCNN output(apply NMS with iou_thr={})'.format(nms_iou))
-    batch_size, num_cates = rcnn_cls_out.shape
+    logging.debug('Rcnn_cls_out: {}'.format(rcnn_cls_out.shape))
+    logging.debug('Rcnn_reg_out: {}'.format(rcnn_reg_out.shape))
+    logging.debug('Number of proposals: {}'.format(len(props)))
 
-    bboxes = []
-    scores = []
-    cates = []
-    for i, cls_out in enumerate(rcnn_cls_out):
-        prop = props[i]
-        max_arg = torch.argmax(cls_out)
-        cate = max_arg.item()
+    batch_size, num_cates = rcnn_cls_out.shape
+    rcnn_cls_soft = torch.softmax(rcnn_cls_out, 1)
+    rcnn_cls_maxarg = torch.argmax(rcnn_cls_soft, 1)
+
+    # put [cate, soft_score, param, adj_bbox] in the list
+    raw_res = []
+
+    for i, soft in enumerate(rcnn_cls_soft):
+        cate = rcnn_cls_maxarg[i]
         if cate == 0:
             continue
-        cates.append(cate)
-        soft = torch.softmax(cls_out, -1)
-        scores.append(soft[cate])
-        bbox_param = rcnn_reg_out[i][cate:cate+4]
-        bboxes.append(region.param2xywh(bbox_param, prop['adj_bbox']))
-    print('pos bboxes:', len(bboxes))
-    bboxes_xyxy = [region.BBox(xywh=bbox).get_xyxy() for bbox in bboxes]
-    keep = torchvision.ops.nms(torch.tensor(bboxes_xyxy), torch.tensor(scores), nms_iou)
-    print('after NMS:', len(keep))
-    print('keep:')
-    ret_bboxes = [bboxes[k] for k in keep]
-    ret_scores = [scores[k] for k in keep]
-    ret_cates  = [cates[k] for k in keep]
-    ious = []
-    for i in range(len(ret_bboxes)):
-        for j in range(i+1, len(ret_bboxes)):
-            ious.append(region.calc_iou(region.BBox(xywh=ret_bboxes[i]),
-                                        region.BBox(xywh=ret_bboxes[j])))
-    print(max(ious), min(ious))
-    return ret_bboxes, ret_scores, ret_cates
+        raw_res.append([cate, soft[cate], rcnn_reg_out[i][cate:cate+4],
+                        props[i]['adj_bbox']])
+    logging.info('Positive bboxes: {}'.format(len(raw_res)))
+    bboxes, scores, cates = [], [], []
+    for cate in range(1, num_cates):
+        cate_res = [tmp for tmp in raw_res if tmp[0]==cate]
+        cur_bboxes_xywh = [region.param2xywh(tmp[2], tmp[3]) for tmp in cate_res]
+        cur_bboxes_xyxy = [region.BBox(xywh=tmp).get_xyxy() for tmp in cur_bboxes_xywh]
+        cur_scores = [tmp[1] for tmp in cate_res]
+        nms_keep = torchvision.ops.nms(torch.tensor(cur_bboxes_xyxy),
+                                       torch.tensor(cur_scores), nms_iou)
+        for keep in nms_keep:
+            bboxes.append(cur_bboxes_xywh[keep])
+            scores.append(cate_res[keep][1])
+            cates.append(cate)
+    logging.info('Positive bboxes after applying NMS to each category independently: {}'\
+                 .format(len(bboxes)))        
+    return bboxes, scores, cates
+    
+def iid_from_name(img_name):
+    if '.' in img_name:
+        return img_name[:img_name.rfind('.')]
+    return img_name
 
 class FasterRCNNTest(object):
     r"""
@@ -397,44 +405,65 @@ class FasterRCNNTest(object):
     """
     def __init__(self,
                  faster_configs,
-                 img_dir,
-                 device):
-        self.img_dir = img_dir
+                 device=torch.device('cpu')):
+        
         self.device = device
         self.faster_configs = faster_configs
         self.faster_rcnn = FasterRCNNModule(**faster_configs)
-        self.dataloader = dataloader
+        
 
-
-    def load_epoch(self, epoch):
-        # TODO
-        saved = osp.join(self.work_dir, ckpt_name(epoch))
-        self.faster_rcnn.load_state_dict(torch.load(saved))
+    def load_ckpt(self, ckpt):
+        self.current_ckpt = ckpt
+        self.faster_rcnn.load_state_dict(torch.load(ckpt))
         self.faster_rcnn.to(self.device)
-
-    def inference(self, img):
+        
+    # inference on a set of images and return coco format json, but only return bbox results
+    # {'image_id', 'bbox', 'score', 'category_id'}
+    def inference(self, dataloader, min_score=-1):
+        coco_json = {
+            'images': [],
+            'annotations': []
+        }
+        img_id, cate_id = 0, 0
         self.faster_rcnn.eval_mode()
-        trans = self.dataloader.dataset.transform
-        img = Image.open(img)
-        img_data = trans(img).unsqueeze(0)
-        img_data = img_data.to(self.device)
+        for img_data, amp, img_name, img_w, img_h in dataloader:
+            amp = amp.item()
+            img_name = img_name[0]
+            img_w, img_h = img_w.item(), img_h.item()
+
+            img_json = {
+                'id': img_id,
+                'width': img_w,
+                'height': img_h,
+                'file_name': img_name,
+            }
+            coco_json['images'].append(img_json)            
+            bboxes_xywh, scores, categories = self.inference_one(img_data)
+            for i, bbox in enumerate(bboxes_xywh):
+                score = scores[i].item()
+                if score < min_score:
+                    continue
+                bbox = [coor/amp for coor in bbox]
+                
+                coco_json['annotations'].append({
+                    'id': cate_id,
+                    'image_id':img_id,
+                    'bbox':bbox,
+                    'score':score,
+                    'category_id':categories[i]
+                })
+                cate_id += 1
+            img_id += 1
+        return coco_json
+
+
+    def inference_one(self, img_data):
+        img_data = img_data.to(device=self.device)
         rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out,\
             anchor_targets, props, props_targets = self.faster_rcnn(img_data, None)
-        print('rpn_cls_out.shape:', rpn_cls_out.shape)
-        print('rpn_reg_out.shape:', rpn_reg_out.shape)
-        print('rcnn_cls_out.shape:', rcnn_cls_out.shape)
-        print('rcnn_reg_out.shape:', rcnn_reg_out.shape)
-        print('props:', len(props))
-        print('props[0]:', props[0])
-        print('Next interpret the rcnn results')
-        bboxes, scores, cates = interpret_rcnn_output(rcnn_cls_out,
-                                                      rcnn_reg_out, props,
-                                                      self.faster_rcnn.test_props_nms_iou)
-        resize_rat = img_data.shape[2] / img.height
-        print('resize rat:', resize_rat)
-        bboxes = [[i/resize_rat for i in bbox] for bbox in bboxes]
-        for i, bbox in enumerate(bboxes):
-            print(bbox, scores[i], cates[i])
-        
-        
-    pass
+        bboxes, scores, categories = interpret_rcnn_output(rcnn_cls_out,
+                                                           rcnn_reg_out,
+                                                           props,
+                                                           self.faster_rcnn.test_props_nms_iou)
+        return bboxes, scores, categories
+

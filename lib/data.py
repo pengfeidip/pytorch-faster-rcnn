@@ -1,5 +1,5 @@
 import torch
-import sys, os, warnings, json
+import sys, os, warnings, json, glob
 import os.path as osp
 import torchvision as tv
 
@@ -52,15 +52,38 @@ class ResizeFasterInput(object):
 # ToTensor and Normalize only
 BASIC_TRANSFORM = tv.transforms.Compose(
     [tv.transforms.ToTensor(),
-     tv.transforms.Normalize(mean=config.IMG_MEAN, std=config.IMG_STD)])
+     tv.transforms.Normalize(mean=config.IMGNET_MEAN, std=config.IMGNET_STD)])
 
 # Resize input image to Faster RCNN acceptable sizes
-def faster_transform(longer, shorter):
+def faster_transform(longer, shorter, mean=config.IMGNET_MEAN, std=config.IMGNET_STD):
     return tv.transforms.Compose([
         ResizeFasterInput(longer, shorter),
         tv.transforms.ToTensor(),
-        tv.transforms.Normalize(mean=config.IMG_MEAN, std=config.IMG_STD)
+        tv.transforms.Normalize(mean=mean, std=std)
     ])
+
+class ImageDataset(torch.utils.data.Dataset):
+    r"""
+    This is for testing images
+    """
+    def __init__(self, img_dir, transform=BASIC_TRANSFORM):
+        super(ImageDataset, self).__init__()
+        self.img_dir = osp.realpath(img_dir)
+        self.transform = transform
+        self.imgs = glob.glob(osp.join(self.img_dir, '*'))
+
+    def __len__(self):
+        return len(self.imgs)
+
+    def __getitem__(self, i):
+        img_loc = self.imgs[i]
+        img_name = osp.basename(img_loc)
+        img = Image.open(img_loc)
+        img_w, img_h = img.width, img.height
+        img_resized = self.transform(img)
+        h2, w2 = img_resized.shape[-2:]
+        w_amp, h_amp = w2/img_w, h2/img_h
+        return img_resized, w_amp, img_name, img_w, img_h
 
 class CocoDetDataset(torch.utils.data.Dataset):
     r"""

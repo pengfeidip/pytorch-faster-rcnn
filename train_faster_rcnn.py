@@ -36,10 +36,13 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
     config = args.config
-    dataset = data.CocoDetDataset(config['train_data_cfg']['img_dir'],
-                                  config['train_data_cfg']['json'],
-                                  transform=data.faster_transform(*config['train_data_cfg']['img_size']))
-    dataloader = torch.utils.data.DataLoader(dataset, **config['train_data_cfg']['loader_cfg'])
+    train_data_cfg = config.train_data_cfg
+    dataset = data.CocoDetDataset(train_data_cfg.img_dir,
+                                  train_data_cfg.json,
+                                  transform=data.faster_transform(
+                                      *train_data_cfg.img_size,
+                                      **train_data_cfg.img_norm))
+    dataloader = torch.utils.data.DataLoader(dataset, **train_data_cfg.loader_cfg)
 
     train_cfg = config['train_cfg']
     train_cfg['faster_configs'] = config['model']
@@ -51,17 +54,19 @@ def main():
     train_cfg['device'] = device
     
     trainer = faster_rcnn.FasterRCNNTrain(**train_cfg)
+    # do not start to log until logging.basicConfig is set
     logging.info('Work dir: {}'.format(args.work_dir))
     logging.info('Config: {}'.format(args.config_file))
     logging.info('Seed: {}'.format(args.seed))
     logging.info('GPU: {}'.format(args.gpu))
+    logging.info('Image size: {}'.format(train_data_cfg.img_size))
+    logging.info('Image norm: {}'.format(train_data_cfg.img_norm))
 
     trainer.init_module()
     if args.resume_from is not None:
         trainer.resume_from(args.resume_from)
     
     trainer.train()
-    
     
     
 
