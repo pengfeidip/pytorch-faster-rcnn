@@ -53,6 +53,7 @@ class RCNN(nn.Module):
         super(RCNN, self).__init__()
         # in_features is 128 x 512 x 7 x 7 where 128 is batch size
         # TO-DO: initialize fc layers with fc layers in VGG16
+        self.bn = nn.BatchNorm2d(512)
         self.fc1 = nn.Linear(512*7*7, 4096)
         if fc1_state_dict is not None:
             self.fc1.load_state_dict(fc1_state_dict)
@@ -73,8 +74,9 @@ class RCNN(nn.Module):
         if roi_batch is None or len(roi_batch) == 0:
             return None, None
         batch_size = roi_batch.shape[0]
+        x = self.bn(roi_batch)
         # flatten input rois
-        x = roi_batch.view(batch_size, -1)
+        x = x.view(batch_size, -1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         return self.classifier(x), self.regressor(x)
