@@ -221,7 +221,9 @@ class AnchorTargetCreator(object):
                     max_iou = iou
                     max_anchor = anchor
                 if iou >= self.pos_iou:
+                    # for debug, do not consider 0.7 iou 
                     large_iou_anchors.append([iou, anchor])
+                    pass
             # first add the anchor of max iou to the positive target list
             pos_targets.append({
                 'anchor': max_anchor,
@@ -354,7 +356,8 @@ class ProposalCreator(object):
             adjustment = rpn_reg_res[0, anchor_idx*4:anchor_idx*4 + 4,
                                    feat_loc_i, feat_loc_j]
             # need to apply softmax to get the real score
-            obj_score = torch.softmax(objectness, dim=0)[1].item()
+            obj_soft = torch.softmax(objectness, dim=0)
+            obj_score = obj_soft[1].item()
             adj_bbox  = param2xywh(adjustment, anchor_bbox)
             is_finite = True
             for n in adj_bbox:

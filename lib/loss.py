@@ -67,6 +67,7 @@ class RCNNLoss(object):
     def __call__(self, cls_out, reg_out, props_targets):
         if cls_out is None or reg_out is None:
             # return an isolated tensor meaning no training is involved
+            logging.warning('RCNN does not have proposed regions to train.')
             return torch.tensor(0)
         device = cls_out.device
         cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
@@ -92,6 +93,8 @@ class RCNNLoss(object):
             gt_params_tsr = torch.tensor(gt_params, device=device)
             if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
                 reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
+        else:
+            logging.warning('RCNN regression training is zero, this is probably because no matched positive anchors are present.')    
         logging.debug('rcnn_cls_loss: {}'.format(cls_loss.item()))
         logging.debug('rcnn_reg_loss: {}'.format(reg_loss.item()))
         return cls_loss + self.lamb * reg_loss

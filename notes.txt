@@ -37,3 +37,7 @@ DEBUG:
 ** 191118: Plotted the result, the issue is that there are multiple high confident bbox prediction
 around a true object. It seems like the classification is more or less close, location is more or less close, but there are multiple repeated prediction around a true object.
 1, first try: add BN to input of RCNN, use data image normal(VOC2007)
+
+** 191119: Above try does not work, the mAP is close to 1%, which indicates something is seriously
+wront. Next try:
+1, RPN cls loss check.
