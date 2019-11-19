@@ -426,34 +426,37 @@ class FasterRCNNTest(object):
         }
         img_id, cate_id = 0, 0
         self.faster_rcnn.eval_mode()
-        for img_data, amp, img_name, img_w, img_h in dataloader:
-            amp = amp.item()
-            img_name = img_name[0]
-            img_w, img_h = img_w.item(), img_h.item()
+        logging.info('Start to inference images({}).'.format(len(dataloader)))
+        with torch.no_grad():
+            for img_data, amp, img_name, img_w, img_h in dataloader:
+                logging.info('Inference image id: {}'.format(img_id))
+                amp = amp.item()
+                img_name = img_name[0]
+                img_w, img_h = img_w.item(), img_h.item()
 
-            img_json = {
-                'id': img_id,
-                'width': img_w,
-                'height': img_h,
-                'file_name': img_name,
-            }
-            coco_json['images'].append(img_json)            
-            bboxes_xywh, scores, categories = self.inference_one(img_data)
-            for i, bbox in enumerate(bboxes_xywh):
-                score = scores[i].item()
-                if score < min_score:
-                    continue
-                bbox = [coor/amp for coor in bbox]
+                img_json = {
+                    'id': img_id,
+                    'width': img_w,
+                    'height': img_h,
+                    'file_name': img_name,
+                }
+                coco_json['images'].append(img_json)            
+                bboxes_xywh, scores, categories = self.inference_one(img_data)
+                for i, bbox in enumerate(bboxes_xywh):
+                    score = scores[i].item()
+                    if score < min_score:
+                        continue
+                    bbox = [coor/amp for coor in bbox]
                 
-                coco_json['annotations'].append({
-                    'id': cate_id,
-                    'image_id':img_id,
-                    'bbox':bbox,
-                    'score':score,
-                    'category_id':categories[i]
-                })
-                cate_id += 1
-            img_id += 1
+                    coco_json['annotations'].append({
+                        'id': cate_id,
+                        'image_id':img_id,
+                        'bbox':bbox,
+                        'score':score,
+                        'category_id':categories[i]
+                    })
+                    cate_id += 1
+                img_id += 1
         return coco_json
 
 

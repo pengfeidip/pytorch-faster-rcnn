@@ -1,5 +1,6 @@
 import torch
 from . import region
+import logging
 
 """
 targets is a list of 256 pairs of anchor and gt_bbox, which is a 
@@ -54,6 +55,8 @@ class RPNLoss(object):
         sm_loss = torch.nn.SmoothL1Loss()
         if reg_out_tsr.numel() != 0 and reg_params_tsr.numel() != 0:
             reg_loss = sm_loss(reg_out_tsr, reg_params_tsr)
+        logging.debug('rpn_cls_loss: {}'.format(cls_loss.item()))
+        logging.debug('rpn_reg_loss: {}'.format(reg_loss.item()))
         return cls_loss + self.lamb * reg_loss
         
         
@@ -89,6 +92,8 @@ class RCNNLoss(object):
             gt_params_tsr = torch.tensor(gt_params, device=device)
             if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
                 reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
+        logging.debug('rcnn_cls_loss: {}'.format(cls_loss.item()))
+        logging.debug('rcnn_reg_loss: {}'.format(reg_loss.item()))
         return cls_loss + self.lamb * reg_loss
 
 

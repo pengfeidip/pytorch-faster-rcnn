@@ -38,13 +38,13 @@ model = dict(
 
 
 train_cfg = dict(
-    max_epochs=12,
+    max_epochs=20,
     optim=torch.optim.SGD,
-    optim_kwargs=dict(lr=0.001,momentum=0.9,weight_decay=0.0005),
+    optim_kwargs=dict(lr=0.00005,momentum=0.9,weight_decay=0.0005),
     rpn_loss_lambda=10.0,
     rcnn_loss_lambda=10.0,
     loss_lambda=1.0,
-    log_file='train_first_12epochs.log',
+    log_file='train_resume_from_15.log',
     log_level=logging.DEBUG,
     device=torch.device('cpu')
 )
