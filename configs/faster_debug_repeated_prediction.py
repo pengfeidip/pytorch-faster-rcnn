@@ -4,7 +4,7 @@ import logging
 
 # often changed configs
 LR = 0.0005
-MAX_EPOCHS = 20
+MAX_EPOCHS = 2
 
 train_data_cfg = dict(
     img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages',
