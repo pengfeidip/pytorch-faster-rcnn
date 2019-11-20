@@ -1,6 +1,6 @@
 import torch, torchvision
 import torch.nn as nn
-import copy, random
+import copy, random, logging
 import numpy as np
 import time, sys, os
 import os.path as osp
@@ -424,7 +424,6 @@ class ProposalTargetCreator(object):
         pos_targets = pos_targets[:self.max_pos]
         random.shuffle(neg_targets)
         neg_targets = neg_targets[:self.max_targets - len(pos_targets)]
-            
         return pos_targets + neg_targets
 
 # conversion btw bbox in image and in feature map
@@ -486,11 +485,19 @@ class ROICropping(object):
             adj_bbox = prop['adj_bbox']
             feat_bbox = image2feature(img_size, feat_size, adj_bbox)
             adj_x, adj_y, adj_w, adj_h = feat_bbox
+            if adj_x < 0 or adj_y < 0:
+                logging.warning('Encounter negative adjustment bbox '
+                                'boundaries: {},{},{},{}, gt_label: {}'\
+                                .format(adj_x, adj_y, adj_w, adj_h,
+                                        prop['gt_label'] if 'gt_label' in prop else None))
             # odd that round does not always returns integers
+            # it happens left or upper bound of the proposal is out of the boundaries of
+            # the image (i.e. <0), and mostly they are background proposals.
+            # in this case, only crop the overlapped part.
             crop = feature[:,
                            :,
-                           int(round(adj_y)):int(round(adj_y+adj_h)),
-                           int(round(adj_x)):int(round(adj_x+adj_w))]
+                           max(0, int(round(adj_y))):int(round(adj_y+adj_h)),
+                           max(0, int(round(adj_x))):int(round(adj_x+adj_w))]
             # get rid of zero size feature crops
             # this may happen if adjusted bbox is out of image bounds
             # TODO: do we use a little piece next to the boundary instead of

@@ -375,7 +375,7 @@ def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
         cate = rcnn_cls_maxarg[i]
         if cate == 0:
             continue
-        raw_res.append([cate, soft[cate], rcnn_reg_out[i][cate:cate+4],
+        raw_res.append([cate, props[i]['obj_score'], rcnn_reg_out[i][cate:cate+4],
                         props[i]['adj_bbox']])
     logging.info('Positive bboxes: {}'.format(len(raw_res)))
     bboxes, scores, cates = [], [], []
@@ -391,7 +391,7 @@ def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
             scores.append(cate_res[keep][1])
             cates.append(cate)
     logging.info('Positive bboxes after applying NMS to each category independently: {}'\
-                 .format(len(bboxes)))        
+                 .format(len(bboxes)))
     return bboxes, scores, cates
     
 def iid_from_name(img_name):
@@ -443,7 +443,7 @@ class FasterRCNNTest(object):
                 coco_json['images'].append(img_json)            
                 bboxes_xywh, scores, categories = self.inference_one(img_data)
                 for i, bbox in enumerate(bboxes_xywh):
-                    score = scores[i].item()
+                    score = scores[i]
                     if score < min_score:
                         continue
                     bbox = [coor/amp for coor in bbox]

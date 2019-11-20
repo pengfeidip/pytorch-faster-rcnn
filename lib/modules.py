@@ -79,6 +79,8 @@ class RCNN(nn.Module):
         x = x.view(batch_size, -1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        return self.classifier(x), self.regressor(x)
+        cls_out = self.classifier(x)
+        reg_out = self.regressor(x)
+        return cls_out, reg_out
 
 

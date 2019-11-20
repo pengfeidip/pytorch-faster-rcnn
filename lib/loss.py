@@ -67,7 +67,7 @@ class RCNNLoss(object):
     def __call__(self, cls_out, reg_out, props_targets):
         if cls_out is None or reg_out is None:
             # return an isolated tensor meaning no training is involved
-            logging.warning('RCNN does not have proposed regions to train.')
+            logging.warning('RCNN does not have proposed regions to train, this is probably due to too-small proposals by RPN.')
             return torch.tensor(0)
         device = cls_out.device
         cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
@@ -87,6 +87,7 @@ class RCNNLoss(object):
             gt_bbox = tar['gt_bbox']
             pos_reg_out.append(reg_out[i][category*4:(category+1)*4])
             gt_params.append(region.xywh2param(gt_bbox.get_xywh(), adj_bbox))
+            
             
         if len(gt_params) != 0:
             pos_reg_out_tsr = torch.stack(pos_reg_out)

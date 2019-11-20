@@ -1,4 +1,5 @@
 lib/__pycache__/
+configs/__pycache__/
 test/*.pth
 test/train_1epoch_cuda.stdout
 test/train_one_image_adam4.txt	
