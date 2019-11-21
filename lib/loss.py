@@ -67,7 +67,8 @@ class RCNNLoss(object):
     def __call__(self, cls_out, reg_out, props_targets):
         if cls_out is None or reg_out is None:
             # return an isolated tensor meaning no training is involved
-            logging.warning('RCNN does not have proposed regions to train, this is probably due to too-small proposals by RPN.')
+            logging.warning('RCNN does not have proposed regions to train, '
+                            'this is probably due to too-small proposals by RPN.')
             return torch.tensor(0)
         device = cls_out.device
         cls_loss, reg_loss = torch.tensor(0), torch.tensor(0)
@@ -85,8 +86,10 @@ class RCNNLoss(object):
             adj_bbox = tar['adj_bbox']
             category = tar['category']
             gt_bbox = tar['gt_bbox']
-            pos_reg_out.append(reg_out[i][category*4:(category+1)*4])
-            gt_params.append(region.xywh2param(gt_bbox.get_xywh(), adj_bbox))
+            reg_out_i = reg_out[i][category*4:(category+1)*4]
+            pos_reg_out.append(reg_out_i)
+            gt_param = region.xywh2param(gt_bbox.get_xywh(), adj_bbox)
+            gt_params.append(gt_param)
             
             
         if len(gt_params) != 0:
@@ -95,7 +98,8 @@ class RCNNLoss(object):
             if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
                 reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr)
         else:
-            logging.warning('RCNN regression training is zero, this is probably because no matched positive anchors are present.')    
+            logging.warning('RCNN regression training is zero, this is probably '
+                            'due to no matched positive anchors are present.')    
         logging.debug('rcnn_cls_loss: {}'.format(cls_loss.item()))
         logging.debug('rcnn_reg_loss: {}'.format(reg_loss.item()))
         return cls_loss + self.lamb * reg_loss
