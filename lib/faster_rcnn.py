@@ -442,12 +442,12 @@ class FasterRCNNTest(object):
                 }
                 coco_json['images'].append(img_json)            
                 bboxes_xywh, scores, categories = self.inference_one(img_data)
+                bbox_ct = 0
                 for i, bbox in enumerate(bboxes_xywh):
                     score = scores[i]
                     if score < min_score:
                         continue
                     bbox = [coor/amp for coor in bbox]
-                
                     coco_json['annotations'].append({
                         'id': cate_id,
                         'image_id':img_id,
@@ -455,7 +455,9 @@ class FasterRCNNTest(object):
                         'score':score,
                         'category_id':categories[i]
                     })
+                    bbox_ct += 1
                     cate_id += 1
+                logging.info('{} bbox predictions for image: {}'.format(bbox_ct, img_name))
                 img_id += 1
         return coco_json
 

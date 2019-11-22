@@ -61,6 +61,7 @@ def main():
     logging.info('GPU: {}'.format(args.gpu))
     logging.info('Image size: {}'.format(train_data_cfg.img_size))
     logging.info('Image norm: {}'.format(train_data_cfg.img_norm))
+    logging.info('Configuration details: {}'.format(config))
 
     trainer.init_module()
     if args.resume_from is not None:

@@ -130,13 +130,11 @@ class CocoDetDataset(torch.utils.data.Dataset):
         self.img_ids = list(anno_imgs.keys())
         
     def __len__(self):
-        # for debug: train one image
-        return 200
-    #return len(self.img_ids)
+        return len(self.img_ids)
 
     def __getitem__(self, i):
         # for debug: train one image
-        i = 1234
+        # i = 1234
         iid = self.img_ids[i]
         fname = self.anno_imgs[iid]
         img_loc = osp.join(self.img_dir, fname)
