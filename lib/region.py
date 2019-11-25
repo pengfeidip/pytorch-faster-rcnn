@@ -165,7 +165,7 @@ class AnchorGenerator(object):
                 i_center = grid_dist_h/2 + grid_dist_h*i
                 j_center = grid_dist_w/2 + grid_dist_w*j
                 for scale_idx, scale in enumerate(self.scales):
-                    for ar_idx, ar in enumerate(self.aspect_ratios):
+                    for ar_idx, ar in enumerate(self.aspect_ratios_sqrt):
                         anchor = {
                             'center': Point(y=i_center, x=j_center),
                             'feat_loc': Point(y=i, x=j),
@@ -225,13 +225,14 @@ class AnchorTargetCreator(object):
                     large_iou_anchors.append([iou, anchor])
                     pass
             # first add the anchor of max iou to the positive target list
-            pos_targets.append({
-                'anchor': max_anchor,
-                'gt_bbox': gt_bbox,
-                'gt_label': 1,
-                'category': category,
-                'iou': max_iou
-            })
+            if max_anchor is not None:
+                pos_targets.append({
+                    'anchor': max_anchor,
+                    'gt_bbox': gt_bbox,
+                    'gt_label': 1,
+                    'category': category,
+                    'iou': max_iou
+                })
             # sort the anchors of iou larger than pos_iou by iou
             large_iou_anchors = sorted(large_iou_anchors, key=lambda x: x[0], reverse=True)
             # look down the list and add anchor that is not the max anchor to
@@ -248,7 +249,7 @@ class AnchorTargetCreator(object):
         # limit the positive targets to max_pos
         pos_targets = pos_targets[:self.max_pos]
         # record positive anchors so that they do not get to be choosen as negative later.
-        pos_anchor_ids = set((x['anchor']['id'] for x in pos_targets))
+        pos_anchor_ids = set([x['anchor']['id'] for x in pos_targets])
         # to find negative targets for training
         max_neg = self.max_targets - len(pos_targets)
         neg_targets = []
@@ -390,11 +391,12 @@ class ProposalTargetCreator(object):
     From selected ROIs(around 2000, by ProposalCreator), 
     choose 128 samples for training Head.
     """
-    def __init__(self, max_pos=32, max_targets=128, pos_iou=0.5, neg_iou=0.1):
+    def __init__(self, max_pos=32, max_targets=128, pos_iou=0.5, neg_iou_hi=0.5, neg_iou_lo=0.1):
         self.max_pos = max_pos
         self.max_targets = max_targets
         self.pos_iou = pos_iou
-        self.neg_iou = neg_iou
+        self.neg_iou_hi = neg_iou_hi
+        self.neg_iou_lo = neg_iou_lo
 
     # proposal keys: 'bbox', 'center', 'feat_loc', 'scale_idx', 'ar_idx', 'id', 'obj_score',
     # 'adj_bbox'.
@@ -414,7 +416,7 @@ class ProposalTargetCreator(object):
                     prop['iou'] = iou
                     pos_targets.append(prop)
                 max_iou = max(max_iou, iou)
-            if max_iou <= self.neg_iou:
+            if max_iou < self.neg_iou_hi and max_iou >= self.neg_iou_lo:
                 prop['gt_bbox'] = None
                 prop['gt_label'] = 0
                 prop['category'] = 0

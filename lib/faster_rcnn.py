@@ -31,7 +31,8 @@ class FasterRCNNModule(nn.Module):
                  test_props_post_nms=300,
                  test_props_nms_iou=0.5,
                  props_pos_iou=0.5,
-                 props_neg_iou=0.1,
+                 props_neg_iou_hi=0.5,
+                 props_neg_iou_lo=0.1,
                  props_max_pos=32,
                  props_max_targets=128,
                  roi_pool_size=FASTER_ROI_POOL_SIZE,
@@ -52,7 +53,8 @@ class FasterRCNNModule(nn.Module):
         self.test_props_post_nms=test_props_post_nms
         self.test_props_nms_iou=test_props_nms_iou
         self.props_pos_iou=props_pos_iou
-        self.props_neg_iou=props_neg_iou
+        self.props_neg_iou_hi=props_neg_iou_hi
+        self.props_neg_iou_lo=props_neg_iou_lo
         self.props_max_pos=props_max_pos
         self.props_max_targets=props_max_targets
         self.roi_pool_size=roi_pool_size
@@ -70,7 +72,13 @@ class FasterRCNNModule(nn.Module):
             self.test_props_pre_nms,
             self.test_props_post_nms,
             self.test_props_nms_iou)
-        self.props_target_gen = region.ProposalTargetCreator()
+        self.props_target_gen = region.ProposalTargetCreator(
+            max_pos=self.props_max_pos,
+            max_targets=self.props_max_targets,
+            pos_iou=self.props_pos_iou,
+            neg_iou_hi=self.props_neg_iou_hi,
+            neg_iou_lo=self.props_neg_iou_lo
+        )
         self.roi_crop = region.ROICropping()
         self.roi_pool = region.ROIPooling(output_size=roi_pool_size)
         # next init networks
@@ -206,6 +214,7 @@ class FasterRCNNTrain(object):
                  max_epochs,
                  optim=torch.optim.SGD,
                  optim_kwargs=dict(lr=0.001,momentum=0.9,weight_decay=0.0005),
+                 lr_scheduler=None,
                  rpn_loss_lambda=10.0,
                  rcnn_loss_lambda=10.0,
                  loss_lambda=1.0,
@@ -224,6 +233,7 @@ class FasterRCNNTrain(object):
         assert osp.isdir(work_dir), 'work_dir not exists: {}'.format(work_dir)
         self.optim = optim
         self.optim_kwargs = optim_kwargs
+        self.lr_scheduler=lr_scheduler
 
         # set logging
         self.log_file = log_file
@@ -296,6 +306,8 @@ class FasterRCNNTrain(object):
         
         rpnloss = rpn_loss(rpn_cls_out, rpn_reg_out, anchor_targets)
         rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
+        rpnloss.to(device=self.device)
+        rcnnloss = rcnnloss.to(device=self.device)
         combloss = rpnloss + self.loss_lambda * rcnnloss
         logging.info('RPN loss: {}'.format(rpnloss.item()))
         logging.info('RCNN loss: {}'.format(rcnnloss.item()))
@@ -304,11 +316,8 @@ class FasterRCNNTrain(object):
         optimizer.step()
 
     def train(self):
-        optimizer = self.optim(self.faster_rcnn.parameters(),
-                               **(self.optim_kwargs))
         logging.info('Start a new round of training, start with epoch {}'\
                      .format(self.current_epoch))
-        logging.info('Optimizer: {}'.format(optimizer))
         rpn_loss = loss.RPNLoss(self.faster_rcnn.anchor_gen, self.rpn_loss_lambda)
         rcnn_loss = loss.RCNNLoss(self.rcnn_loss_lambda)
         self.faster_rcnn.to(device=self.device)
@@ -322,7 +331,12 @@ class FasterRCNNTrain(object):
         start = time.time()
         
         for epoch in range(self.current_epoch, self.max_epochs+1):
-            logging.info('Start to train epoch: {}.'.format(epoch))
+            if self.lr_scheduler is not None:
+                self.optim_kwargs['lr'] = self.lr_scheduler(epoch)
+            optimizer = self.optim(self.faster_rcnn.parameters(),
+                                  **(self.optim_kwargs))
+            logging.info('Start to train epoch: {} using lr: {}.'.format(epoch,
+                                                                         self.optim_kwargs['lr']))
             for iter_i, train_data in enumerate(self.dataloader):
                 # train one image
                 try:

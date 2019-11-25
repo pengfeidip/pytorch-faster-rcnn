@@ -3,7 +3,7 @@ import logging
 
 
 # often changed configs
-LR = 0.0001
+LR = None
 MAX_EPOCHS = 20
 
 train_data_cfg = dict(
@@ -11,7 +11,7 @@ train_data_cfg = dict(
     json='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval.json',
     img_size=(1000,600),
     img_norm=dict(mean=[0.390, 0.423, 0.446], std=[0.282, 0.270, 0.273]),
-    loader_cfg=dict(batch_size=1, num_workers=2, shuffle=False),
+    loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
 )
 
 test_data_cfg = dict(
@@ -19,10 +19,12 @@ test_data_cfg = dict(
     loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
 )
 
+
+
 model = dict(
     num_classes=20,
     anchor_scales=[128, 256, 512],
-    anchor_aspect_ratios=[1.0, 0.5, 2.0], 
+    anchor_aspect_ratios=[1.0, 0.5, 2.0],
     anchor_pos_iou=0.7,
     anchor_neg_iou=0.3,
     anchor_max_pos=128,
@@ -34,7 +36,8 @@ model = dict(
     test_props_post_nms=300,
     test_props_nms_iou=0.5,
     props_pos_iou=0.5,
-    props_neg_iou=0.1,
+    props_neg_iou_hi=0.5,
+    props_neg_iou_lo=0.1,
     props_max_pos=32,
     props_max_targets=128,
     roi_pool_size=(7, 7),
@@ -49,7 +52,8 @@ train_cfg = dict(
     rpn_loss_lambda=1.0,
     rcnn_loss_lambda=1.0,
     loss_lambda=1.0,
-    log_file='train_after_12epochs.log',
+    log_file='train_20epochs.log',
+    lr_scheduler=lambda e : 0.001 if e <=12 else 0.0001,
     log_level=logging.DEBUG,
     device=torch.device('cpu')
 )
