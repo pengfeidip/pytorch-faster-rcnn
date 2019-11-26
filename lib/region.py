@@ -211,7 +211,7 @@ class AnchorTargetCreator(object):
         pos_targets = []
         
         for gt_bbox, category in zip(ground_truth.bboxes, ground_truth.categories):
-            max_iou = -1
+            max_iou = 0
             max_anchor = None
             large_iou_anchors = []
             for anchor in anchors:
@@ -233,6 +233,8 @@ class AnchorTargetCreator(object):
                     'category': category,
                     'iou': max_iou
                 })
+            else:
+                logging.warning('GT bbox {} does not overlap with any anchors!'.format(gt_bbox))
             # sort the anchors of iou larger than pos_iou by iou
             large_iou_anchors = sorted(large_iou_anchors, key=lambda x: x[0], reverse=True)
             # look down the list and add anchor that is not the max anchor to
@@ -270,6 +272,9 @@ class AnchorTargetCreator(object):
                     'category': None,
                     'iou': max_iou
                 })
+        logging.info('AnchorTargetCreator selected {} postive anchors '
+                     'and {} negative anchors to train RPN'.
+                     format(len(pos_targets), len(neg_targets)))
         return pos_targets + neg_targets
 
 
@@ -315,6 +320,14 @@ def apply_nms(anchors, score_map, bbox_map, iou_thr):
     keep = torchvision.ops.nms(bboxes, scores, iou_thr)
     ret_val = [anchors[i] for i in keep.numpy()]
     return ret_val
+
+# constrain a proposal to be within the image size
+def constrain_proposal(props, img_size):
+    x1,y1,x2,y2 = props.get_xyxy()
+    img_h, img_w = img_size
+    res = BBox(xyxy=(max(0, x1), max(0, y1), min(img_w, x2), min(img_h, y2)))
+    return res
+
 
 class ProposalCreator(object):
     r"""
@@ -370,21 +383,41 @@ class ProposalCreator(object):
 
             # next put extra information to anchor
             anchor['obj_score'] = obj_score
-            anchor['adj_bbox']  = BBox(xywh=adj_bbox)
+            anchor['adj_bbox'] = BBox(xywh=adj_bbox)
+            #anchor['adj_bbox'] = constrain_proposal(BBox(xywh=adj_bbox), img_size)
             processed.append(anchor)
+        logging.info('ProposalCreator selected {} anchors with coordinated '
+                     'adjusted from {} anchors'.format(len(processed), len(anchors)))
         return processed
-
+    # the filter process does:
+    #   1, filter adj_bboxes having 0 IOU with image size
+    #   2, constrain adj_bboxes within image
+    #   3, filter by score
+    #   4, apply NMS followed by a filter by number
     def proposals_filtered(self, rpn_cls_res, rpn_reg_res, img_size, grid):
         assert self.max_by_score > 0 and self.max_after_nms > 0
         props = self.proposals(rpn_cls_res, rpn_reg_res, img_size, grid)
-        props.sort(key=lambda x: x['obj_score'], reverse=True)
-        props = props[:self.max_by_score]
+        props_filt = []
+        img_bbox = BBox(xywh=(0.0, 0.0, img_size[1], img_size[0]))
+        for prop in props:
+            if calc_iou(prop['adj_bbox'], img_bbox) == 0:
+                continue
+            prop['adj_bbox'] = constrain_proposal(prop['adj_bbox'], img_size)
+            props_filt.append(prop)
+        logging.info('ProposalCreator filtered {} adj_bboxes having IOU 0 with image'.
+                     format(len(props)-len(props_filt)))
+            
+        props_filt.sort(key=lambda x: x['obj_score'], reverse=True)
+        props = props_filt[:self.max_by_score]
         props_nms = apply_nms(
             props,
             score_map=lambda x: x['obj_score'],
-            bbox_map=lambda x: x['bbox'],
+            bbox_map=lambda x: x['adj_bbox'],
             iou_thr=self.nms_iou)
-        return props_nms[:self.max_after_nms]
+        props_nms = props_nms[:self.max_after_nms] 
+        logging.info('ProposalCreator selected {} anchors after filter by score '
+                     'and NMS'.format(len(props_nms)))
+        return props_nms
     
 class ProposalTargetCreator(object):
     r"""
@@ -426,6 +459,8 @@ class ProposalTargetCreator(object):
         pos_targets = pos_targets[:self.max_pos]
         random.shuffle(neg_targets)
         neg_targets = neg_targets[:self.max_targets - len(pos_targets)]
+        logging.info('ProposalTargetCreator selected {} positive and {} '
+                     'negative targets to train RCNN'.format(len(pos_targets), len(neg_targets)))
         return pos_targets + neg_targets
 
 # conversion btw bbox in image and in feature map
@@ -483,6 +518,7 @@ class ROICropping(object):
         img_h, img_w = img_size
         feat_size = feature.shape[-2:]
         crops, props = [], []
+        pos_crops, neg_crops, test_crops = 0, 0, 0
         for prop in proposals:
             adj_bbox = prop['adj_bbox']
             feat_bbox = image2feature(img_size, feat_size, adj_bbox)
@@ -508,6 +544,14 @@ class ROICropping(object):
                 continue
             crops.append(crop)
             props.append(prop)
+            if 'gt_label' not in prop:
+                test_crops += 1
+            elif prop['gt_label'] == 1:
+                pos_crops += 1
+            elif prop['gt_label'] == 0:
+                neg_crops += 1
+        logging.info('ROICropping selected {} pos crops, {} neg crops and {} test crops '
+                     'to feed to RCNN.'.format(pos_crops, neg_crops, test_crops))
         return crops, props
 
                             
