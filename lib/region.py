@@ -206,76 +206,90 @@ class AnchorTargetCreator(object):
 
     def targets(self, img_size, grid, ground_truth):
         anchors = [x for x in self.anchor_generator.anchors(img_size, grid)]
-        all_anchor_ids = [x['id'] for x in anchors]
-        # find positive targets for training
+        num_anchors, num_gts = len(anchors), len(ground_truth.bboxes)
+        iou_tab = np.zeros((num_anchors, num_gts), dtype=np.float16)
+        for anchor_idx, anchor in enumerate(anchors):
+            for gt_idx, gt_bbox in enumerate(ground_truth.bboxes):
+                iou_tab[anchor_idx][gt_idx] = calc_iou(anchor['bbox'], gt_bbox)
+        max_anchor = iou_tab.argmax(0)
+        max_gt = iou_tab.argmax(1)
+
+        chosen_anchors = set()
+        neg_anchors = []
         pos_targets = []
-        
-        for gt_bbox, category in zip(ground_truth.bboxes, ground_truth.categories):
-            max_iou = 0
-            max_anchor = None
-            large_iou_anchors = []
-            for anchor in anchors:
-                iou = calc_iou(gt_bbox, anchor['bbox'])
-                xx, yy, ww, hh = anchor['bbox'].get_xywh()
-                if iou > max_iou:
-                    max_iou = iou
-                    max_anchor = anchor
-                if iou >= self.pos_iou:
-                    # for debug, do not consider 0.7 iou 
-                    large_iou_anchors.append([iou, anchor])
-                    pass
-            # first add the anchor of max iou to the positive target list
-            if max_anchor is not None:
+
+        # for each GT, choose anchor having max iou with it, remember not to choose
+        # multiple GTs for the same anchor
+        for gt_idx, anchor_idx in enumerate(max_anchor):
+            if anchor_idx in chosen_anchors:
+                continue
+            max_iou = iou_tab[anchor_idx][gt_idx]
+            if max_iou == 0.0:
+                logging.warning('GT bbox {} does not overlap with any anchor!'\
+                                .format(ground_truth.bboxes[gt_idx]))
+                continue
+            pos_targets.append({
+                'anchor': anchors[anchor_idx],
+                'gt_bbox': ground_truth.bboxes[gt_idx],
+                'gt_label': 1,
+                'category': ground_truth.categories[gt_idx],
+                'iou': max_iou
+            })
+            chosen_anchors.add(anchor_idx)
+
+        # choose anchors whose max iou with GT is larger than self.pos_iou as pos anchors
+        # save ids of anchors whos max iou with GT is less than self.pos_iou as neg anchors
+        for anchor_idx, gt_idx in enumerate(max_gt):
+            if anchor_idx in chosen_anchors:
+                continue
+            max_iou = iou_tab[anchor_idx][gt_idx]
+            if max_iou >= self.pos_iou:
                 pos_targets.append({
-                    'anchor': max_anchor,
-                    'gt_bbox': gt_bbox,
+                    'anchor': anchors[anchor_idx],
+                    'gt_bbox': ground_truth.bboxes[gt_idx],
                     'gt_label': 1,
-                    'category': category,
+                    'category': ground_truth.categories[gt_idx],
                     'iou': max_iou
                 })
+                chosen_anchors.add(anchor_idx)
+            elif max_iou < self.neg_iou:
+                neg_anchors.append([anchor_idx, max_iou])
+                chosen_anchors.add(anchor_idx)
             else:
-                logging.warning('GT bbox {} does not overlap with any anchors!'.format(gt_bbox))
-            # sort the anchors of iou larger than pos_iou by iou
-            large_iou_anchors = sorted(large_iou_anchors, key=lambda x: x[0], reverse=True)
-            # look down the list and add anchor that is not the max anchor to
-            # the positive target list
-            for iou, anchor in large_iou_anchors:
-                if anchor['id'] != max_anchor['id']:
-                    pos_targets.append({
-                        'anchor': anchor,
-                        'gt_bbox': gt_bbox,
-                        'gt_label': 1,
-                        'category': category,
-                        'iou': iou})
-                    break
-        # limit the positive targets to max_pos
+                pass
+            
+        # the number of neg anchors depend on number of chosen pos anchors
         pos_targets = pos_targets[:self.max_pos]
-        # record positive anchors so that they do not get to be choosen as negative later.
-        pos_anchor_ids = set([x['anchor']['id'] for x in pos_targets])
-        # to find negative targets for training
-        max_neg = self.max_targets - len(pos_targets)
+        num_negs = self.max_targets - len(pos_targets)
+        # randomly choose negative background anchors to train RPN
+        random.shuffle(neg_anchors)
+        neg_anchors = neg_anchors[:num_negs]
         neg_targets = []
-        # shuffle the anchors so that selection of negative targets are random
-        random.shuffle(anchors)
-        for anchor in anchors:
-            if len(neg_targets) >= max_neg:
-                break
-            max_iou = -1.0
-            for gt_bbox in ground_truth.bboxes:
-                iou = calc_iou(gt_bbox, anchor['bbox'])
-                max_iou = max(max_iou, iou)
-            if max_iou < self.neg_iou and anchor['id'] not in pos_anchor_ids:
-                neg_targets.append({
-                    'anchor': anchor,
-                    'gt_bbox': None,
-                    'gt_label': 0,
-                    'category': None,
-                    'iou': max_iou
-                })
+        for neg_anchor_idx, max_iou in neg_anchors:
+            neg_targets.append({
+                'anchor':anchors[neg_anchor_idx],
+                'gt_bbox':None,
+                'gt_label':0,
+                'category': None,
+                'iou': max_iou
+            })
         logging.info('AnchorTargetCreator selected {} postive anchors '
                      'and {} negative anchors to train RPN'.
                      format(len(pos_targets), len(neg_targets)))
-        return pos_targets + neg_targets
+        pos_ious = [tar['iou'] for tar in pos_targets]
+        neg_ious = [tar['iou'] for tar in neg_targets]
+        logging.info('Max and min iou of positive targets: {}, {}'\
+                     .format(max(pos_ious) if len(pos_ious)>0 else None,
+                             min(pos_ious) if len(pos_ious)>0 else None))
+        logging.info('Max and min iou of negative targets: {}, {}'\
+                     .format(max(neg_ious) if len(neg_ious)>0 else None,
+                             min(neg_ious) if len(neg_ious)>0 else None))
+
+        all_targets = pos_targets + neg_targets
+        all_anchor_ids = [tar['anchor']['id'] for tar in all_targets]
+        if len(all_anchor_ids) != len(set(all_anchor_ids)):
+            logging.warning('Found multiply chosen anchors!')
+        return all_targets
 
 
 # the following provides convertion btw parameters and bbox coordinates

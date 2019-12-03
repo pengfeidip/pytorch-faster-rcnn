@@ -63,7 +63,8 @@ class RPNLoss(object):
             if reg_out_tsr.numel() != 0 and reg_params_tsr.numel() != 0:
                 reg_loss = sm_loss(reg_out_tsr, reg_params_tsr) / num_targets
         logging.debug('rpn_cls_loss: {}'.format(cls_loss.item()))
-        logging.debug('rpn_reg_loss: {}'.format(reg_loss.item()))
+        reg_loss_val = reg_loss.item() * num_targets / len(reg_out) if len(reg_out)!=0 else None
+        logging.debug('rpn_reg_loss: {}'.format(reg_loss_val))
         return cls_loss + self.lamb * reg_loss 
         
         
@@ -111,6 +112,7 @@ class RCNNLoss(object):
             logging.warning('RCNN regression training is zero, this is probably '
                             'due to no matched positive anchors are present.')    
         logging.debug('rcnn_cls_loss: {}'.format(cls_loss.item()))
-        logging.debug('rcnn_reg_loss: {}'.format(reg_loss.item()))
+        reg_loss_val = reg_loss.item() * num_targets / len(gt_params) if len(gt_params) != 0 else None
+        logging.debug('rcnn_reg_loss: {}'.format(reg_loss_val))
         return cls_loss + self.lamb * reg_loss
     

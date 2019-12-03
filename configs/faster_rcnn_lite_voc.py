@@ -4,20 +4,21 @@ import logging
 
 # often changed configs
 LR = None
-MAX_EPOCHS = 20
+MAX_EPOCHS = 40
 
 train_data_cfg = dict(
-    img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages',
-    json='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval.json',
+    img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/lite_voc2007_trainval/images',
+    json='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/lite_voc2007_trainval/trainval_lite.json',
     img_size=(1000,600),
     img_norm=dict(mean=[0.390, 0.423, 0.446], std=[0.282, 0.270, 0.273]),
-    loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
+    loader_cfg=dict(batch_size=1, num_workers=2, shuffle=False),
 )
 
 test_data_cfg = dict(
-    img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/VOC2007/JPEGImages',
+    img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/lite_voc2007_test/images',
     loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
 )
+
 
 
 model = dict(
@@ -52,7 +53,7 @@ train_cfg = dict(
     rcnn_loss_lambda=1.0,
     loss_lambda=1.0,
     log_file='train_20epochs.log',
-    lr_scheduler=lambda e : 0.001 if e <=12 else 0.0001,
+    lr_scheduler=lambda e : 0.001 if e <=1 else 0.0001,
     log_level=logging.DEBUG,
     device=torch.device('cpu')
 )

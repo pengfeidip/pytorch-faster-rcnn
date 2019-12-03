@@ -2,6 +2,7 @@ import torch
 import sys, os, warnings, json, glob
 import os.path as osp
 import torchvision as tv
+import random
 
 from . import config
 from PIL import Image
@@ -134,7 +135,6 @@ class CocoDetDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         # for debug: train one image
-        # i = 1234
         iid = self.img_ids[i]
         fname = self.anno_imgs[iid]
         img_loc = osp.join(self.img_dir, fname)

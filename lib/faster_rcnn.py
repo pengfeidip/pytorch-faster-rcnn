@@ -115,7 +115,7 @@ class FasterRCNNModule(nn.Module):
     #       |                      |
     #       ------------------------
     
-    def forward(self, x, gt):
+    def _forward(self, x, gt):
         img_size = x.shape[-2:]
         feat = self.backbone(x)
         feat_size = feat.shape[-2:]
@@ -148,6 +148,54 @@ class FasterRCNNModule(nn.Module):
         return \
             rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out,\
             anchor_targets, props, props_targets
+
+    def forward(self, x, gt):
+        img_size, feat_size, feat = self.forward_backbone(x)
+        rpn_cls_out, rpn_reg_out, anchor_targets = self.forward_rpn(feat, img_size, gt)
+        rcnn_cls_out, rcnn_reg_out, props, props_targets \
+            = self.forward_rcnn(feat, img_size, rpn_cls_out, rpn_reg_out, gt)
+        return \
+            rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out,\
+            anchor_targets, props, props_targets
+
+    def forward_backbone(self, x):
+        img_size = x.shape[-2:]
+        feat = self.backbone(x)
+        feat_size = feat.shape[-2:]
+        return img_size, feat_size, feat
+
+    def forward_rpn(self, feat, img_size, gt):
+        feat_size = feat.shape[-2:]
+        rpn_cls_out, rpn_reg_out = self.rpn(feat)
+        anchor_targets = None
+        if self.training:
+            anchor_targets = self.anchor_target_gen.targets(img_size, feat_size, gt)
+        return rpn_cls_out, rpn_reg_out, anchor_targets
+
+    def forward_rcnn(self, feat, img_size, rpn_cls_out, rpn_reg_out, gt):
+        feat_size = feat.shape[-2:]
+        if self.training:
+            props = self.train_props_gen.proposals_filtered(
+                rpn_cls_out, rpn_reg_out, img_size, feat_size)
+        else:
+            props = self.test_props_gen.proposals_filtered(
+                rpn_cls_out, rpn_reg_out, img_size, feat_size)
+                
+        props_targets = None
+        if self.training:
+            props_targets = self.props_target_gen.targets(props, gt)
+
+        if self.training:
+            roi_crops, props_targets = self.roi_crop.crop(img_size, feat, props_targets)
+            roi_pool_out = self.roi_pool(roi_crops)
+            rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
+        else:
+            roi_crops, props = self.roi_crop.crop(img_size, feat, props)
+            roi_pool_out = self.roi_pool(roi_crops)
+            rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
+        # anchor_targets, props_targets will be None for test mode
+        return rcnn_cls_out, rcnn_reg_out, props, props_targets
+        
     
     # WARNING: Notice that some of the configs can not be updated
     # Only allow following configs to change:
@@ -282,8 +330,11 @@ class FasterRCNNTrain(object):
         logging.debug('Image shape: {}'.format(img_data.shape))
         logging.debug('GT bboxes: {}'.format(bboxes_data))
         logging.debug('Image info: {}'.format(img_info))
-        rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out, \
-            anchor_targets, props, props_targets = self.faster_rcnn(img_data, gt)
+
+        img_size, feat_size, feat = self.faster_rcnn.forward_backbone(img_data)
+        rpn_cls_out, rpn_reg_out, anchor_targets = self.faster_rcnn.forward_rpn(feat, img_size, gt)
+        rcnn_cls_out, rcnn_reg_out, props, props_targets = None, None, None, None
+
         if rpn_cls_out is None:
             logging.warning('rpn_cls_out is None')
         else:
@@ -301,18 +352,18 @@ class FasterRCNNTrain(object):
         else:
             logging.info('rcnn_reg_out shape: {}'.format(rcnn_reg_out.shape))
         logging.info('anchor targets: {}'.format(len(anchor_targets)))
-        logging.info('proposals: {}'.format(len(props)))
-        logging.info('proposal targets: {}'.format(len(props_targets)))
+        #logging.info('proposals: {}'.format(len(props)))
+        #logging.info('proposal targets: {}'.format(len(props_targets)))
         
         rpnloss = rpn_loss(rpn_cls_out, rpn_reg_out, anchor_targets)
-        rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
+        #rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
         rpnloss.to(device=self.device)
-        rcnnloss = rcnnloss.to(device=self.device)
-        combloss = rpnloss + self.loss_lambda * rcnnloss
+        #rcnnloss = rcnnloss.to(device=self.device)
+        #combloss = rpnloss + self.loss_lambda * rcnnloss
         logging.info('RPN loss: {}'.format(rpnloss.item()))
-        logging.info('RCNN loss: {}'.format(rcnnloss.item()))
-        logging.info('Combined loss: {}'.format(combloss.item()))
-        combloss.backward()
+        #logging.info('RCNN loss: {}'.format(rcnnloss.item()))
+        #logging.info('Combined loss: {}'.format(combloss.item()))
+        rpnloss.backward()
         optimizer.step()
 
     def train(self):
@@ -407,11 +458,74 @@ def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
     logging.info('Positive bboxes after applying NMS to each category independently: {}'\
                  .format(len(bboxes)))
     return bboxes, scores, cates
+
     
 def iid_from_name(img_name):
     if '.' in img_name:
         return img_name[:img_name.rfind('.')]
     return img_name
+
+class RPNTest(object):
+    def __init__(self,
+                 faster_configs,
+                 device = torch.device('cpu')):
+        self.device = device
+        self.faster_configs = faster_configs
+        self.faster_rcnn = FasterRCNNModule(**faster_configs)
+
+    def load_ckpt(self, ckpt):
+        self.current_ckpt = ckpt
+        self.faster_rcnn.load_state_dict(torch.load(ckpt))
+        self.faster_rcnn.to(self.device)
+        print('loaded ckpt: {}'.format(ckpt))
+
+    def inference(self, dataloader, min_score=0.5):
+        self.faster_rcnn.eval_mode()
+        iid = 0
+        infer_res = []
+        print('Start to inference {} images'.format(len(dataloader)))
+        tot_imgs = 100
+        with torch.no_grad():
+            for img_data, amp, img_name, img_w, img_h in dataloader:
+                print('Inference image {}'.format(img_name))
+                amp, img_name = amp.item(), img_name[0]
+                img_w, img_h = img_w.item(), img_h.item()
+                img_res = self.inference_one(img_data, img_name, iid, min_score)
+                for res in img_res:
+                    bbox = res['bbox']
+                    res['bbox'] = [x/amp for x in bbox]
+                infer_res += img_res
+                iid += 1
+                tot_imgs -= 1
+                if tot_imgs == 0:
+                    break
+        return infer_res
+
+    def inference_one(self, img_data, img_name, iid, min_score=0.5):
+        img_data = img_data.to(device=self.device)
+        img_size, feat_size, feat = self.faster_rcnn.forward_backbone(img_data)
+        rpn_cls_out, rpn_reg_out, anchor_targets \
+            = self.faster_rcnn.forward_rpn(feat, img_size, None)
+        props = self.faster_rcnn.test_props_gen.proposals_filtered(
+            rpn_cls_out,
+            rpn_reg_out,
+            img_size,
+            feat_size)
+        infer_res = []
+        for prop in props:
+            if prop['obj_score'] < min_score:
+                continue
+            infer_res.append({
+                'image_id': iid,
+                'file_name': img_name,
+                'category_id': 1,
+                'score': prop['obj_score'],
+                'bbox': prop['adj_bbox'].get_xywh()
+            })
+        return infer_res
+        
+
+
 
 class FasterRCNNTest(object):
     r"""
