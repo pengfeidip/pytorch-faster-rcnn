@@ -24,6 +24,7 @@ class RPNLoss(object):
         reg_out, reg_params = [], []
         num_scales = len(self.anchor_generator.scales)
         num_ars = len(self.anchor_generator.aspect_ratios)
+
         for tar in targets:
             anchor = tar['anchor']
             gt_bbox = tar['gt_bbox']
@@ -43,7 +44,7 @@ class RPNLoss(object):
                 gt_params = region.xywh2param(gt_bbox.get_xywh(), anchor_bbox)
                 reg_out.append(adjustment)
                 reg_params.append(gt_params)
-                
+        
         cls_loss = torch.tensor(0.0, device=device, requires_grad=True)
         if len(cls_out) != 0:
             cls_out_tsr = torch.stack(cls_out)

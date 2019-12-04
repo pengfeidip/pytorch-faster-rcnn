@@ -4,7 +4,7 @@ import logging
 
 # often changed configs
 LR = None
-MAX_EPOCHS = 40
+MAX_EPOCHS = 30
 
 train_data_cfg = dict(
     img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/lite_voc2007_trainval/images',
@@ -53,7 +53,7 @@ train_cfg = dict(
     rcnn_loss_lambda=1.0,
     loss_lambda=1.0,
     log_file='train_20epochs.log',
-    lr_scheduler=lambda e : 0.001 if e <=1 else 0.0001,
+    lr_scheduler=lambda e : 0.001 if e <=20 else 0.0001,
     log_level=logging.DEBUG,
     device=torch.device('cpu')
 )

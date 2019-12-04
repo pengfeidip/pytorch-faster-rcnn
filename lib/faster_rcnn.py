@@ -413,9 +413,10 @@ class FasterRCNNTrain(object):
                     exit()
                     
             epoch_model = osp.join(self.work_dir, ckpt_name(epoch))
-            logging.info('Finished traning epoch {}, save trained model to {}'.format(
-                epoch, epoch_model))
-            torch.save(self.faster_rcnn.state_dict(), epoch_model)
+            if epoch % 4 == 0:
+                logging.info('Finished traning epoch {}, save trained model to {}'.format(
+                    epoch, epoch_model))
+                torch.save(self.faster_rcnn.state_dict(), epoch_model)
         print('Finished Training:)!!!')
 
 
@@ -477,31 +478,27 @@ class RPNTest(object):
         self.current_ckpt = ckpt
         self.faster_rcnn.load_state_dict(torch.load(ckpt))
         self.faster_rcnn.to(self.device)
-        print('loaded ckpt: {}'.format(ckpt))
+        logging.info('loaded ckpt: {}'.format(ckpt))
 
-    def inference(self, dataloader, min_score=0.5):
+    def inference(self, dataloader):
         self.faster_rcnn.eval_mode()
         iid = 0
         infer_res = []
-        print('Start to inference {} images'.format(len(dataloader)))
-        tot_imgs = 100
+        logging.info('Start to inference {} images'.format(len(dataloader)))
         with torch.no_grad():
             for img_data, amp, img_name, img_w, img_h in dataloader:
-                print('Inference image {}'.format(img_name))
+                logging.info('Inference image {}'.format(img_name))
                 amp, img_name = amp.item(), img_name[0]
                 img_w, img_h = img_w.item(), img_h.item()
-                img_res = self.inference_one(img_data, img_name, iid, min_score)
+                img_res = self.inference_one(img_data, img_name, iid)
                 for res in img_res:
                     bbox = res['bbox']
                     res['bbox'] = [x/amp for x in bbox]
                 infer_res += img_res
                 iid += 1
-                tot_imgs -= 1
-                if tot_imgs == 0:
-                    break
         return infer_res
 
-    def inference_one(self, img_data, img_name, iid, min_score=0.5):
+    def inference_one(self, img_data, img_name, iid):
         img_data = img_data.to(device=self.device)
         img_size, feat_size, feat = self.faster_rcnn.forward_backbone(img_data)
         rpn_cls_out, rpn_reg_out, anchor_targets \
@@ -513,8 +510,6 @@ class RPNTest(object):
             feat_size)
         infer_res = []
         for prop in props:
-            if prop['obj_score'] < min_score:
-                continue
             infer_res.append({
                 'image_id': iid,
                 'file_name': img_name,
@@ -523,8 +518,6 @@ class RPNTest(object):
                 'bbox': prop['adj_bbox'].get_xywh()
             })
         return infer_res
-        
-
 
 
 class FasterRCNNTest(object):

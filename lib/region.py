@@ -214,6 +214,68 @@ class AnchorTargetCreator(object):
         max_anchor = iou_tab.argmax(0)
         max_gt = iou_tab.argmax(1)
 
+        chosen_pos = set(max_anchor)
+        chosen_neg = set()
+
+        for anchor_idx, gt_idx in enumerate(max_gt):
+            max_iou = iou_tab[anchor_idx][gt_idx]
+            if max_iou >= self.pos_iou:
+                chosen_pos.add(anchor_idx)
+            elif max_iou < self.neg_iou:
+                chosen_neg.add(anchor_idx)
+            else:
+                pass
+
+        chosen_pos = list(chosen_pos)
+        chosen_neg = list(chosen_neg)
+        random.shuffle(chosen_pos)
+        random.shuffle(chosen_neg)
+        chosen_pos = chosen_pos[:self.max_pos]
+        chosen_neg = chosen_neg[:self.max_targets - len(chosen_pos)]
+        pos_targets = []
+        neg_targets = []
+        for anchor_idx in chosen_pos:
+            max_gt_idx = max_gt[anchor_idx]
+            max_iou = iou_tab[anchor_idx][max_gt_idx]
+            pos_targets.append({
+                'anchor': anchors[anchor_idx],
+                'gt_bbox': ground_truth.bboxes[max_gt_idx],
+                'gt_label': 1,
+                'category': ground_truth.categories[max_gt_idx],
+                'iou': max_iou
+            })
+        for anchor_idx in chosen_neg:
+            max_gt_idx = max_gt[anchor_idx]
+            max_iou = iou_tab[anchor_idx][max_gt_idx]
+            neg_targets.append({
+                'anchor': anchors[anchor_idx],
+                'gt_bbox': None,
+                'gt_label': 0,
+                'category': None,
+                'iou': max_iou
+            })
+            
+        logging.info('AnchorTargetCreator selected {} postive anchors '
+                     'and {} negative anchors to train RPN'.
+                     format(len(pos_targets), len(neg_targets)))
+        pos_ious = [tar['iou'] for tar in pos_targets]
+        neg_ious = [tar['iou'] for tar in neg_targets]
+        logging.info('Max and min iou of positive targets: {}, {}'\
+                     .format(max(pos_ious) if len(pos_ious)>0 else None,
+                             min(pos_ious) if len(pos_ious)>0 else None))
+        logging.info('Max and min iou of negative targets: {}, {}'\
+                     .format(max(neg_ious) if len(neg_ious)>0 else None,
+                             min(neg_ious) if len(neg_ious)>0 else None))
+
+        all_targets = pos_targets + neg_targets
+        all_anchor_ids = [tar['anchor']['id'] for tar in all_targets]
+        if len(all_anchor_ids) != len(set(all_anchor_ids)):
+            logging.warning('Found multiply chosen anchors!')
+        return all_targets
+            
+        
+        #################################
+        
         chosen_anchors = set()
         neg_anchors = []
         pos_targets = []
