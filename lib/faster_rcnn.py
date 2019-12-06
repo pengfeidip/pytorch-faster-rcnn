@@ -150,7 +150,7 @@ class FasterRCNNModule(nn.Module):
             anchor_targets, props, props_targets
 
     def forward(self, x, gt):
-        img_size, feat_size, feat = self.forward_backbone(x)
+        img_size, feat = self.forward_backbone(x)
         rpn_cls_out, rpn_reg_out, anchor_targets = self.forward_rpn(feat, img_size, gt)
         rcnn_cls_out, rcnn_reg_out, props, props_targets \
             = self.forward_rcnn(feat, img_size, rpn_cls_out, rpn_reg_out, gt)
@@ -162,11 +162,16 @@ class FasterRCNNModule(nn.Module):
         img_size = x.shape[-2:]
         feat = self.backbone(x)
         feat_size = feat.shape[-2:]
-        return img_size, feat_size, feat
+        logging.info('Feature shape: {}'.format(feat.shape))
+        return img_size, feat
 
     def forward_rpn(self, feat, img_size, gt):
         feat_size = feat.shape[-2:]
         rpn_cls_out, rpn_reg_out = self.rpn(feat)
+        logging.info('rpn_cls_out shape: {}'.format(
+            rpn_cls_out.shape if rpn_cls_out is not None else None))
+        logging.info('rpn_reg_out shape: {}'.format(
+            rpn_reg_out.shape if rpn_reg_out is not None else None))
         anchor_targets = None
         if self.training:
             anchor_targets = self.anchor_target_gen.targets(img_size, feat_size, gt)
@@ -268,8 +273,9 @@ class FasterRCNNTrain(object):
                  loss_lambda=1.0,
                  log_file=None,
                  log_level=logging.INFO,
-                 device=torch.device('cpu')
-    ):
+                 device=torch.device('cpu'),
+                 save_interval=2,
+                 rpn_only=False):
         # get real path
         work_dir = osp.realpath(work_dir)
         
@@ -301,6 +307,8 @@ class FasterRCNNTrain(object):
         self.rpn_loss_lambda = rpn_loss_lambda
         self.rcnn_loss_lambda = rcnn_loss_lambda
         self.loss_lambda = loss_lambda
+        self.save_interval = save_interval
+        self.rpn_only = rpn_only
 
     def to(self, device):
         self.device=device
@@ -331,10 +339,12 @@ class FasterRCNNTrain(object):
         logging.debug('GT bboxes: {}'.format(bboxes_data))
         logging.debug('Image info: {}'.format(img_info))
 
-        img_size, feat_size, feat = self.faster_rcnn.forward_backbone(img_data)
+        img_size, feat = self.faster_rcnn.forward_backbone(img_data)
         rpn_cls_out, rpn_reg_out, anchor_targets = self.faster_rcnn.forward_rpn(feat, img_size, gt)
         rcnn_cls_out, rcnn_reg_out, props, props_targets = None, None, None, None
-
+        if not self.rpn_only:
+            rcnn_cls_out, rcnn_reg_out, props, props_targets \
+                = self.faster_rcnn.forward_rcnn(feat, img_size, rpn_cls_out, rpn_reg_out, gt)
         if rpn_cls_out is None:
             logging.warning('rpn_cls_out is None')
         else:
@@ -351,19 +361,21 @@ class FasterRCNNTrain(object):
             logging.warning('rcnn_reg_out is None')
         else:
             logging.info('rcnn_reg_out shape: {}'.format(rcnn_reg_out.shape))
-        logging.info('anchor targets: {}'.format(len(anchor_targets)))
-        #logging.info('proposals: {}'.format(len(props)))
-        #logging.info('proposal targets: {}'.format(len(props_targets)))
+        #logging.info('anchor targets: {}'.format(len(anchor_targets)))
+        logging.info('proposals: {}'.format(
+            len(props) if props is not None else None))
+        logging.info('proposal targets: {}'.format(
+            len(props_targets) if props_targets is not None else None))
         
         rpnloss = rpn_loss(rpn_cls_out, rpn_reg_out, anchor_targets)
-        #rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
-        rpnloss.to(device=self.device)
-        #rcnnloss = rcnnloss.to(device=self.device)
-        #combloss = rpnloss + self.loss_lambda * rcnnloss
+        rcnnloss = rcnn_loss(rcnn_cls_out, rcnn_reg_out, props_targets)
+        rpnloss = rpnloss.to(self.device)
+        rcnnloss = rcnnloss.to(self.device)
         logging.info('RPN loss: {}'.format(rpnloss.item()))
-        #logging.info('RCNN loss: {}'.format(rcnnloss.item()))
-        #logging.info('Combined loss: {}'.format(combloss.item()))
-        rpnloss.backward()
+        logging.info('RCNN loss: {}'.format(rcnnloss.item()))
+        combloss = rpnloss + self.loss_lambda * rcnnloss
+        logging.info('Combined loss: {}'.format(combloss.item()))
+        combloss.backward()
         optimizer.step()
 
     def train(self):
@@ -413,7 +425,7 @@ class FasterRCNNTrain(object):
                     exit()
                     
             epoch_model = osp.join(self.work_dir, ckpt_name(epoch))
-            if epoch % 4 == 0:
+            if epoch % self.save_interval == 0:
                 logging.info('Finished traning epoch {}, save trained model to {}'.format(
                     epoch, epoch_model))
                 torch.save(self.faster_rcnn.state_dict(), epoch_model)

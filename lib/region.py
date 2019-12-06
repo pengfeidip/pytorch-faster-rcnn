@@ -206,6 +206,10 @@ class AnchorTargetCreator(object):
 
     def targets(self, img_size, grid, ground_truth):
         anchors = [x for x in self.anchor_generator.anchors(img_size, grid)]
+        if len(anchors) == 0:
+            logging.warning('Encounter 0 anchors for image (img_size: {})'\
+                            .format(img_size))
+            return None
         num_anchors, num_gts = len(anchors), len(ground_truth.bboxes)
         iou_tab = np.zeros((num_anchors, num_gts), dtype=np.float16)
         for anchor_idx, anchor in enumerate(anchors):

@@ -52,7 +52,7 @@ def main():
     if args.gpu is not None:
         device = torch.device('cuda:{}'.format(args.gpu))
     train_cfg['device'] = device
-    
+
     trainer = faster_rcnn.FasterRCNNTrain(**train_cfg)
     # do not start to log until logging.basicConfig is set
     logging.info('Work dir: {}'.format(args.work_dir))

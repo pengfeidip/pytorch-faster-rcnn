@@ -19,6 +19,15 @@ class RPNLoss(object):
         self.anchor_generator = anchor_generator
         self.lamb = lamb
     def __call__(self, rpn_cls_out, rpn_reg_out, targets):
+        if rpn_cls_out is None or rpn_reg_out is None or targets is None:
+            # return an isolated tensor meaning no training is involved
+            logging.warning('RPN does not matched anchor to train, '
+                            'this may due to too narrow image '
+                            'size(rpn_cls_out shape: {})'.format(
+                                rpn_cls_out.shape if rpn_cls_out is not None else None
+                            ))
+            return torch.tensor(0.0, requires_grad=True)
+
         device = rpn_cls_out.device
         cls_out, cls_labels = [], []
         reg_out, reg_params = [], []
@@ -66,6 +75,7 @@ class RPNLoss(object):
         logging.debug('rpn_cls_loss: {}'.format(cls_loss.item()))
         reg_loss_val = reg_loss.item() * num_targets / len(reg_out) if len(reg_out)!=0 else None
         logging.debug('rpn_reg_loss: {}'.format(reg_loss_val))
+        #return cls_loss
         return cls_loss + self.lamb * reg_loss 
         
         
@@ -78,7 +88,7 @@ class RCNNLoss(object):
             # return an isolated tensor meaning no training is involved
             logging.warning('RCNN does not have proposed regions to train, '
                             'this is probably due to too-small proposals by RPN.')
-            return torch.tensor(0.0)
+            return torch.tensor(0.0, requires_grad=True)
         device = cls_out.device
 
         cls_loss = torch.tensor(0.0, requires_grad=True, device=device)
