@@ -451,9 +451,10 @@ def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
 
     for i, soft in enumerate(rcnn_cls_soft):
         cate = rcnn_cls_maxarg[i]
+        soft_score = rcnn_cls_soft[i][cate]
         if cate == 0:
             continue
-        raw_res.append([cate, props[i]['obj_score'], rcnn_reg_out[i][cate*4:cate*4+4],
+        raw_res.append([cate, soft_score.item(), rcnn_reg_out[i][cate*4:cate*4+4],
                         props[i]['adj_bbox']])
     logging.info('Positive bboxes: {}'.format(len(raw_res)))
     bboxes, scores, cates = [], [], []
@@ -547,7 +548,7 @@ class FasterRCNNTest(object):
 
     def load_ckpt(self, ckpt):
         self.current_ckpt = ckpt
-        self.faster_rcnn.load_state_dict(torch.load(ckpt))
+        self.faster_rcnn.load_state_dict(torch.load(ckpt, map_location=self.device))
         self.faster_rcnn.to(self.device)
         
     # inference on a set of images and return coco format json, but only return bbox results
