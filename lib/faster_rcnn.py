@@ -473,65 +473,6 @@ def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
                  .format(len(bboxes)))
     return bboxes, scores, cates
 
-    
-def iid_from_name(img_name):
-    if '.' in img_name:
-        return img_name[:img_name.rfind('.')]
-    return img_name
-
-class RPNTest(object):
-    def __init__(self,
-                 faster_configs,
-                 device = torch.device('cpu')):
-        self.device = device
-        self.faster_configs = faster_configs
-        self.faster_rcnn = FasterRCNNModule(**faster_configs)
-
-    def load_ckpt(self, ckpt):
-        self.current_ckpt = ckpt
-        self.faster_rcnn.load_state_dict(torch.load(ckpt))
-        self.faster_rcnn.to(self.device)
-        logging.info('loaded ckpt: {}'.format(ckpt))
-
-    def inference(self, dataloader):
-        self.faster_rcnn.eval_mode()
-        iid = 0
-        infer_res = []
-        logging.info('Start to inference {} images'.format(len(dataloader)))
-        with torch.no_grad():
-            for img_data, amp, img_name, img_w, img_h in dataloader:
-                logging.info('Inference image {}'.format(img_name))
-                amp, img_name = amp.item(), img_name[0]
-                img_w, img_h = img_w.item(), img_h.item()
-                img_res = self.inference_one(img_data, img_name, iid)
-                for res in img_res:
-                    bbox = res['bbox']
-                    res['bbox'] = [x/amp for x in bbox]
-                infer_res += img_res
-                iid += 1
-        return infer_res
-
-    def inference_one(self, img_data, img_name, iid):
-        img_data = img_data.to(device=self.device)
-        img_size, feat_size, feat = self.faster_rcnn.forward_backbone(img_data)
-        rpn_cls_out, rpn_reg_out, anchor_targets \
-            = self.faster_rcnn.forward_rpn(feat, img_size, None)
-        props = self.faster_rcnn.test_props_gen.proposals_filtered(
-            rpn_cls_out,
-            rpn_reg_out,
-            img_size,
-            feat_size)
-        infer_res = []
-        for prop in props:
-            infer_res.append({
-                'image_id': iid,
-                'file_name': img_name,
-                'category_id': 1,
-                'score': prop['obj_score'],
-                'bbox': prop['adj_bbox'].get_xywh()
-            })
-        return infer_res
-
 
 class FasterRCNNTest(object):
     r"""
@@ -605,4 +546,63 @@ class FasterRCNNTest(object):
                                                            props,
                                                            self.faster_rcnn.test_props_nms_iou)
         return bboxes, scores, categories
+
+
+
+############################################################################
+
+
+class RPNTest(object):
+    def __init__(self,
+                 faster_configs,
+                 device = torch.device('cpu')):
+        self.device = device
+        self.faster_configs = faster_configs
+        self.faster_rcnn = FasterRCNNModule(**faster_configs)
+
+    def load_ckpt(self, ckpt):
+        self.current_ckpt = ckpt
+        self.faster_rcnn.load_state_dict(torch.load(ckpt))
+        self.faster_rcnn.to(self.device)
+        logging.info('loaded ckpt: {}'.format(ckpt))
+
+    def inference(self, dataloader):
+        self.faster_rcnn.eval_mode()
+        iid = 0
+        infer_res = []
+        logging.info('Start to inference {} images'.format(len(dataloader)))
+        with torch.no_grad():
+            for img_data, amp, img_name, img_w, img_h in dataloader:
+                logging.info('Inference image {}'.format(img_name))
+                amp, img_name = amp.item(), img_name[0]
+                img_w, img_h = img_w.item(), img_h.item()
+                img_res = self.inference_one(img_data, img_name, iid)
+                for res in img_res:
+                    bbox = res['bbox']
+                    res['bbox'] = [x/amp for x in bbox]
+                infer_res += img_res
+                iid += 1
+        return infer_res
+
+    def inference_one(self, img_data, img_name, iid):
+        img_data = img_data.to(device=self.device)
+        img_size, feat_size, feat = self.faster_rcnn.forward_backbone(img_data)
+        rpn_cls_out, rpn_reg_out, anchor_targets \
+            = self.faster_rcnn.forward_rpn(feat, img_size, None)
+        props = self.faster_rcnn.test_props_gen.proposals_filtered(
+            rpn_cls_out,
+            rpn_reg_out,
+            img_size,
+            feat_size)
+        infer_res = []
+        for prop in props:
+            infer_res.append({
+                'image_id': iid,
+                'file_name': img_name,
+                'category_id': 1,
+                'score': prop['obj_score'],
+                'bbox': prop['adj_bbox'].get_xywh()
+            })
+        return infer_res
+
 
