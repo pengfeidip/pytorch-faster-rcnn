@@ -7,7 +7,6 @@ import os.path as osp
 from . import config, utils
 
 
-
 class BBox(object):
     r"""
     Represent a bounding box, it accepts various input and convert to xywh inside.
@@ -629,3 +628,146 @@ def roi_pool(roi, out_size):
 ####################################################################################
 ####################################################################################
 
+
+#####################################################
+### new implementation using vertorized computing ###
+#####################################################
+
+import numpy as np
+
+class AnchorCreator(object):
+
+    MAX_CACHE_ANCHOR = 1000
+    CACHE_REPORT_PERIOD = 100
+    def __init__(self, base=16, scales=[8, 16, 32],
+                 aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cuda:0')):
+        self.device = device
+        self.base = base
+        self.scales = scales
+        self.aspect_ratios = aspect_ratios
+        self.cached = {}
+        self.count = 0
+        anchor_ws, anchor_hs = [], []
+        for s in scales:
+            for ar in aspect_ratios:
+                anchor_ws.append(base * s * np.sqrt(ar))
+                anchor_hs.append(base * s / np.sqrt(ar))
+        self.anchor_ws = torch.tensor(anchor_ws, device=device, dtype=torch.float32)
+        self.anchor_hs = torch.tensor(anchor_hs, device=device, dtype=torch.float32)
+
+    def to(self, device):
+        self.device = device
+        self.anchor_ws.to(device)
+        self.anchor_hs.to(device)
+
+    def report_cache(self):
+        count_info = [[k, v[0]] for k,v in self.cached.items()]
+        count_info.sort(key=lambda x:x[1], reverse=True)
+        top_count = count_info[:10]
+        top_str = ', '.join([':'.join([str_id, str(ct)]) for str_id, ct in top_count])
+        rep_str = '\n'.join([
+            'AnchorCreator count: {}'.format(self.count),
+            'Cache size: {}'.format(len(self.cached)),
+            'Top 10 used anchor count: {}'.format(top_str)
+        ])
+        logging.info(rep_str)
+
+    def __call__(self, img_size, grid):
+        str_id = '|'.join([
+            ','.join([str(x) for x in img_size]),
+            ','.join([str(x) for x in grid])
+        ])
+        # check if the anchor is in the cached
+        if str_id in self.cached:
+            self.cached[str_id][0] += 1
+            return self.cached[str_id][1]
+        anchors = self._create_anchors_(img_size, grid)
+        if len(self.cached) < self.MAX_CACHE_ANCHOR:
+            self.cached[str_id] = [1, anchors]
+        self.count += 1
+        if self.count % self.CACHE_REPORT_PERIOD == 0:
+            self.report_cache()
+        return anchors
+        
+    def _create_anchors_(self, img_size, grid):
+        assert len(img_size) == 2 and len(grid) == 2
+        imag_h, imag_w = img_size
+        grid_h, grid_w = grid
+        grid_dist_h, grid_dist_w = imag_h/grid_h, imag_w/grid_w
+        
+        center_h = torch.linspace(0, imag_h, grid_h+1,
+                                  device=self.device, dtype=torch.float32)[:-1] + grid_dist_h/2
+        center_w = torch.linspace(0, imag_w, grid_w+1,
+                                  device=self.device, dtype=torch.float32)[:-1] + grid_dist_w/2
+        mesh_h, mesh_w = torch.meshgrid(center_h, center_w)
+        # NOTE that the corresponding is h <-> y and w <-> x
+        anchor_hs = self.anchor_hs.view(-1, 1, 1)
+        anchor_ws = self.anchor_ws.view(-1, 1, 1)
+        x_min = mesh_w - anchor_ws / 2
+        x_max = mesh_w + anchor_ws / 2
+        y_min = mesh_h - anchor_hs / 2
+        y_max = mesh_h + anchor_hs / 2
+        anchors = torch.stack([x_min, y_min, x_max, y_max])
+        return anchors
+
+def find_inside_index(anchors, img_size):
+    H, W = img_size
+    inside = (anchors[0,:]>=0) & (anchors[1,:]>=0) & \
+             (anchors[2,:]<=W) & (anchors[3,:]<=H)
+    return utils.index_of(inside)
+
+def random_sample_label(labels, pos_num, tot_num):
+    assert pos_num <= tot_num
+    pos_args = utils.index_of(labels==1)
+    if len(pos_args[0]) > pos_num:
+        dis_idx = np.random.choice(
+            pos_args[0].cpu().numpy(), size=(len(pos_args[0]) - pos_num), replace=False)
+        labels[dis_idx] = -1
+    real_n_pos = min(len(pos_args[0]), pos_num)
+    n_negs = tot_num - real_n_pos
+    neg_args = utils.index_of(labels==0)
+    if len(neg_args[0]) > n_negs:
+        dis_idx = np.random.choice(
+            neg_args[0].cpu().numpy(), size=(len(neg_args[0]) - n_negs), replace=False)
+        labels[dis_idx] = -1
+    return labels
+
+class AnchorTargetCreator(object):
+    def __init__(self, pos_iou=0.7,
+                 neg_iou=0.3, max_pos=128, max_targets=256):
+        self.pos_iou = pos_iou
+        self.neg_iou = neg_iou
+        self.max_pos = max_pos
+        self.max_targets = max_targets
+
+    def __call__(self, img_size, feat_size, anchors, gt_bbox):
+        assert anchors.shape[0] == 4 and gt_bbox.shape[0] == 4
+
+        
+        # TODO: find out why there is a diff btw old and new version
+
+        
+        gt_bbox = gt_bbox.to(torch.float32)
+        n_anchors = anchors.shape[1]
+        n_gts = gt_bbox.shape[1]
+        labels = torch.full((n_anchors,), -1, device=anchors.device, dtype=torch.int8)
+        iou_tab = utils.calc_iou(anchors, gt_bbox)
+        max_anchor_iou, max_anchor_arg = torch.max(iou_tab, dim=0)
+        max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
+        # first label negative anchors, some of them might be replaced with positive later
+        neg_args = utils.index_of(max_gt_iou < self.neg_iou)
+        labels[neg_args] = 0
+        # next label positive anchors
+        labels[max_anchor_arg] = 1
+        pos_arg = utils.index_of(max_gt_iou >= self.pos_iou)
+        labels[pos_arg] = 1
+        labels = random_sample_label(labels, self.max_pos, self.max_targets)
+        pos_labels = utils.index_of(labels==1)
+        bbox_labels = gt_bbox[:,max_gt_arg]
+        param = utils.bbox2param(anchors, bbox_labels)
+        return labels, param, bbox_labels
+        
+        
+    def create_label(self, anchors, gt_bbox):
+        
+        pass

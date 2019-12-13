@@ -21,6 +21,8 @@ def dict2str(d):
     return '{ '+', '.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()])+' }' \
         if isinstance(d, dict) else str(d)
 
+def index_of(bool_tsr):
+    return tuple(torch.nonzero(bool_tsr).t())
 
 def wh_from_xyxy(bbox):
     w,h = bbox[2]-bbox[0], bbox[3]-bbox[1]
