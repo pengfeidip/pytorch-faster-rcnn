@@ -576,59 +576,6 @@ class ROIPooling(nn.Module):
         return torch.cat(outs)
                                                                         
 
-#####################################################################################
-# Apparently ROI pooling operator is already implemented in Pytorch, it is          #
-# the Module: torch.nn.AdaptiveMaxPool2d(output_size, return_indices=False).        #
-# It defines the bounds of i-th bin slightly different than in the SPPnet paper.    #
-# However, the adaptive max pool's way seems more intuitive.                        #
-#                                                                                   #
-# NOTE: the following ROI pooling utilities are not implemented                     #
-#####################################################################################
-class RoiPoolOp(torch.autograd.Function):
-    r"""
-    Defines ROI pooling operator as an autograd.Function.
-    Roi is a tensor of at least 2 dimensions, the pooling takes place in the
-    last two dimensions.
-    It pools the last two dimensions into a fixed sized tensor.
-    The bounds of i-th bin follows the following formula:
-        [floor((i-1)/n*h), ceiling(i/n*h)] where h is input size and n is
-        output size(num of bins)
-    """
-    def __init__(self, output_size):
-        super(RoiPoolOp, self).__init_()
-        self.output_size = output_size
-        
-    @staticmethod
-    def forward(ctx, roi):
-        # unfinished
-        pass
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        # unfinished
-        pass
-
-# not finished
-def roi_pool(roi, out_size):
-    assert len(out_size) == 2
-    h, w = roi.shape[-2:]
-    h_out, w_out = out_size
-    # the SPPnet paper uses ceiling at right end, but using floor seems more intuitive
-    # in that it seperates different bins better.
-    h_bounds = [[int((i-1)/h_out*h), min(int(i/h_out*h), h-1)] for i in range(1, h_out+1)]
-    w_bounds = [[int((i-1)/w_out*w), min(int(i/w_out*w), w-1)] for i in range(1, w_out+1)]
-    print('h_bounds:')
-    for x in h_bounds:
-        print(x, x[1]-x[0]+1)
-    print('w_bounds:')
-    for x in w_bounds:
-        print(x, x[1]-x[0]+1)
-
-####################################################################################
-####################################################################################
-####################################################################################
-
-
 #####################################################
 ### new implementation using vertorized computing ###
 #####################################################
@@ -771,3 +718,52 @@ class AnchorTargetCreator(object):
     def create_label(self, anchors, gt_bbox):
         
         pass
+
+
+class ProposalCreator(object):
+
+    def __init__(self, max_pre_nms, max_post_nms, nms_iou, min_size):
+        self.max_pre_nms = max_pre_nms
+        self.max_post_nms = max_post_nms
+        self.nms_iou = nms_iou
+        self.min_size = min_size
+
+    def __call__(self, rpn_cls_out, rpn_reg_out, anchors, img_size, scale=1.0):
+        print(anchors.shape)
+        assert anchors.shape[0] == 4 and len(anchors.shape) == 2
+        n_anchors = anchors.shape[1]
+        #min_size = scale * self.min_size # this is the value from simple-faster-rcnn
+        min_size = 17 # this is the old version value which is basically 1 in feature map
+        H, W = img_size
+        print('img_size:', img_size)
+        with torch.no_grad():
+            cls_out = rpn_cls_out.view(2, -1)
+            reg_out = rpn_reg_out.view(4, -1)
+            scores = torch.softmax(cls_out, 0)[1]
+            props_bbox = utils.param2bbox(anchors, reg_out)
+            print(torch.clamp(props_bbox[0], 0.0, W).shape)
+            props_bbox = torch.stack([
+                torch.clamp(props_bbox[0], 0.0, W),
+                torch.clamp(props_bbox[1], 0.0, H),
+                torch.clamp(props_bbox[2], 0.0, W),
+                torch.clamp(props_bbox[3], 0.0, H)
+            ])
+            print('props_bbox.shape after stack:', props_bbox.shape)
+            small_area_idx = utils.index_of(
+                (props_bbox[2] - props_bbox[0]) * (props_bbox[3] - props_bbox[1]) < min_size
+            )
+            scores[small_area_idx] = -1
+            sort_args = torch.argsort(scores, descending=True)
+            sort_args = sort_args[sort_args!=-1]
+            top_sort_args = sort_args[:self.max_pre_nms]
+            
+            props_bbox = props_bbox[:, top_sort_args]
+            top_scores = scores[top_sort_args]
+            keep = torchvision.ops.nms(props_bbox.t(), top_scores, self.nms_iou)
+
+            keep = keep[:self.max_post_nms]
+            return props_bbox[:, keep], top_scores[keep]
+        
+
+
+    
