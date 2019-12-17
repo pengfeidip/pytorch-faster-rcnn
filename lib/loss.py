@@ -1,3 +1,4 @@
+import torch.nn as nn
 import torch
 from . import region
 import logging
@@ -123,7 +124,46 @@ class RCNNLoss(object):
             logging.warning('RCNN regression training is zero, this is probably '
                             'due to no matched positive anchors are present.')    
         logging.debug('rcnn_cls_loss: {}'.format(cls_loss.item()))
-        reg_loss_val = reg_loss.item() * num_targets / len(gt_params) if len(gt_params) != 0 else None
+        reg_loss_val = reg_loss.item() * num_targets / len(gt_params) \
+                       if len(gt_params) != 0 else None
         logging.debug('rcnn_reg_loss: {}'.format(reg_loss_val))
         return cls_loss + self.lamb * reg_loss
     
+
+class RPNLoss(object):
+    def __init__(self, lamb=1.0):
+        self.lamb = lamb
+        self.ce = nn.CrossEntropyLoss()
+        self.smooth_l1 = nn.SmoothL1Loss(reduction='sum')
+
+    def __call__(self, cls_out, reg_out, label, param):
+        cls_loss = self.ce(cls_out.t(), label.long())
+        n_samples = len(label)
+        pos_arg = (label==1)
+        if pos_arg.sum() == 0:
+            reg_loss = torch.tensor(0.0, device=cls_out.device)
+        else:
+            reg_loss = self.smooth_l1(reg_out[:, pos_arg], param[:, pos_arg]) / n_samples
+        return cls_loss + self.lamb * reg_loss
+
+class RCNNLoss(object):
+    def __init__(self, lamb=1.0):
+        self.lamb = lamb
+        self.ce = nn.CrossEntropyLoss()
+        self.smooth_l1 = nn.SmoothL1Loss(reduction='sum')
+
+    def __call__(self, cls_out, reg_out, label, param):
+        label = label.long()
+        n_class = cls_out.shape[1]
+        n_samples = len(label)
+        cls_loss = self.ce(cls_out, label)
+        reg_out = reg_out.view(-1, 4, n_class)
+        reg_out = reg_out[torch.arange(n_samples), :, label]
+        pos_arg = (label>1)
+        if pos_arg.sum() == 0:
+            reg_loss = torch.tensor(0.0, device=cls_out.device)
+        else:
+            pos_reg = reg_out[pos_arg, :]
+            reg_loss = self.smooth_l1(pos_reg, param[:, pos_arg].t()) / n_samples
+        return cls_loss + self.lamb * reg_loss
+

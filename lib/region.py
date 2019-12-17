@@ -585,7 +585,7 @@ import numpy as np
 class AnchorCreator(object):
 
     MAX_CACHE_ANCHOR = 1000
-    CACHE_REPORT_PERIOD = 100
+    CACHE_REPORT_PERIOD = 500
     def __init__(self, base=16, scales=[8, 16, 32],
                  aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cuda:0')):
         self.device = device
@@ -661,7 +661,7 @@ def find_inside_index(anchors, img_size):
     H, W = img_size
     inside = (anchors[0,:]>=0) & (anchors[1,:]>=0) & \
              (anchors[2,:]<=W) & (anchors[3,:]<=H)
-    return utils.index_of(inside)
+    return inside
 
 def random_sample_label(labels, pos_num, tot_num):
     assert pos_num <= tot_num
@@ -680,8 +680,7 @@ def random_sample_label(labels, pos_num, tot_num):
     return labels
 
 class AnchorTargetCreator(object):
-    def __init__(self, pos_iou=0.7,
-                 neg_iou=0.3, max_pos=128, max_targets=256):
+    def __init__(self, pos_iou=0.7, neg_iou=0.3, max_pos=128, max_targets=256):
         self.pos_iou = pos_iou
         self.neg_iou = neg_iou
         self.max_pos = max_pos
@@ -689,39 +688,26 @@ class AnchorTargetCreator(object):
 
     def __call__(self, img_size, feat_size, anchors, gt_bbox):
         assert anchors.shape[0] == 4 and gt_bbox.shape[0] == 4
-
-        
         # TODO: find out why there is a diff btw old and new version
-
-        
-        gt_bbox = gt_bbox.to(torch.float32)
-        n_anchors = anchors.shape[1]
-        n_gts = gt_bbox.shape[1]
-        labels = torch.full((n_anchors,), -1, device=anchors.device, dtype=torch.int8)
-        iou_tab = utils.calc_iou(anchors, gt_bbox)
-        max_anchor_iou, max_anchor_arg = torch.max(iou_tab, dim=0)
-        max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
-        # first label negative anchors, some of them might be replaced with positive later
-        neg_args = utils.index_of(max_gt_iou < self.neg_iou)
-        labels[neg_args] = 0
-        # next label positive anchors
-        labels[max_anchor_arg] = 1
-        pos_arg = utils.index_of(max_gt_iou >= self.pos_iou)
-        labels[pos_arg] = 1
-        labels = random_sample_label(labels, self.max_pos, self.max_targets)
-        pos_labels = utils.index_of(labels==1)
-        bbox_labels = gt_bbox[:,max_gt_arg]
-        param = utils.bbox2param(anchors, bbox_labels)
+        with torch.no_grad():
+            gt_bbox = gt_bbox.to(torch.float32)
+            n_anchors, n_gts = anchors.shape[1], gt_bbox.shape[1]
+            labels = torch.full((n_anchors,), -1, device=anchors.device, dtype=torch.int8)
+            iou_tab = utils.calc_iou(anchors, gt_bbox)
+            max_anchor_iou, max_anchor_arg = torch.max(iou_tab, dim=0)
+            max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
+            # first label negative anchors, some of them might be replaced with positive later
+            labels[(max_gt_iou < self.neg_iou)] = 0
+            # next label positive anchors
+            labels[max_anchor_arg] = 1
+            labels[(max_gt_iou >= self.pos_iou)] = 1
+            labels = random_sample_label(labels, self.max_pos, self.max_targets)
+            bbox_labels = gt_bbox[:,max_gt_arg]
+            param = utils.bbox2param(anchors, bbox_labels)
         return labels, param, bbox_labels
         
-        
-    def create_label(self, anchors, gt_bbox):
-        
-        pass
-
 
 class ProposalCreator(object):
-
     def __init__(self, max_pre_nms, max_post_nms, nms_iou, min_size):
         self.max_pre_nms = max_pre_nms
         self.max_post_nms = max_post_nms
@@ -729,26 +715,22 @@ class ProposalCreator(object):
         self.min_size = min_size
 
     def __call__(self, rpn_cls_out, rpn_reg_out, anchors, img_size, scale=1.0):
-        print(anchors.shape)
         assert anchors.shape[0] == 4 and len(anchors.shape) == 2
         n_anchors = anchors.shape[1]
         #min_size = scale * self.min_size # this is the value from simple-faster-rcnn
         min_size = 17 # this is the old version value which is basically 1 in feature map
         H, W = img_size
-        print('img_size:', img_size)
         with torch.no_grad():
             cls_out = rpn_cls_out.view(2, -1)
             reg_out = rpn_reg_out.view(4, -1)
             scores = torch.softmax(cls_out, 0)[1]
             props_bbox = utils.param2bbox(anchors, reg_out)
-            print(torch.clamp(props_bbox[0], 0.0, W).shape)
             props_bbox = torch.stack([
                 torch.clamp(props_bbox[0], 0.0, W),
                 torch.clamp(props_bbox[1], 0.0, H),
                 torch.clamp(props_bbox[2], 0.0, W),
                 torch.clamp(props_bbox[3], 0.0, H)
             ])
-            print('props_bbox.shape after stack:', props_bbox.shape)
             small_area_idx = utils.index_of(
                 (props_bbox[2] - props_bbox[0]) * (props_bbox[3] - props_bbox[1]) < min_size
             )
@@ -762,8 +744,77 @@ class ProposalCreator(object):
             keep = torchvision.ops.nms(props_bbox.t(), top_scores, self.nms_iou)
 
             keep = keep[:self.max_post_nms]
-            return props_bbox[:, keep], top_scores[keep]
+        return props_bbox[:, keep], top_scores[keep]
         
 
+class ProposalTargetCreator(object):
+    r"""
+    From selected ROIs(around 2000, by ProposalCreator),
+    choose 128 samples for training Head.
+    """
+    def __init__(self,
+                 max_pos=32,
+                 max_targets=128,
+                 pos_iou=0.5,
+                 neg_iou_hi=0.5,
+                 neg_iou_lo=0.1):
+        self.max_pos = max_pos
+        self.max_targets = max_targets
+        self.pos_iou = pos_iou
+        self.neg_iou_hi = neg_iou_hi
+        self.neg_iou_lo = neg_iou_lo
 
+    def __call__(self, props_bbox, gt_bbox, gt_label):
+        # TODO: this version does not add gt to train classifier in RCNN
+        with torch.no_grad():
+            gt_bbox = gt_bbox.to(torch.float32)
+            n_props, n_gts = props_bbox.shape[1], gt_bbox.shape[1]
+            iou_tab = utils.calc_iou(props_bbox, gt_bbox)
+            max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
+            label = torch.full((n_props,), -1, device = props_bbox.device, dtype=torch.int8)
+            label[max_gt_iou > self.pos_iou] = 1
+            label[(max_gt_iou < self.neg_iou_hi) & (max_gt_iou >= self.neg_iou_lo)] = 0
+            label = random_sample_label(label, self.max_pos, self.max_targets)
+            pos_idx, neg_idx = (label==1), (label==0)
+            chosen_idx = pos_idx | neg_idx
+            # find class label of each roi, 0 is background
+            roi_label = gt_label[max_gt_arg]
+            roi_label[neg_idx] = 0
+            # find gt bbox for each roi
+            roi_gt_bbox = gt_bbox[:,max_gt_arg]
+            roi_param = utils.bbox2param(props_bbox, roi_gt_bbox)
+        # next only choose rois of non-negative
+        return props_bbox[:,chosen_idx], roi_label[chosen_idx], roi_param[:,chosen_idx]
+
+
+def image2feature(bbox, img_size, feat_size):
+    """
+    transfer bbox size from image to feature
+    """
+    h_rat, w_rat = [feat_size[i]/img_size[i] for i in range(2)]
+    return bbox * torch.tensor([[w_rat], [h_rat], [w_rat], [h_rat]],
+                               device=bbox.device, dtype=torch.float32)
     
+    
+class ROICropping(object):
+    def __init__(self):
+        pass
+
+    def __call__(self, feature, props, image_size):
+        _, n_chanel, h, w = feature.shape
+        feat_size = feature.shape[-2:]
+        # process of cropping participates in the computation graph
+        bbox_feat = image2feature(props, image_size, feat_size).round().int()
+        crops = [feature[0, :, y_min:y_max+1, x_min:x_max+1] \
+                 for x_min, y_min, x_max, y_max in bbox_feat.t()]
+        return crops
+
+
+class ROIPooling(nn.Module):
+    def __init__(self, out_size):
+        super(ROIPooling, self).__init__()
+        self.out_size = out_size
+        self.adaptive_pool = nn.AdaptiveMaxPool2d(out_size)
+        
+    def forward(self, rois):
+        return torch.stack([self.adaptive_pool(x) for x in rois])

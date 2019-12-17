@@ -7,6 +7,10 @@ from lib import config
 from lib import utils
 from lib import region
 import torch
+import random
+
+random.seed(2019)
+torch.manual_seed(2019)
 
 def test_find_inside_index():
     img_size = (600,800)
@@ -18,7 +22,6 @@ def test_find_inside_index():
     labels = torch.full((16650,), -1) 
     print('inside_idx type:', type(inside_idx))
     print('inside_idx:\n', inside_idx)
-    print('inside_idx number:', len(inside_idx[0]))
     labels[inside_idx] = 1
     labels[8000:8050] = 0
     print('1 labels:', (labels==1).sum())
@@ -42,7 +45,7 @@ def test_anchor_target_creator():
     anchor_creator = region.AnchorCreator(device=torch.device('cuda:0'))
     anchors = anchor_creator(img_size, feat_size).view(4, -1)
     in_index = region.find_inside_index(anchors, img_size)
-    in_anchors = anchors[:, in_index[0]]
+    in_anchors = anchors[:, in_index]
     anchor_tar_creator = region.AnchorTargetCreator()
     print('in_anchors.shape', in_anchors.shape)
     labels, param, bbox_labels = anchor_tar_creator(img_size, feat_size, in_anchors, bbox)
@@ -73,6 +76,6 @@ def test_anchor_target_creator():
     
     
 if __name__ == '__main__':
-    #test_find_inside_index()
+    test_find_inside_index()
     test_anchor_target_creator()
     
