@@ -1,134 +1,9 @@
 import torch.nn as nn
-import torch
+import torch, logging
 from . import region
-import logging
 
-"""
-targets is a list of 256 pairs of anchor and gt_bbox, which is a 
-dict of {
-  'anchr': anchor,
-  'gt_bbox': BBox,
-  'gt_label': 0/1,
-  'category': category,
-  'iou': iou btw gt and anchor
-}
-where anchor is a dict of keys: 
-  'center', 'feat_loc', 'scale_idx', 'ar_idx', 'bbox', 'id'.
-"""
-class RPNLoss(object):
-    def __init__(self, anchor_generator, lamb):
-        self.anchor_generator = anchor_generator
-        self.lamb = lamb
-    def __call__(self, rpn_cls_out, rpn_reg_out, targets):
-        if rpn_cls_out is None or rpn_reg_out is None or targets is None:
-            # return an isolated tensor meaning no training is involved
-            logging.warning('RPN does not matched anchor to train, '
-                            'this may due to too narrow image '
-                            'size(rpn_cls_out shape: {})'.format(
-                                rpn_cls_out.shape if rpn_cls_out is not None else None
-                            ))
-            return torch.tensor(0.0, requires_grad=True)
-
-        device = rpn_cls_out.device
-        cls_out, cls_labels = [], []
-        reg_out, reg_params = [], []
-        num_scales = len(self.anchor_generator.scales)
-        num_ars = len(self.anchor_generator.aspect_ratios)
-
-        for tar in targets:
-            anchor = tar['anchor']
-            gt_bbox = tar['gt_bbox']
-            anchor_bbox = anchor['bbox']
-            
-            feat_i, feat_j = anchor['feat_loc'].y, anchor['feat_loc'].x
-            scale_idx, ar_idx = anchor['scale_idx'], anchor['ar_idx']
-            anchor_idx = scale_idx * num_ars + ar_idx
-            objectness = rpn_cls_out[0, anchor_idx*2:anchor_idx*2 + 2,
-                                     feat_i, feat_j]
-            adjustment = rpn_reg_out[0, anchor_idx*4:anchor_idx*4 + 4,
-                                     feat_i, feat_j]
-            gt_label = tar['gt_label']
-            cls_out.append(objectness)
-            cls_labels.append(gt_label)
-            if gt_label != 0:
-                gt_params = region.xywh2param(gt_bbox.get_xywh(), anchor_bbox)
-                reg_out.append(adjustment)
-                reg_params.append(gt_params)
-        
-        cls_loss = torch.tensor(0.0, device=device, requires_grad=True)
-        if len(cls_out) != 0:
-            cls_out_tsr = torch.stack(cls_out)
-            cls_labels_tsr = torch.tensor(cls_labels, device=device)
-            ce_loss = torch.nn.CrossEntropyLoss()
-            if cls_out_tsr.numel() !=0 and cls_labels_tsr.numel() != 0:
-                cls_loss = ce_loss(cls_out_tsr, cls_labels_tsr)
-                
-
-        reg_loss = torch.tensor(0.0, device=device, requires_grad=True)
-        if len(reg_out) != 0:
-            reg_out_tsr = torch.stack(reg_out)
-            reg_params_tsr = torch.tensor(reg_params, device=device)
-            sm_loss = torch.nn.SmoothL1Loss(reduction='sum')
-            # here self.lamb is lambda / num_targets in the paper so default of self.lamb is 1.0
-            num_targets = len(targets) * 1.0
-            if reg_out_tsr.numel() != 0 and reg_params_tsr.numel() != 0:
-                reg_loss = sm_loss(reg_out_tsr, reg_params_tsr) / num_targets
-        logging.debug('rpn_cls_loss: {}'.format(cls_loss.item()))
-        reg_loss_val = reg_loss.item() * num_targets / len(reg_out) if len(reg_out)!=0 else None
-        logging.debug('rpn_reg_loss: {}'.format(reg_loss_val))
-        #return cls_loss
-        return cls_loss + self.lamb * reg_loss 
-        
-        
-
-class RCNNLoss(object):
-    def __init__(self, lamb):
-        self.lamb = lamb
-    def __call__(self, cls_out, reg_out, props_targets):
-        if cls_out is None or reg_out is None:
-            # return an isolated tensor meaning no training is involved
-            logging.warning('RCNN does not have proposed regions to train, '
-                            'this is probably due to too-small proposals by RPN.')
-            return torch.tensor(0.0, requires_grad=True)
-        device = cls_out.device
-
-        cls_loss = torch.tensor(0.0, requires_grad=True, device=device)
-        ce_loss = torch.nn.CrossEntropyLoss()
-        labels = torch.tensor([tar['category'] for tar in props_targets], device=device)
-        if cls_out.numel() != 0 and labels.numel() != 0:
-            cls_loss = ce_loss(cls_out, labels)
-
-        reg_loss = torch.tensor(0.0, requires_grad=True, device=device)
-        smL1_loss = torch.nn.SmoothL1Loss(reduction='sum')
-        pos_reg_out = []
-        gt_params = []
-        for i, tar in enumerate(props_targets):
-            if tar['gt_bbox'] is None:
-                continue
-            adj_bbox = tar['adj_bbox']
-            category = tar['category']
-            gt_bbox = tar['gt_bbox']
-            reg_out_i = reg_out[i][category*4:(category+1)*4]
-            pos_reg_out.append(reg_out_i)
-            gt_param = region.xywh2param(gt_bbox.get_xywh(), adj_bbox)
-            gt_params.append(gt_param)
-            
-        if len(gt_params) != 0:
-            pos_reg_out_tsr = torch.stack(pos_reg_out)
-            gt_params_tsr = torch.tensor(gt_params, device=device)
-            num_targets = len(props_targets) * 1.0
-            # here self.lamb is lambda / num_targets in the paper so default of self.lamb is 1.0
-            if pos_reg_out_tsr.numel() !=0 and gt_params_tsr.numel() != 0:
-                reg_loss = smL1_loss(pos_reg_out_tsr, gt_params_tsr) / num_targets
-        else:
-            logging.warning('RCNN regression training is zero, this is probably '
-                            'due to no matched positive anchors are present.')    
-        logging.debug('rcnn_cls_loss: {}'.format(cls_loss.item()))
-        reg_loss_val = reg_loss.item() * num_targets / len(gt_params) \
-                       if len(gt_params) != 0 else None
-        logging.debug('rcnn_reg_loss: {}'.format(reg_loss_val))
-        return cls_loss + self.lamb * reg_loss
-    
+def zero_loss(device):
+    return torch.tensor(0.0, device=device, requires_grad=True)
 
 class RPNLoss(object):
     def __init__(self, lamb=1.0):
@@ -137,11 +12,13 @@ class RPNLoss(object):
         self.smooth_l1 = nn.SmoothL1Loss(reduction='sum')
 
     def __call__(self, cls_out, reg_out, label, param):
+        if label.numel() == 0:
+            return zero_loss(cls_out.device)
         cls_loss = self.ce(cls_out.t(), label.long())
         n_samples = len(label)
         pos_arg = (label==1)
         if pos_arg.sum() == 0:
-            reg_loss = torch.tensor(0.0, device=cls_out.device)
+            reg_loss = zero_loss(cls_out.device)
         else:
             reg_loss = self.smooth_l1(reg_out[:, pos_arg], param[:, pos_arg]) / n_samples
         return cls_loss + self.lamb * reg_loss
@@ -153,6 +30,8 @@ class RCNNLoss(object):
         self.smooth_l1 = nn.SmoothL1Loss(reduction='sum')
 
     def __call__(self, cls_out, reg_out, label, param):
+        if label.numel() == 0:
+            return zero_loss(cls_out.device)
         label = label.long()
         n_class = cls_out.shape[1]
         n_samples = len(label)
@@ -161,7 +40,7 @@ class RCNNLoss(object):
         reg_out = reg_out[torch.arange(n_samples), :, label]
         pos_arg = (label>1)
         if pos_arg.sum() == 0:
-            reg_loss = torch.tensor(0.0, device=cls_out.device)
+            reg_loss = zero_loss(cls_out.device)
         else:
             pos_reg = reg_out[pos_arg, :]
             reg_loss = self.smooth_l1(pos_reg, param[:, pos_arg].t()) / n_samples

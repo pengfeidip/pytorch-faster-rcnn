@@ -151,8 +151,8 @@ class CocoDetDataset(torch.utils.data.Dataset):
             x,y,w,h = bbox[:4]
             trans_bboxes.append([x*w_amp, y*h_amp, (x+w)*w_amp, (y+h)*h_amp])
             labels.append(bbox[-1])
-        bboxes = torch.tensor(trans_bboxes, dtype=torch.float16)
-        labels = torch.tensor(labels, dtype=torch.int8)
+        bboxes = torch.tensor(trans_bboxes, dtype=torch.float32)
+        labels = torch.tensor(labels, dtype=torch.int)
         return \
             img_resized, \
             bboxes, \
