@@ -64,6 +64,11 @@ def param2bbox(base, param):
     w, h = torch.exp(tw)*base_w, torch.exp(th)*base_h
     x2, y2 = x+w, y+h
     return torch.stack([x,y,x2,y2])
+
+def xyxy2xywh(xyxy):
+    return torch.stack([xyxy[0], xyxy[1], xyxy[2]-xyxy[0], xyxy[3]-xyxy[1]])
+def xywh2xyxy(xywh):
+    return torch.stack([xywh[0], xywh[1], xywh[0]+xywh[2], xywh[1]+xywh[3]])
     
 def calc_iou(a, b):
     """

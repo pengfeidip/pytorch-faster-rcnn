@@ -16,7 +16,7 @@ train_data_cfg = dict(
 
 test_data_cfg = dict(
     img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/VOC2007/JPEGImages',
-    loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
+    loader_cfg=dict(batch_size=1, num_workers=2, shuffle=False),
 )
 
 

@@ -1,141 +1,18 @@
-from . import region, modules, loss
+from . import region, modules, loss, utils
 import logging, random, traceback, time
 import torch, torchvision
 import torch.nn as nn
 import os.path as osp
 from PIL import Image
 
-
 FASTER_ANCHOR_SCALES = [128, 256, 512]
 FASTER_ANCHOR_ASPECT_RATIOS = [1.0, 0.5, 2.0]
 FASTER_ROI_POOL_SIZE = (7, 7)
 
+DEF_CUDA = torch.device('cuda:0')
 
 def ckpt_name(n):
     return 'epoch_{}.pth'.format(n)
-
-
-# turn RCNN output into prediction result
-# apply nms here indepently to each category
-# returned bboxes are in xywh coordinates
-def interpret_rcnn_output(rcnn_cls_out, rcnn_reg_out, props, nms_iou):
-    logging.info('Interpret RCNN output(apply NMS with iou_thr={})'.format(nms_iou))
-    logging.debug('Rcnn_cls_out: {}'.format(rcnn_cls_out.shape))
-    logging.debug('Rcnn_reg_out: {}'.format(rcnn_reg_out.shape))
-    logging.debug('Number of proposals: {}'.format(len(props)))
-
-    batch_size, num_cates = rcnn_cls_out.shape
-    rcnn_cls_soft = torch.softmax(rcnn_cls_out, 1)
-    rcnn_cls_maxarg = torch.argmax(rcnn_cls_soft, 1)
-
-    # put [cate, soft_score, param, adj_bbox] in the list
-    raw_res = []
-
-    for i, soft in enumerate(rcnn_cls_soft):
-        cate = rcnn_cls_maxarg[i]
-        soft_score = rcnn_cls_soft[i][cate]
-        if cate == 0:
-            continue
-        raw_res.append([cate, soft_score.item(), rcnn_reg_out[i][cate*4:cate*4+4],
-                        props[i]['adj_bbox']])
-    logging.info('Positive bboxes: {}'.format(len(raw_res)))
-    bboxes, scores, cates = [], [], []
-    for cate in range(1, num_cates):
-        cate_res = [tmp for tmp in raw_res if tmp[0]==cate]
-        cur_bboxes_xywh = [region.param2xywh(tmp[2], tmp[3]) for tmp in cate_res]
-        cur_bboxes_xyxy = [region.BBox(xywh=tmp).get_xyxy() for tmp in cur_bboxes_xywh]
-        cur_scores = [tmp[1] for tmp in cate_res]
-        nms_keep = torchvision.ops.nms(torch.tensor(cur_bboxes_xyxy),
-                                       torch.tensor(cur_scores), nms_iou)
-        for keep in nms_keep:
-            bboxes.append(cur_bboxes_xywh[keep])
-            scores.append(cate_res[keep][1])
-            cates.append(cate)
-    logging.info('Positive bboxes after applying NMS to each category independently: {}'\
-                 .format(len(bboxes)))
-    return bboxes, scores, cates
-
-
-class FasterRCNNTest(object):
-    r"""
-    Utility to test a faster rcnn
-    """
-    def __init__(self,
-                 faster_configs,
-                 device=torch.device('cpu')):
-        
-        self.device = device
-        self.faster_configs = faster_configs
-        self.faster_rcnn = FasterRCNNModule(**faster_configs)
-        
-
-    def load_ckpt(self, ckpt):
-        self.current_ckpt = ckpt
-        self.faster_rcnn.load_state_dict(torch.load(ckpt, map_location=self.device))
-        self.faster_rcnn.to(self.device)
-        
-    # inference on a set of images and return coco format json, but only return bbox results
-    # {'image_id', 'bbox', 'score', 'category_id'}
-    def inference(self, dataloader, min_score=-1):
-        coco_json = {
-            'images': [],
-            'annotations': []
-        }
-        img_id, cate_id = 0, 0
-        self.faster_rcnn.eval_mode()
-        logging.info('Start to inference images({}).'.format(len(dataloader)))
-        with torch.no_grad():
-            for img_data, amp, img_name, img_w, img_h in dataloader:
-                logging.info('Inference image id: {}'.format(img_id))
-                amp = amp.item()
-                img_name = img_name[0]
-                img_w, img_h = img_w.item(), img_h.item()
-
-                img_json = {
-                    'id': img_id,
-                    'width': img_w,
-                    'height': img_h,
-                    'file_name': img_name,
-                }
-                coco_json['images'].append(img_json)            
-                bboxes_xywh, scores, categories = self.inference_one(img_data)
-                bbox_ct = 0
-                for i, bbox in enumerate(bboxes_xywh):
-                    score = scores[i]
-                    if score < min_score:
-                        continue
-                    bbox = [coor/amp for coor in bbox]
-                    coco_json['annotations'].append({
-                        'id': cate_id,
-                        'image_id':img_id,
-                        'bbox':bbox,
-                        'score':score,
-                        'category_id':categories[i]
-                    })
-                    bbox_ct += 1
-                    cate_id += 1
-                logging.info('{} bbox predictions for image: {}'.format(bbox_ct, img_name))
-                img_id += 1
-        return coco_json
-
-
-    def inference_one(self, img_data):
-        img_data = img_data.to(device=self.device)
-        rpn_cls_out, rpn_reg_out, rcnn_cls_out, rcnn_reg_out,\
-            anchor_targets, props, props_targets = self.faster_rcnn(img_data, None)
-        bboxes, scores, categories = interpret_rcnn_output(rcnn_cls_out,
-                                                           rcnn_reg_out,
-                                                           props,
-                                                           self.faster_rcnn.test_props_nms_iou)
-        return bboxes, scores, categories
-
-
-
-####################################################################
-###################### Vectorization ###############################
-####################################################################
-
-DEF_CUDA = torch.device('cuda:0')
 
 class FasterRCNNModule(nn.Module):
     r"""
@@ -178,7 +55,7 @@ class FasterRCNNModule(nn.Module):
         self.train_props_pre_nms=train_props_pre_nms
         self.train_props_post_nms=train_props_post_nms
         self.train_props_nms_iou=train_props_nms_iou
-        self.train_props_min_size = train_props_min_size
+        self.train_props_min_size=train_props_min_size
         self.test_props_pre_nms=test_props_pre_nms
         self.test_props_post_nms=test_props_post_nms
         self.test_props_nms_iou=test_props_nms_iou
@@ -273,13 +150,13 @@ class FasterRCNNModule(nn.Module):
             = self.forward_rpn(feature, img_size, gt_bbox)
         logging.info('Finished rpn forward pass \ncls_out.shape={} \nreg_out.shape={} \nanchors: {}'
                      .format(rpn_cls_out.shape, rpn_reg_out.shape, anchors.shape))
-        rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param  \
+        rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
             = self.forward_rcnn(feature, img_size, rpn_cls_out, rpn_reg_out, \
                                 anchors, gt_bbox, gt_label, scale)
         logging.info('Finished rcnn forward pass \ncls_out.shape={} \nreg_out.shape={}'\
                      .format(rcnn_cls_out.shape, rcnn_reg_out.shape))
         return rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, \
-            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param
+            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox
             
     def forward_backbone(self, x):
         img_size = x.shape[-2:]
@@ -296,7 +173,7 @@ class FasterRCNNModule(nn.Module):
             rpn_reg_out.shape if rpn_reg_out is not None else None))
         anchors = self.anchor_creator(img_size, feat_size)
         anchors = anchors.view(4, -1)
-        tar_cls_out, tar_reg_out, tar_label, tar_params \
+        tar_cls_out, tar_reg_out, tar_label, tar_param \
             = None, None, None, None
 
         if self.training:
@@ -324,7 +201,7 @@ class FasterRCNNModule(nn.Module):
                 (tar_label==1).sum(),
                 (tar_label==0).sum(),
                 (tar_label==-1).sum()))
-            return \
+        return \
             rpn_cls_out, rpn_reg_out, \
             tar_cls_out, tar_reg_out, tar_label, tar_param, \
             anchors
@@ -341,7 +218,7 @@ class FasterRCNNModule(nn.Module):
                 = self.test_props_creator(rpn_cls_out, rpn_reg_out, anchors, img_size, scale)
         logging.info('proposals: {}'.format(props.shape))
         
-        tar_label, tar_param = None, None
+        tar_bbox, tar_label, tar_param = None, None, None
         if self.training:
             tar_bbox, tar_label, tar_param \
                 = self.props_target_creator(props, gt_bbox, gt_label)
@@ -359,11 +236,13 @@ class FasterRCNNModule(nn.Module):
             roi_pool_out = self.roi_pool(roi_crops)
             rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         else:
-            roi_crops = self.roi_crop.crop(feature, props, img_size)
+            roi_crops = self.roi_crop(feature, props, img_size)
             roi_pool_out = self.roi_pool(roi_crops)
             rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         # anchor_targets, props_targets will be None for test mode
-        return rcnn_cls_out, rcnn_reg_out, tar_label, tar_param
+        if not self.training:
+            tar_bbox = props
+        return rcnn_cls_out, rcnn_reg_out, tar_label, tar_param, tar_bbox
 
     def train_mode(self):
         super(FasterRCNNModule, self).train()
@@ -458,12 +337,12 @@ class FasterRCNNTrain(object):
         scale = img_info['scale'].item()
         
         logging.debug('Image shape: {}'.format(img_data.shape))
-        logging.debug('GT bboxes: {}'.format(bboxes))
+        logging.debug('GT bboxes: {}'.format(bboxes.t()))
         logging.debug('GT labels: {}'.format(labels))
         logging.debug('Image info: {}'.format(img_info))
 
         rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param, \
-            rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param \
+            rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
             = self.faster_rcnn(img_data, bboxes, labels, scale)
         
         rpnloss = rpn_loss(rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param)
@@ -525,4 +404,90 @@ class FasterRCNNTrain(object):
                     epoch, epoch_model))
                 torch.save(self.faster_rcnn.state_dict(), epoch_model)
         print('Finished Training:)!!!')
+
+
+
+
+class FasterRCNNTest(object):
+    r"""
+    Utility to test a faster rcnn
+    """
+    def __init__(self,
+                 faster_configs,
+                 device=torch.device('cuda:0')):
+        self.device = device
+        self.faster_configs = faster_configs
+        self.faster_rcnn = FasterRCNNModule(**faster_configs)
+
+    def load_ckpt(self, ckpt):
+        self.current_ckpt = ckpt
+        self.faster_rcnn.load_state_dict(torch.load(ckpt, map_location=self.device))
+        self.faster_rcnn.to(self.device)
+        
+    # inference on a set of images and return coco format json, but only return bbox results
+    def inference(self, dataloader):
+        self.faster_rcnn.eval_mode()
+        inf_res = []
+        ith = 0
+        logging.info('Start to inference images({}).'.format(len(dataloader)))
+        with torch.no_grad():
+            for img_data, scale, img_name, img_w, img_h in dataloader:
+                logging.info('Inference {}-th image.'.format(ith))
+                ith += 1
+                scale = scale.item()
+                img_name = img_name[0]
+                img_w, img_h = img_w.item(), img_h.item()
+                img_res = {
+                    'width': img_w,
+                    'height': img_h,
+                    'file_name': img_name,
+                }
+                bbox, score, category = self.inference_one(img_data, scale)
+                #logging.info('size of bbox: {}'.format(bbox.shape))
+                #logging.info('score: {}'.format(score))
+                #logging.info('category: {}'.format(category))
+                if len(bbox) == 0:
+                    continue
+                # bbox from here has xywh format
+                img_res['bbox'] = utils.xyxy2xywh(bbox).t() / scale
+                img_res['score'] = score
+                img_res['category'] = category
+                logging.info('{} bbox predictions for image: {}'.format(
+                    int(bbox.shape[1]), img_name))
+                inf_res.append(img_res)
+        return inf_res
+
+    def inference_one(self, img_data, scale):
+        img_data = img_data.to(device=self.device)
+        rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, \
+            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
+            = self.faster_rcnn(img_data, None, None, scale)
+        soft = torch.softmax(rcnn_cls_out, dim=1)
+        score, label = torch.max(soft, dim=1)
+        n_props = rcnn_cls_out.shape[0]
+        reg_out = rcnn_reg_out.view(n_props, 4, -1)
+        n_classes = reg_out.shape[-1]
+        param_out = reg_out[torch.arange(n_props), :, label]
+        bbox = utils.param2bbox(rcnn_tar_bbox, param_out.t())
+        
+        bbox_res, score_res, class_res = [], [], []
+        for i in range(n_classes-1):
+            cur_label = (label==i+1)
+            if cur_label.sum() == 0:
+                continue
+            if cur_label.numel()==0:
+                continue
+            cur_score = score[cur_label]
+            cur_bbox = bbox[:, cur_label]
+            
+            keep = torchvision.ops.nms(cur_bbox.t(), cur_score,
+                                       self.faster_rcnn.test_props_nms_iou)
+            bbox_res.append(cur_bbox[:, keep])
+            score_res.append(cur_score[keep])
+            class_res += [i+1] * len(keep)
+            
+        if len(bbox_res) == 0:
+            return bbox_res, score_res, class_res
+        return torch.cat(bbox_res, dim=1), \
+            torch.cat(score_res), class_res
 
