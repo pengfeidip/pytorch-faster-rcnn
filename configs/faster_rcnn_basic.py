@@ -1,10 +1,9 @@
 import torch
 import logging
 
-
-# often changed configs
+# This is the first config that uses the new version implementation(vectorization)
 LR = None
-MAX_EPOCHS = 20
+MAX_EPOCHS = 16
 
 train_data_cfg = dict(
     img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages',
@@ -31,9 +30,11 @@ model = dict(
     train_props_pre_nms=12000,
     train_props_post_nms=2000,
     train_props_nms_iou=0.7,
+    train_props_min_size=16,
     test_props_pre_nms=6000,
     test_props_post_nms=300,
     test_props_nms_iou=0.5,
+    test_props_min_size=16,
     props_pos_iou=0.5,
     props_neg_iou_hi=0.5,
     props_neg_iou_lo=0.1,

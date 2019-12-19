@@ -145,9 +145,10 @@ class ProposalCreator(object):
     def __call__(self, rpn_cls_out, rpn_reg_out, anchors, img_size, scale=1.0):
         assert anchors.shape[0] == 4 and len(anchors.shape) == 2
         n_anchors = anchors.shape[1]
-        #min_size = scale * self.min_size # this is the value from simple-faster-rcnn
-        # min_size = 17 # this is the old version value which is basically 1 in feature map
-        min_size = scale * self.min_size
+        # min_size = scale * self.min_size # this is the value from simple-faster-rcnn
+        min_size = -1 # this is the old version value which is basically do not filter,
+                      # but will filter zero crops in ROI pooling layer
+
         H, W = img_size
         with torch.no_grad():
             cls_out = rpn_cls_out.view(2, -1)
@@ -155,10 +156,10 @@ class ProposalCreator(object):
             scores = torch.softmax(cls_out, 0)[1]
             props_bbox = utils.param2bbox(anchors, reg_out)
             props_bbox = torch.stack([
-                torch.clamp(props_bbox[0], 0.0, W),
-                torch.clamp(props_bbox[1], 0.0, H),
-                torch.clamp(props_bbox[2], 0.0, W),
-                torch.clamp(props_bbox[3], 0.0, H)
+                torch.clamp(props_bbox[0], 0.0, W-1),
+                torch.clamp(props_bbox[1], 0.0, H-1),
+                torch.clamp(props_bbox[2], 0.0, W-1),
+                torch.clamp(props_bbox[3], 0.0, H-1)
             ])
             small_area_idx = utils.index_of(
                 (props_bbox[2] - props_bbox[0]) * (props_bbox[3] - props_bbox[1]) < min_size
@@ -254,4 +255,12 @@ class ROIPooling(nn.Module):
         if len(rois) == 0:
             logging.warning('ROIPooling reveives an empty list of rois')
             return None
-        return torch.stack([self.adaptive_pool(x) for x in rois])
+        zero_area, pos_area = [], []
+        for roi in rois:
+            if roi.numel()==0:
+                zero_area.append(roi)
+            else:
+                pos_area.append(roi)
+        if len(zero_area)>0:
+            logging.warning('Encounter {} rois with 0 area!'.format(len(zero_area)))
+        return torch.stack([self.adaptive_pool(x) for x in pos_area])
