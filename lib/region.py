@@ -161,7 +161,8 @@ class ProposalCreator(object):
                 torch.clamp(props_bbox[3], 0.0, H-1)
             ])
             small_area_idx = utils.index_of(
-                (props_bbox[2] - props_bbox[0]) * (props_bbox[3] - props_bbox[1]) < min_size
+                (props_bbox[2] - props_bbox[0] < min_size) |
+                (props_bbox[3] - props_bbox[1] < min_size)
             )
             scores[small_area_idx] = -1
             sort_args = torch.argsort(scores, descending=True)
@@ -199,8 +200,6 @@ class ProposalTargetCreator(object):
             gt_bbox = gt_bbox.to(torch.float32)
             n_props, n_gts = props_bbox.shape[1], gt_bbox.shape[1]
             iou_tab = utils.calc_iou(props_bbox, gt_bbox)
-            logging.debug('ProposalTargetCreator: max_iou={}, min_iou={}'.format(
-                iou_tab.max(), iou_tab.min()))
             max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
             label = torch.full((n_props,), -1, device = props_bbox.device, dtype=torch.int)
             label[max_gt_iou > self.pos_iou] = 1
@@ -208,6 +207,9 @@ class ProposalTargetCreator(object):
             label = random_sample_label(label, self.max_pos, self.max_targets)
             pos_idx, neg_idx = (label==1), (label==0)
             chosen_idx = pos_idx | neg_idx
+            chosen_iou = max_gt_iou[chosen_idx]
+            logging.debug('ProposalTargetCreator: max_iou={}, min_iou={}'.format(
+                chosen_iou.max(), chosen_iou.min()))
             # find class label of each roi, 0 is background
             roi_label = gt_label[max_gt_arg]
             roi_label[neg_idx] = 0
@@ -252,7 +254,7 @@ class ROIPooling(nn.Module):
         
     def forward(self, rois):
         if len(rois) == 0:
-            logging.warning('ROIPooling reveives an empty list of rois')
+            logging.warning('ROIPooling receives an empty list of rois')
             return None
         zero_area, pos_area = [], []
         for roi in rois:
@@ -261,8 +263,10 @@ class ROIPooling(nn.Module):
             else:
                 pos_area.append(roi)
         if len(zero_area)>0:
-            logging.warning('Encounter {} rois with 0 area!'.format(len(zero_area)))
+            logging.warning('Encounter'
+                            ' {} rois with 0 area, ignore this batch!'.format(len(zero_area)))
+            return None
         if len(pos_area)==0:
-            logging.warning('No rois with positive area')
+            logging.warning('No rois with positive area, ignore this batch!')
             return None
         return torch.stack([self.adaptive_pool(x) for x in pos_area])
