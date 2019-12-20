@@ -30,8 +30,8 @@ class RCNNLoss(object):
         self.smooth_l1 = nn.SmoothL1Loss(reduction='sum')
 
     def __call__(self, cls_out, reg_out, label, param):
-        if label.numel() == 0:
-            return zero_loss(cls_out.device)
+        if label.numel() == 0 or cls_out is None or reg_out is None:
+            return zero_loss(label.device)
         label = label.long()
         n_class = cls_out.shape[1]
         n_samples = len(label)
@@ -40,7 +40,7 @@ class RCNNLoss(object):
         reg_out = reg_out[torch.arange(n_samples), :, label]
         pos_arg = (label>1)
         if pos_arg.sum() == 0:
-            reg_loss = zero_loss(cls_out.device)
+            reg_loss = zero_loss(label.device)
         else:
             pos_reg = reg_out[pos_arg, :]
             reg_loss = self.smooth_l1(pos_reg, param[:, pos_arg].t()) / n_samples

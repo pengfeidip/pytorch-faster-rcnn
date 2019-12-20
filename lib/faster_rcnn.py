@@ -153,8 +153,8 @@ class FasterRCNNModule(nn.Module):
         rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
             = self.forward_rcnn(feature, img_size, rpn_cls_out, rpn_reg_out, \
                                 anchors, gt_bbox, gt_label, scale)
-        logging.info('Finished rcnn forward pass \ncls_out.shape={} \nreg_out.shape={}'\
-                     .format(rcnn_cls_out.shape, rcnn_reg_out.shape))
+        #logging.info('Finished rcnn forward pass \ncls_out.shape={} \nreg_out.shape={}'\
+        #             .format(rcnn_cls_out.shape, rcnn_reg_out.shape))
         return rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, \
             rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox
             
@@ -404,8 +404,6 @@ class FasterRCNNTrain(object):
                     epoch, epoch_model))
                 torch.save(self.faster_rcnn.state_dict(), epoch_model)
         print('Finished Training:)!!!')
-
-
 
 
 class FasterRCNNTest(object):
