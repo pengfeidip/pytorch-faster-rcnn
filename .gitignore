@@ -1,3 +1,5 @@
+tmp/
+work_dir/
 lib/__pycache__/
 configs/__pycache__/
 test/*.pth

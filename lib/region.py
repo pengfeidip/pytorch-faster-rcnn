@@ -129,6 +129,11 @@ class AnchorTargetCreator(object):
             # next label positive anchors
             labels[max_anchor_arg] = 1
             labels[(max_gt_iou >= self.pos_iou)] = 1
+            # chose anchor has the same max iou with GT as positive
+            equal_max_anchor = (iou_tab == max_anchor_iou)
+            equal_max_anchor_idx = (equal_max_anchor.sum(1) > 0)
+            labels[equal_max_anchor_idx] = 1
+
             labels = random_sample_label(labels, self.max_pos, self.max_targets)
             bbox_labels = gt_bbox[:,max_gt_arg]
             param = utils.bbox2param(anchors, bbox_labels)
@@ -195,9 +200,10 @@ class ProposalTargetCreator(object):
         self.neg_iou_lo = neg_iou_lo
 
     def __call__(self, props_bbox, gt_bbox, gt_label):
-        # TODO: this version does not add gt to train classifier in RCNN
         with torch.no_grad():
-            gt_bbox = gt_bbox.to(torch.float32)
+            gt_bbox = gt_bbox.to(props_bbox.dtype)
+            # add gt to train RCNN
+            props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
             n_props, n_gts = props_bbox.shape[1], gt_bbox.shape[1]
             iou_tab = utils.calc_iou(props_bbox, gt_bbox)
             max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)

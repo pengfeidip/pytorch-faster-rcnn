@@ -415,6 +415,7 @@ class FasterRCNNTest(object):
                  device=torch.device('cuda:0')):
         self.device = device
         self.faster_configs = faster_configs
+        self.faster_configs['device'] = device
         self.faster_rcnn = FasterRCNNModule(**faster_configs)
 
     def load_ckpt(self, ckpt):
