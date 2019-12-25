@@ -44,7 +44,7 @@ def test_iou_performance():
     
     
 if __name__ == '__main__':
-    #test_bbox_2_param()
-    #test_iou()
+    test_bbox_2_param()
+    test_iou()
     test_iou_performance()
     

@@ -28,6 +28,9 @@ def wh_from_xyxy(bbox):
     w,h = bbox[2]-bbox[0], bbox[3]-bbox[1]
     return w,h
 
+def center_of(bbox):
+    return (bbox[2]+bbox[0])/2, (bbox[3]+bbox[1])/2
+
 def bbox2param(base, bbox):
     """
     It calculates the relative distance of a bbox to a base bbox.
@@ -42,7 +45,10 @@ def bbox2param(base, bbox):
     assert base.shape == bbox.shape
     base_w, base_h = wh_from_xyxy(base)
     bbox_w, bbox_h = wh_from_xyxy(bbox)
-    tx, ty = (bbox[0]-base[0])/base_w, (bbox[1]-base[1])/base_h
+    base_center = center_of(base)
+    bbox_center = center_of(bbox)
+    tx, ty = (bbox_center[0]-base_center[0])/base_w, (bbox_center[1]-base_center[1])/base_h
+    #tx, ty = (bbox[0]-base[0])/base_w, (bbox[1]-base[1])/base_h
     tw, th = torch.log(bbox_w/base_w), torch.log(bbox_h/base_h)
     return torch.stack([tx, ty, tw, th])
 
@@ -59,11 +65,14 @@ def param2bbox(base, param):
     """
     assert base.shape == param.shape
     base_w, base_h = wh_from_xyxy(base)
+    base_center_x, base_center_y = center_of(base)
     tx, ty, tw, th = [param[i] for i in range(4)]
-    x, y = tx*base_w + base[0], ty*base_h + base[1]
+    center_x, center_y = tx*base_w + base_center_x, ty*base_h + base_center_y
     w, h = torch.exp(tw)*base_w, torch.exp(th)*base_h
-    x2, y2 = x+w, y+h
-    return torch.stack([x,y,x2,y2])
+    return torch.stack([center_x-w/2,
+                        center_y-h/2,
+                        center_x+w/2,
+                        center_y+h/2])
 
 def xyxy2xywh(xyxy):
     return torch.stack([xyxy[0], xyxy[1], xyxy[2]-xyxy[0], xyxy[3]-xyxy[1]])
