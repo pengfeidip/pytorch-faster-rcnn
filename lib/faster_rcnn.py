@@ -370,8 +370,17 @@ class FasterRCNNTrain(object):
         for epoch in range(self.current_epoch, self.max_epochs+1):
             if self.lr_scheduler is not None:
                 self.optim_kwargs['lr'] = self.lr_scheduler(epoch)
-            optimizer = self.optim(self.faster_rcnn.parameters(),
-                                  **(self.optim_kwargs))
+            lr = self.optim_kwargs['lr']
+            params = []
+            for k, v in dict(self.faster_rcnn.named_parameters()).items():
+                if v.requires_grad:
+                    if 'bias' in k:
+                        params += [{'params':[v], 'lr':lr*2, 'weight_decay':0}]
+                    else:
+                        params += [{'params':[v],
+                                    'lr': lr,
+                                    'weight_decay':self.optim_kwargs['weight_decay']}]
+            optimizer = self.optim(params, momentum=0.9)
             logging.info('Start to train epoch: {} using lr: {}.'\
                          .format(epoch, self.optim_kwargs['lr']))
             for iter_i, train_data in enumerate(self.dataloader):
@@ -384,6 +393,7 @@ class FasterRCNNTrain(object):
                         secs = time.time() - start
                         logging.info('Eta time: {} mins.'\
                                      .format((tot_iters - iter_ct) / eta_iters * secs / 60))
+                        logging.info('FPS={}'.format(eta_iters/secs))
                         eta_ct = 0
                         start = time.time()
                 except Exception as e:
