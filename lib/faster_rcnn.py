@@ -363,7 +363,7 @@ class FasterRCNNTrain(object):
         self.faster_rcnn.train_mode()
 
         dataset_size = len(self.dataloader)
-        tot_iters = dataset_size * (self.max_epochs - self.current_epoch)
+        tot_iters = dataset_size * (self.max_epochs - self.current_epoch + 1)
         eta_iters, eta_ct, iter_ct = 50, 0, 0
         start = time.time()
         
@@ -417,6 +417,9 @@ class FasterRCNNTest(object):
         self.faster_configs = faster_configs
         self.faster_configs['device'] = device
         self.faster_rcnn = FasterRCNNModule(**faster_configs)
+        self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
+        self.param_normalize_std = (0.1, 0.1, 0.2, 0.2)
+        
 
     def load_ckpt(self, ckpt):
         self.current_ckpt = ckpt
@@ -467,6 +470,9 @@ class FasterRCNNTest(object):
         reg_out = rcnn_reg_out.view(n_props, 4, -1)
         n_classes = reg_out.shape[-1]
         param_out = reg_out[torch.arange(n_props), :, label]
+        param_mean = param_out.new(self.param_normalize_mean).view(-1, 4)
+        param_std  = param_out.new(self.param_normalize_std).view(-1, 4)
+        param_out = param_out * param_std + param_mean
         bbox = utils.param2bbox(rcnn_tar_bbox, param_out.t())
         
         bbox_res, score_res, class_res = [], [], []

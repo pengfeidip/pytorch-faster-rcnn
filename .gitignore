@@ -10,4 +10,5 @@ test/train_one_image_adam4.txt
 work_dirs/*
 test/test_train_12epoch_with_new_nms.stdout
 test/nohup.out
+__pycache__/
 nohup.out

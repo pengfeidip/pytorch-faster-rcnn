@@ -13,7 +13,7 @@ from . import config, utils
 class AnchorCreator(object):
 
     MAX_CACHE_ANCHOR = 1000
-    CACHE_REPORT_PERIOD = 500
+    CACHE_REPORT_PERIOD = 100
     def __init__(self, base=16, scales=[8, 16, 32],
                  aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cuda:0')):
         self.device = device
@@ -198,6 +198,9 @@ class ProposalTargetCreator(object):
         self.pos_iou = pos_iou
         self.neg_iou_hi = neg_iou_hi
         self.neg_iou_lo = neg_iou_lo
+        self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
+        self.param_normalize_std  = (0.1, 0.1, 0.2, 0.2)
+        
 
     def __call__(self, props_bbox, gt_bbox, gt_label):
         with torch.no_grad():
@@ -222,6 +225,9 @@ class ProposalTargetCreator(object):
             # find gt bbox for each roi
             roi_gt_bbox = gt_bbox[:,max_gt_arg]
             roi_param = utils.bbox2param(props_bbox, roi_gt_bbox)
+            param_mean = roi_param.new(self.param_normalize_mean)
+            param_std  = roi_param.new(self.param_normalize_std)
+            roi_param = (roi_param - param_mean.view(4, 1))/param_std.view(4, 1)
         # next only choose rois of non-negative
         return props_bbox[:,chosen_idx], roi_label[chosen_idx], roi_param[:,chosen_idx]
 

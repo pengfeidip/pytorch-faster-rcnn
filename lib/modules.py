@@ -67,7 +67,7 @@ class RCNN(nn.Module):
         self.classifier = nn.Linear(4096, num_classes+1)
         self.regressor  = nn.Linear(4096, (num_classes+1)*4)
         init_module_normal(self.classifier, mean=0.0, std=0.01)
-        init_module_normal(self.regressor, mean=0.0, std=0.01)
+        init_module_normal(self.regressor, mean=0.0, std=0.001)
 
     # roi_batch is a batch of fixed tensors which is the result of ROIPooling
     def forward(self, roi_batch):
