@@ -85,6 +85,8 @@ def main():
                 'score': round(score[i].item(), 3),
                 'category_id': category[i]
             }
+            if cur_pred['score'] < test_cfg.min_score:
+                continue
             out_json.append(cur_pred)
             anno_idx += 1
     json.dump(out_json, open(args.out, 'w'))

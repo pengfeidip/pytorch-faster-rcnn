@@ -3,14 +3,14 @@ import logging
 
 # This is the first config that uses the new version implementation(vectorization)
 LR = None
-MAX_EPOCHS = 16
+MAX_EPOCHS = 14
 
 train_data_cfg = dict(
     img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages',
     json='/home/server2/4T/liyiqing/projects/migrate-to-simple/'
     'pytorch-faster-rcnn-1-no_difficult/voc2007_trainval_no_difficult.json',
     img_size=(1000,600),
-    img_norm=dict(mean=[0.390, 0.423, 0.446], std=[0.282, 0.270, 0.273]),
+    img_norm=dict(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
 )
 
@@ -54,7 +54,7 @@ train_cfg = dict(
     rcnn_loss_lambda=1.0,
     loss_lambda=1.0,
     log_file='train_16epochs.log',
-    lr_scheduler=lambda e : 0.001 if e <=12 else 0.0001,
+    lr_scheduler=lambda e : 0.001 if e <=10 else 0.0001,
     log_level=logging.DEBUG,
     device=torch.device('cpu'),
     save_interval=2
