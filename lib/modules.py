@@ -63,7 +63,7 @@ class RCNN(nn.Module):
         if fc2_state_dict is not None:
             self.fc2.load_state_dict(fc2_state_dict)
         else:
-            init_moduel_normal(self.fc2, mean=0.0, std=0.01)
+            init_module_normal(self.fc2, mean=0.0, std=0.01)
         self.classifier = nn.Linear(4096, num_classes+1)
         self.regressor  = nn.Linear(4096, (num_classes+1)*4)
         init_module_normal(self.classifier, mean=0.0, std=0.01)
