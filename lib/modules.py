@@ -14,7 +14,13 @@ class VGGBackbone(nn.Module):
         self.device=device
         vgg16 = tv.models.vgg16(pretrained=pretrained)
         vgg16.to(device=device)
-        self.backbone = vgg16.features[:-1]
+
+        features = list(vgg16.features)[:30]
+        for layer in features[:10]:
+            for p in layer.parameters():
+                p.requires_grad = False
+        
+        self.backbone = nn.Sequential(*features)
         # do not register the original vgg16 network
         self.vgg16 = [vgg16]
 

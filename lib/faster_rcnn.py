@@ -471,6 +471,8 @@ class FasterRCNNTest(object):
 
     def inference_one(self, img_data, scale):
         img_data = img_data.to(device=self.device)
+        h, w = img_data.shape[-2:]
+        
         rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, \
             rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
             = self.faster_rcnn(img_data, None, None, scale)
@@ -484,6 +486,10 @@ class FasterRCNNTest(object):
         param_std  = param_out.new(self.param_normalize_std).view(-1, 4)
         param_out = param_out * param_std + param_mean
         bbox = utils.param2bbox(rcnn_tar_bbox, param_out.t())
+
+        # TODO: constrain predict bbox to image size
+        bbox = torch.stack([bbox[0].clamp(0, w), bbox[1].clamp(0, h),
+                            bbox[2].clamp(0, w), bbox[3].clamp(0, h)])
         
         bbox_res, score_res, class_res = [], [], []
         for i in range(n_classes-1):

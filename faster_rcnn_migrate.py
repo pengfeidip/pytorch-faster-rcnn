@@ -42,7 +42,7 @@ model = dict(
     props_max_pos=32,
     props_max_targets=128,
     roi_pool_size=(7, 7),
-    transfer_rcnn_fc=False
+    transfer_rcnn_fc=True
 )
 
 
