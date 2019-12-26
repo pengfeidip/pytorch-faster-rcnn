@@ -5,7 +5,7 @@ parser.add_argument('--config', required=True, metavar='REQUIRED',
                     help='Configuration file.')
 parser.add_argument('--ckpt', required=True, metavar='REQUIRED', 
                     help="Checkpoint saved model, usually in '.pth' format.")
-parser.add_argument('--img-dir', required=True,
+parser.add_argument('--img-dir', 
                     help='Test image directory.')
 parser.add_argument('--annotation', help='Usually a GT json')
 parser.add_argument('--out', required=True, metavar='REQUIRED', 
@@ -29,9 +29,10 @@ def load_image_info(JSON):
     return {img['file_name']:img['id'] for img in cont['images']}
 
 def check_args():
-    args.img_dir = osp.realpath(args.img_dir)
-    assert osp.exists(args.img_dir) and osp.isdir(args.img_dir), 'Can not find img-dir: {}'\
-        .format(args.img_dir)
+    if args.img_dir is not None:
+        args.img_dir = osp.realpath(args.img_dir)    
+        assert osp.exists(args.img_dir) and osp.isdir(args.img_dir), 'Can not find img-dir: {}'\
+                                               .format(args.img_dir)
     args.config_file = osp.realpath(args.config)
     args.out = osp.realpath(args.out)
     assert not osp.isdir(args.out), 'Output should not be a directory: {}'.format(args.out)
@@ -52,7 +53,11 @@ def main():
                         level=logging.DEBUG)
     config = args.config
     test_data_cfg, train_data_cfg = config.test_data_cfg, config.train_data_cfg
-    dataset = data.ImageDataset(args.img_dir,
+    if args.img_dir is not None:
+        img_dir = args.img_dir
+    else:
+        img_dir = config.test_data_cfg.img_dir
+    dataset = data.ImageDataset(img_dir,
                                 transform=data.faster_transform(*train_data_cfg.img_size,
                                                                 **train_data_cfg.img_norm))
     dataloader = torch.utils.data.DataLoader(dataset, **test_data_cfg.loader_cfg)
@@ -85,7 +90,7 @@ def main():
                 'score': round(score[i].item(), 3),
                 'category_id': category[i]
             }
-            if cur_pred['score'] < test_cfg.min_score:
+            if cur_pred['score'] < config.test_cfg.min_score:
                 continue
             out_json.append(cur_pred)
             anno_idx += 1
