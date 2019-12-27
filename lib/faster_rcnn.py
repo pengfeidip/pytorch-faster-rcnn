@@ -437,7 +437,7 @@ class FasterRCNNTest(object):
         self.faster_rcnn.to(self.device)
         
     # inference on a set of images and return coco format json, but only return bbox results
-    def inference(self, dataloader):
+    def inference(self, dataloader, min_score):
         self.faster_rcnn.eval_mode()
         inf_res = []
         ith = 0
@@ -454,7 +454,7 @@ class FasterRCNNTest(object):
                     'height': img_h,
                     'file_name': img_name,
                 }
-                bbox, score, category = self.inference_one(img_data, scale)
+                bbox, score, category = self.inference_one(img_data, scale, min_score)
                 #logging.info('size of bbox: {}'.format(bbox.shape))
                 #logging.info('score: {}'.format(score))
                 #logging.info('category: {}'.format(category))
@@ -469,7 +469,7 @@ class FasterRCNNTest(object):
                 inf_res.append(img_res)
         return inf_res
 
-    def inference_one(self, img_data, scale):
+    def inference_one(self, img_data, scale, min_score):
         img_data = img_data.to(device=self.device)
         h, w = img_data.shape[-2:]
         
@@ -500,6 +500,9 @@ class FasterRCNNTest(object):
                 continue
             cur_score = score[cur_label]
             cur_bbox = bbox[:, cur_label]
+            non_small = cur_score >= min_score
+            cur_score = cur_score[non_small]
+            cur_bbox = cur_bbox[:, non_small]
             
             keep = torchvision.ops.nms(cur_bbox.t(), cur_score,
                                        self.faster_rcnn.test_props_nms_iou)
