@@ -34,7 +34,7 @@ class FasterRCNNModule(nn.Module):
                  train_props_min_size=16,
                  test_props_pre_nms=6000,
                  test_props_post_nms=300,
-                 test_props_nms_iou=0.5,
+                 test_props_nms_iou=0.3,
                  test_props_min_size=16,
                  props_pos_iou=0.5,
                  props_neg_iou_hi=0.5,
@@ -88,7 +88,7 @@ class FasterRCNNModule(nn.Module):
         self.test_props_creator = region.ProposalCreator(
             max_pre_nms=self.test_props_pre_nms,
             max_post_nms=self.test_props_post_nms,
-            nms_iou=self.test_props_nms_iou,
+            nms_iou=self.train_props_nms_iou,
             min_size=self.test_props_min_size)
         # init proposal target creator
         self.props_target_creator = region.ProposalTargetCreator(
