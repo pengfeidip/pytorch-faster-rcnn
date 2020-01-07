@@ -264,7 +264,7 @@ class FasterRCNNTrain(object):
                  max_epochs,
                  optim=torch.optim.SGD,
                  optim_kwargs=dict(lr=0.001,momentum=0.9,weight_decay=0.0005),
-                 lr_scheduler=None,
+                 decay_epoch=[11],
                  rpn_loss_lambda=1.0,
                  rcnn_loss_lambda=1.0,
                  loss_lambda=1.0,
@@ -284,7 +284,7 @@ class FasterRCNNTrain(object):
         assert osp.isdir(work_dir), 'work_dir not exists: {}'.format(work_dir)
         self.optim = optim
         self.optim_kwargs = optim_kwargs
-        self.lr_scheduler=lr_scheduler
+        self.decay_epoch = decay_epoch
 
         # set logging
         self.log_file = log_file
@@ -307,6 +307,25 @@ class FasterRCNNTrain(object):
         self.save_interval = save_interval
         self.rpn_only = rpn_only
 
+    def create_optimizer(self):
+        lr = self.optim_kwargs['lr']
+        weight_decay = self.optim_kwargs['weight_decay']
+        momentum = self.optim_kwargs['momentum']
+        params = []
+        for key, value in dict(self.faster_rcnn.named_parameters()).items():
+            if value.requires_grad:
+                if 'bias' in key:
+                    params += [{'params': [value], 'lr': lr * 2, 'weight_decay': 0}]
+                else:
+                    params += [{'params': [value], 'lr': lr, 'weight_decay': weight_decay}]
+        self.optimizer=self.optim(params, momentum=momentum)
+        return self.optimizer
+        
+    def lr_decay(self, decay=0.1):
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] *= decay
+        return self.optimizer
+        
     def to(self, device):
         self.device=device
 
@@ -326,8 +345,17 @@ class FasterRCNNTrain(object):
         return osp.join(self.work_dir, ckpt_name(epoch))
 
     def train_one_iter(self, iter_i, epoch, train_data, optimizer, rpn_loss, rcnn_loss):
+        img_data, bboxes, labels, scale = train_data
+        img_data = img_data.to(self.device)
+        scale = scale.item()
+        labels = labels.squeeze(0) + 1
+        labels = labels.to(self.device)
+        bboxes = bboxes.squeeze(0).t().to(self.device)
+        bboxes = torch.stack([bboxes[1], bboxes[0], bboxes[3], bboxes[2]])
+            
         logging.info('At epoch {}, iteration {}.'.center(50, '*').format(epoch, iter_i))
         optimizer.zero_grad()
+        '''
         img_data, bboxes, lables, img_info = train_data
         bboxes = bboxes.squeeze(0).t()
         labels = lables.squeeze(0)
@@ -335,11 +363,11 @@ class FasterRCNNTrain(object):
         bboxes = bboxes.to(self.device)
         labels = labels.to(self.device)
         scale = img_info['scale'].item()
-        
+        '''
         logging.debug('Image shape: {}'.format(img_data.shape))
         logging.debug('GT bboxes: {}'.format(bboxes.t()))
         logging.debug('GT labels: {}'.format(labels))
-        logging.debug('Image info: {}'.format(img_info))
+        logging.debug('Scale: {}'.format(scale))
 
         rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param, \
             rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
@@ -357,32 +385,25 @@ class FasterRCNNTrain(object):
     def train(self):
         logging.info('Start a new round of training, start with epoch {}'\
                      .format(self.current_epoch))
-        rpn_loss = loss.RPNLoss(self.rpn_loss_lambda)
-        rcnn_loss = loss.RCNNLoss(self.rcnn_loss_lambda)
         self.faster_rcnn.to(device=self.device)
         self.faster_rcnn.train_mode()
+
+        rpn_loss = loss.RPNLoss(self.rpn_loss_lambda)
+        rcnn_loss = loss.RCNNLoss(self.rcnn_loss_lambda)
 
         dataset_size = len(self.dataloader)
         tot_iters = dataset_size * (self.max_epochs - self.current_epoch + 1)
         eta_iters, eta_ct, iter_ct = 50, 0, 0
         start = time.time()
-        
+
+        self.create_optimizer()
         for epoch in range(self.current_epoch, self.max_epochs+1):
-            if self.lr_scheduler is not None:
-                self.optim_kwargs['lr'] = self.lr_scheduler(epoch)
-            lr = self.optim_kwargs['lr']
-            params = []
-            for k, v in dict(self.faster_rcnn.named_parameters()).items():
-                if v.requires_grad:
-                    if 'bias' in k:
-                        params += [{'params':[v], 'lr':lr*2, 'weight_decay':0}]
-                    else:
-                        params += [{'params':[v],
-                                    'lr': lr,
-                                    'weight_decay':self.optim_kwargs['weight_decay']}]
-            optimizer = self.optim(params, momentum=0.9)
-            logging.info('Start to train epoch: {} using lr: {}.'\
-                         .format(epoch, self.optim_kwargs['lr']))
+            if epoch in self.decay_epoch:
+                logging.info('Learning decay at epoch {}'.format(epoch))
+                self.lr_decay()
+            optimizer = self.optimizer
+            logging.info('Start to train epoch: {}. '\
+                         .format(epoch))
             for iter_i, train_data in enumerate(self.dataloader):
                 # train one image
                 try:

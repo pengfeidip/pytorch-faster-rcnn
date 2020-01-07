@@ -27,9 +27,10 @@ class VGGBackbone(nn.Module):
     def forward(self, x):
         return self.backbone(x)
 
-def init_module_normal(module, mean=0.0, std=1.0):
-    for param in module.parameters():
-        torch.nn.init.normal_(param, mean, std)
+def init_module_normal(m, mean=0.0, std=1.0):
+    m.weight.data.normal_(mean, std)
+    m.bias.data.zero_()
+
 
 class RPN(nn.Module):
     r"""

@@ -16,8 +16,8 @@ args = parser.parse_args()
 import os, sys, glob, random, logging
 import os.path as osp
 import mmcv, torch
-from lib import data, faster_rcnn
-
+from lib import data, faster_rcnn, data_
+import torch
 
 def check_args():
     assert osp.exists(args.work_dir) and osp.isdir(args.work_dir), '--work-dir does not exists'
@@ -36,6 +36,16 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
     config = args.config
+    data_opt = {'voc_data_dir': config.train_data_cfg.voc_data_dir,
+                'min_size': config.train_data_cfg.min_size,
+                'max_size': config.train_data_cfg.max_size}
+    dataset = data_.Dataset(data_opt)
+    dataloader = torch.utils.data.DataLoader(dataset,
+                                             **config.train_data_cfg.loader_cfg)
+    
+
+    ###########################
+    '''
     train_data_cfg = config.train_data_cfg
     dataset = data.CocoDetDataset(train_data_cfg.img_dir,
                                   train_data_cfg.json,
@@ -43,6 +53,7 @@ def main():
                                       *train_data_cfg.img_size,
                                       **train_data_cfg.img_norm))
     dataloader = torch.utils.data.DataLoader(dataset, **train_data_cfg.loader_cfg)
+    '''
 
     train_cfg = config['train_cfg']
     train_cfg['dataloader'] = dataloader
@@ -60,8 +71,8 @@ def main():
     logging.info('Config: {}'.format(args.config_file))
     logging.info('Seed: {}'.format(args.seed))
     logging.info('GPU: {}'.format(args.gpu))
-    logging.info('Image size: {}'.format(train_data_cfg.img_size))
-    logging.info('Image norm: {}'.format(train_data_cfg.img_norm))
+    #logging.info('Image size: {}'.format(train_data_cfg.img_size))
+    #logging.info('Image norm: {}'.format(train_data_cfg.img_norm))
     logging.info('Configuration details: {}'.format(config))
 
     trainer.init_module()

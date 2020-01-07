@@ -2,20 +2,18 @@ import torch
 import logging
 
 # This is the first config that uses the new version implementation(vectorization)
-LR = None
+INIT_LR = 0.001
 MAX_EPOCHS = 14
 
 train_data_cfg = dict(
-    img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/VOC2007/JPEGImages',
-    json='/home/server2/4T/liyiqing/projects/migrate-to-simple/'
-    'pytorch-faster-rcnn-1-no_difficult/voc2007_trainval_no_difficult.json',
-    img_size=(1000,600),
-    img_norm=dict(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    voc_data_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_all/VOC2007',
+    min_size=600,
+    max_size=1000,
     loader_cfg=dict(batch_size=1, num_workers=2, shuffle=True),
 )
 
 test_data_cfg = dict(
-    img_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/VOC2007/JPEGImages',
+    voc_data_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_all/VOC2007',
     loader_cfg=dict(batch_size=1, num_workers=2, shuffle=False),
 )
 
@@ -49,12 +47,12 @@ model = dict(
 train_cfg = dict(
     max_epochs=MAX_EPOCHS,
     optim=torch.optim.SGD,
-    optim_kwargs=dict(lr=LR,momentum=0.9,weight_decay=0.0005),
+    optim_kwargs=dict(lr=INIT_LR,momentum=0.9,weight_decay=0.0005),
     rpn_loss_lambda=1.0,
     rcnn_loss_lambda=1.0,
     loss_lambda=1.0,
-    log_file='train_16epochs.log',
-    lr_scheduler=lambda e : 0.001 if e <=10 else 0.0001,
+    log_file='train_14epochs.log',
+    decay_epoch = [11],
     log_level=logging.DEBUG,
     device=torch.device('cpu'),
     save_interval=2
