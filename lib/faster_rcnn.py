@@ -28,13 +28,13 @@ class FasterRCNNModule(nn.Module):
                  anchor_neg_iou=0.3,
                  anchor_max_pos=128,
                  anchor_max_targets=256,
+                 props_nms_iou=0.7,
+                 nms_iou=0.3,
                  train_props_pre_nms=12000,
                  train_props_post_nms=2000,
-                 train_props_nms_iou=0.7,
                  train_props_min_size=16,
                  test_props_pre_nms=6000,
                  test_props_post_nms=300,
-                 test_props_nms_iou=0.3,
                  test_props_min_size=16,
                  props_pos_iou=0.5,
                  props_neg_iou_hi=0.5,
@@ -52,13 +52,13 @@ class FasterRCNNModule(nn.Module):
         self.anchor_neg_iou=anchor_neg_iou
         self.anchor_max_pos=anchor_max_pos
         self.anchor_max_targets=anchor_max_targets
+        self.props_nms_iou=props_nms_iou
+        self.nms_iou=props_nms_iou
         self.train_props_pre_nms=train_props_pre_nms
         self.train_props_post_nms=train_props_post_nms
-        self.train_props_nms_iou=train_props_nms_iou
         self.train_props_min_size=train_props_min_size
         self.test_props_pre_nms=test_props_pre_nms
         self.test_props_post_nms=test_props_post_nms
-        self.test_props_nms_iou=test_props_nms_iou
         self.test_props_min_size=test_props_min_size
         self.props_pos_iou=props_pos_iou
         self.props_neg_iou_hi=props_neg_iou_hi
@@ -82,13 +82,13 @@ class FasterRCNNModule(nn.Module):
         self.train_props_creator = region.ProposalCreator(
             max_pre_nms=self.train_props_pre_nms,
             max_post_nms=self.train_props_post_nms,
-            nms_iou=self.train_props_nms_iou,
+            nms_iou=self.props_nms_iou,
             min_size=self.train_props_min_size)
         # init proposal creator for testing
         self.test_props_creator = region.ProposalCreator(
             max_pre_nms=self.test_props_pre_nms,
             max_post_nms=self.test_props_post_nms,
-            nms_iou=self.train_props_nms_iou,
+            nms_iou=self.props_nms_iou,
             min_size=self.test_props_min_size)
         # init proposal target creator
         self.props_target_creator = region.ProposalTargetCreator(
@@ -345,7 +345,7 @@ class FasterRCNNTrain(object):
         return osp.join(self.work_dir, ckpt_name(epoch))
 
     def train_one_iter(self, iter_i, epoch, train_data, optimizer, rpn_loss, rcnn_loss):
-        img_data, bboxes, labels, scale = train_data
+        img_data, bboxes, labels, scale, _ = train_data
         img_data = img_data.to(self.device)
         scale = scale.item()
         labels = labels.squeeze(0) + 1
@@ -355,15 +355,6 @@ class FasterRCNNTrain(object):
             
         logging.info('At epoch {}, iteration {}.'.center(50, '*').format(epoch, iter_i))
         optimizer.zero_grad()
-        '''
-        img_data, bboxes, lables, img_info = train_data
-        bboxes = bboxes.squeeze(0).t()
-        labels = lables.squeeze(0)
-        img_data = img_data.to(self.device)
-        bboxes = bboxes.to(self.device)
-        labels = labels.to(self.device)
-        scale = img_info['scale'].item()
-        '''
         logging.debug('Image shape: {}'.format(img_data.shape))
         logging.debug('GT bboxes: {}'.format(bboxes.t()))
         logging.debug('GT labels: {}'.format(labels))
@@ -399,11 +390,12 @@ class FasterRCNNTrain(object):
         self.create_optimizer()
         for epoch in range(self.current_epoch, self.max_epochs+1):
             if epoch in self.decay_epoch:
-                logging.info('Learning decay at epoch {}'.format(epoch))
-                self.lr_decay()
+                decay = decay_epoch[epoch]
+                logging.info('Learning rate decay={} at epoch={}'.format(decay, epoch))
+                self.lr_decay(decay)
             optimizer = self.optimizer
-            logging.info('Start to train epoch: {}. '\
-                         .format(epoch))
+            logging.info('Start to train epoch: {} with lr={} '\
+                         .format(epoch, optimizer.param_groups[0]['lr']))
             for iter_i, train_data in enumerate(self.dataloader):
                 # train one image
                 try:
@@ -451,7 +443,6 @@ class FasterRCNNTest(object):
         self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
         self.param_normalize_std = (0.1, 0.1, 0.2, 0.2)
         
-
     def load_ckpt(self, ckpt):
         self.current_ckpt = ckpt
         self.faster_rcnn.load_state_dict(torch.load(ckpt, map_location=self.device))
@@ -528,7 +519,7 @@ class FasterRCNNTest(object):
             cur_bbox = cur_bbox[:, non_small]
             
             keep = torchvision.ops.nms(cur_bbox.t(), cur_score,
-                                       self.faster_rcnn.test_props_nms_iou)
+                                       self.faster_rcnn.nms_iou)
             bbox_res.append(cur_bbox[:, keep])
             score_res.append(cur_score[keep])
             class_res += [i+1] * len(keep)

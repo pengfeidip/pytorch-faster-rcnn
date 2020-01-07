@@ -558,7 +558,7 @@ class Dataset:
         img, bbox, label, scale = self.tsf((ori_img, bbox, label))
         # TODO: check whose stride is negative to fix this instead copy all
         # some of the strides of a given numpy array are negative.
-        return img.copy(), bbox.copy(), label.copy(), scale
+        return img.copy(), bbox.copy(), label.copy(), scale, iid
 
     def __len__(self):
         return len(self.db)

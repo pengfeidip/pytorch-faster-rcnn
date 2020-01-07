@@ -160,24 +160,22 @@ class ProposalCreator(object):
             scores = torch.softmax(cls_out, 0)[1]
             props_bbox = utils.param2bbox(anchors, reg_out)
             props_bbox = torch.stack([
-                torch.clamp(props_bbox[0], 0.0, W-1),
-                torch.clamp(props_bbox[1], 0.0, H-1),
-                torch.clamp(props_bbox[2], 0.0, W-1),
-                torch.clamp(props_bbox[3], 0.0, H-1)
+                torch.clamp(props_bbox[0], 0.0, W),
+                torch.clamp(props_bbox[1], 0.0, H),
+                torch.clamp(props_bbox[2], 0.0, W),
+                torch.clamp(props_bbox[3], 0.0, H)
             ])
-            small_area_idx = utils.index_of(
-                (props_bbox[2] - props_bbox[0] < min_size) |
-                (props_bbox[3] - props_bbox[1] < min_size)
-            )
-            scores[small_area_idx] = -1
+            small_area_mask = (props_bbox[2] - props_bbox[0] < min_size) \
+                              | (props_bbox[3] - props_bbox[1] < min_size)
+            num_small_area = small_area_mask.sum()
+            scores[small_area_mask] = -1
             sort_args = torch.argsort(scores, descending=True)
-            sort_args = sort_args[sort_args!=-1]
+            sort_args = sort_args[:-num_small_area]
             top_sort_args = sort_args[:self.max_pre_nms]
             
             props_bbox = props_bbox[:, top_sort_args]
             top_scores = scores[top_sort_args]
             keep = torchvision.ops.nms(props_bbox.t(), top_scores, self.nms_iou)
-
             keep = keep[:self.max_post_nms]
         return props_bbox[:, keep], top_scores[keep]
         
