@@ -5,28 +5,21 @@ parser.add_argument('--config', required=True, metavar='REQUIRED',
                     help='Configuration file.')
 parser.add_argument('--ckpt', required=True, metavar='REQUIRED', 
                     help="Checkpoint saved model, usually in '.pth' format.")
-parser.add_argument('--img-dir', required=True,
-                    help='Test image directory.')
 parser.add_argument('--out', required=True, metavar='REQUIRED', 
                     help='Output json file in coco format.')
 parser.add_argument('--gpu',
                     help='GPU to use.')
-parser.add_argument('--seed',
-                    help='Seed for rng.')
 args = parser.parse_args()
 
 import os.path as osp
-import mmcv, random, torch, json, logging
-from lib import data, faster_rcnn
+import mmcv, random, torch, json, logging, json
+from lib import data, faster_rcnn, data_
 
-def set_seed(seed):
-    random.seed(seed)
-    torch.manual_seed(seed)
+def load_image_info(JSON):
+    cont = json.load(open(JSON))
+    return {img['file_name']:img['id'] for img in cont['images']}
 
 def check_args():
-    args.img_dir = osp.realpath(args.img_dir)
-    assert osp.exists(args.img_dir) and osp.isdir(args.img_dir), 'Can not find img-dir: {}'\
-        .format(args.img_dir)
     args.config_file = osp.realpath(args.config)
     args.out = osp.realpath(args.out)
     assert not osp.isdir(args.out), 'Output should not be a directory: {}'.format(args.out)
@@ -40,26 +33,37 @@ def check_args():
         
 def main():
     check_args()
-    if args.seed is not None:
-        set_seed(args.seed)
     logging.basicConfig(format='%(asctime)s: %(message)s\t[%(levelname)s]',
                         datefmt='%y%m%d_%H%M%S_%a',
                         level=logging.DEBUG)
     config = args.config
-    test_data_cfg, train_data_cfg = config.test_data_cfg, config.train_data_cfg
-    dataset = data.ImageDataset(args.img_dir,
-                                transform=data.faster_transform(*train_data_cfg.img_size,
-                                                                **train_data_cfg.img_norm))
-    dataloader = torch.utils.data.DataLoader(dataset, **test_data_cfg.loader_cfg)
-    device = torch.device('cpu')
+    data_opt = {'voc_data_dir':config.test_data_cfg.voc_data_dir}
+    dataset = data_.TestDataset(data_opt)
+
+    dataloader = torch.utils.data.DataLoader(dataset, **config.test_data_cfg.loader_cfg)
+    device = torch.device('cuda:0')
     if args.gpu is not None:
         device = torch.device('cuda:{}'.format(args.gpu))
     
     tester = faster_rcnn.FasterRCNNTest(config.model, device = device)
     tester.load_ckpt(args.ckpt)
-    infer_res = tester.inference(dataloader, min_score=config.test_cfg.min_score)
-    json.dump(infer_res, open(args.out, 'w'))
+    infer_res = tester.inference(dataloader, config.test_cfg.min_score)
     
+    anno_idx, out_json = 0, []
+    for pred in infer_res:
+        iid, bbox_xywh, score, category \
+            = pred['image_id'], pred['bbox'], pred['score'], pred['category']
+        for i, cur_bbox in enumerate(bbox_xywh):
+            cur_pred = {
+                'id': anno_idx,
+                'image_id': iid,
+                'bbox': [round(x.item(), 2) for x in cur_bbox],
+                'score': round(score[i].item(), 3),
+                'category_id': category[i]
+            }
+            out_json.append(cur_pred)
+            anno_idx += 1
+    json.dump(out_json, open(args.out, 'w'))
 
 if __name__ == '__main__':
     main()

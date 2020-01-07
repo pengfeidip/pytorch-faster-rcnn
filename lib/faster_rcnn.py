@@ -464,16 +464,18 @@ class FasterRCNNTest(object):
         ith = 0
         logging.info('Start to inference images({}).'.format(len(dataloader)))
         with torch.no_grad():
-            for img_data, scale, img_name, img_w, img_h in dataloader:
+            for img_data, img_size, bbox, label, difficult, iid in dataloader:
+                tsr_size = img_data.shape[2:]
+                iid = int(iid[0])
                 logging.info('Inference {}-th image.'.format(ith))
                 ith += 1
-                scale = scale.item()
-                img_name = img_name[0]
-                img_w, img_h = img_w.item(), img_h.item()
+                scale = tsr_size[0]/img_size[0].item()
+                scale = torch.tensor(scale, device=self.device)
+                img_w, img_h = img_size
                 img_res = {
                     'width': img_w,
                     'height': img_h,
-                    'file_name': img_name,
+                    'image_id': iid
                 }
                 bbox, score, category = self.inference_one(img_data, scale, min_score)
                 #logging.info('size of bbox: {}'.format(bbox.shape))
@@ -486,7 +488,7 @@ class FasterRCNNTest(object):
                 img_res['score'] = score
                 img_res['category'] = category
                 logging.info('{} bbox predictions for image: {}'.format(
-                    int(bbox.shape[1]), img_name))
+                    int(bbox.shape[1]), iid))
                 inf_res.append(img_res)
         return inf_res
 

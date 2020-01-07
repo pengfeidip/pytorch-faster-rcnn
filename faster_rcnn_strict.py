@@ -3,7 +3,7 @@ import logging
 
 # This is the first config that uses the new version implementation(vectorization)
 INIT_LR = 0.001
-MAX_EPOCHS = 14
+MAX_EPOCHS = 16
 
 train_data_cfg = dict(
     voc_data_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_all/VOC2007',
@@ -52,7 +52,7 @@ train_cfg = dict(
     rcnn_loss_lambda=1.0,
     loss_lambda=1.0,
     log_file='train_14epochs.log',
-    decay_epoch = [11],
+    decay_epoch = [10, 14],
     log_level=logging.DEBUG,
     device=torch.device('cpu'),
     save_interval=2
