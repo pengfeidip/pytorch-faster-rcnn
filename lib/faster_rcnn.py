@@ -53,7 +53,7 @@ class FasterRCNNModule(nn.Module):
         self.anchor_max_pos=anchor_max_pos
         self.anchor_max_targets=anchor_max_targets
         self.props_nms_iou=props_nms_iou
-        self.nms_iou=props_nms_iou
+        self.nms_iou=nms_iou
         self.train_props_pre_nms=train_props_pre_nms
         self.train_props_post_nms=train_props_post_nms
         self.train_props_min_size=train_props_min_size
@@ -264,7 +264,7 @@ class FasterRCNNTrain(object):
                  max_epochs,
                  optim=torch.optim.SGD,
                  optim_kwargs=dict(lr=0.001,momentum=0.9,weight_decay=0.0005),
-                 decay_epoch=[11],
+                 decay_epoch={11:0.1},
                  rpn_loss_lambda=1.0,
                  rcnn_loss_lambda=1.0,
                  loss_lambda=1.0,
@@ -390,7 +390,7 @@ class FasterRCNNTrain(object):
         self.create_optimizer()
         for epoch in range(self.current_epoch, self.max_epochs+1):
             if epoch in self.decay_epoch:
-                decay = decay_epoch[epoch]
+                decay = self.decay_epoch[epoch]
                 logging.info('Learning rate decay={} at epoch={}'.format(decay, epoch))
                 self.lr_decay(decay)
             optimizer = self.optimizer

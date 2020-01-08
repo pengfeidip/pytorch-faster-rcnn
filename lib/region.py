@@ -170,7 +170,8 @@ class ProposalCreator(object):
             num_small_area = small_area_mask.sum()
             scores[small_area_mask] = -1
             sort_args = torch.argsort(scores, descending=True)
-            sort_args = sort_args[:-num_small_area]
+            if num_small_area > 0:
+                sort_args = sort_args[:-num_small_area]
             top_sort_args = sort_args[:self.max_pre_nms]
             
             props_bbox = props_bbox[:, top_sort_args]
