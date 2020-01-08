@@ -4,6 +4,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 from . import config
 
+
+def decompose_vgg16():
+    model = tv.models.vgg16(pretrained=True)
+    features = list(model.features)[:30]
+    classifier = model.classifier
+
+    classifier = list(classifier)
+    del classifier[6]
+    del classifier[5]
+    del classifier[2]
+    classifier = nn.Sequential(*classifier)
+        
+    # freeze top4 conv
+    for layer in features[:10]:
+        for p in layer.parameters():
+            p.requires_grad = False
+            
+    return nn.Sequential(*features), classifier
+                                                                                        
+
 class VGGBackbone(nn.Module):
     r"""
     Use the VGG16 CNN as the backbone
@@ -56,11 +76,17 @@ class RCNN(nn.Module):
     The Fast RCNN or RCNN part of the detector, takes ROIs and classify them and adjust bboxes.
     Use weights of FC layers of a CNN backbone to initialize FC layers of the head, if possible.
     """
-    def __init__(self, num_classes, fc1_state_dict=None, fc2_state_dict=None):
+    def __init__(self, num_classes, cls_fc):
         super(RCNN, self).__init__()
         # in_features is 128 x 512 x 7 x 7 where 128 is batch size
         # TO-DO: initialize fc layers with fc layers in VGG16
         # self.bn = nn.BatchNorm2d(512)
+        self.cls_fc = cls_fc
+        self.classifier = nn.Linear(4096, num_classes+1)
+        self.regressor  = nn.Linear(4096, (num_classes+1)*4)
+        init_module_normal(self.classifier, mean=0.0, std=0.01)
+        init_module_normal(self.regressor, mean=0.0, std=0.001)
+        '''
         self.fc1 = nn.Linear(512*7*7, 4096)
         if fc1_state_dict is not None:
             self.fc1.load_state_dict(fc1_state_dict)
@@ -75,6 +101,7 @@ class RCNN(nn.Module):
         self.regressor  = nn.Linear(4096, (num_classes+1)*4)
         init_module_normal(self.classifier, mean=0.0, std=0.01)
         init_module_normal(self.regressor, mean=0.0, std=0.001)
+        '''
 
     # roi_batch is a batch of fixed tensors which is the result of ROIPooling
     def forward(self, roi_batch):
@@ -82,10 +109,9 @@ class RCNN(nn.Module):
             return None, None
         batch_size = roi_batch.shape[0]
         x = roi_batch.view(batch_size, -1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        cls_out = self.classifier(x)
-        reg_out = self.regressor(x)
+        fc = self.cls_fc(x)
+        cls_out = self.classifier(fc)
+        reg_out = self.regressor(fc)
         return cls_out, reg_out
 
 

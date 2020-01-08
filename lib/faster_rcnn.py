@@ -101,16 +101,13 @@ class FasterRCNNModule(nn.Module):
         self.roi_crop = region.ROICropping()
         self.roi_pool = region.ROIPooling(out_size=roi_pool_size)
         # next init networks
-        self.backbone = modules.VGGBackbone()
+        backbone, vgg_classifier = modules.decompose_vgg16()
+        self.backbone = backbone
         self.rpn = modules.RPN(num_classes=num_classes,
                                num_anchors=len(anchor_scales)*len(anchor_aspect_ratios))
-        vgg16 = self.backbone.vgg16[0]
-        fc1_state_dict=vgg16.classifier[0].state_dict() if transfer_rcnn_fc else None
-        fc2_state_dict=vgg16.classifier[3].state_dict() if transfer_rcnn_fc else None
         self.rcnn = modules.RCNN(num_classes,
-                                 fc1_state_dict,
-                                 fc2_state_dict)
-        self.training = True
+                                 vgg_classifier)
+        self.training=True
         self.to(device)
 
     # It assumes that x only contains one image,
