@@ -210,7 +210,7 @@ class ProposalTargetCreator(object):
             iou_tab = utils.calc_iou(props_bbox, gt_bbox)
             max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
             label = torch.full((n_props,), -1, device = props_bbox.device, dtype=torch.int)
-            label[max_gt_iou > self.pos_iou] = 1
+            label[max_gt_iou >= self.pos_iou] = 1
             label[(max_gt_iou < self.neg_iou_hi) & (max_gt_iou >= self.neg_iou_lo)] = 0
             label = random_sample_label(label, self.max_pos, self.max_targets)
             pos_idx, neg_idx = (label==1), (label==0)

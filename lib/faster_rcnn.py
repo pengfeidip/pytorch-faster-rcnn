@@ -38,7 +38,7 @@ class FasterRCNNModule(nn.Module):
                  test_props_min_size=16,
                  props_pos_iou=0.5,
                  props_neg_iou_hi=0.5,
-                 props_neg_iou_lo=0.1,
+                 props_neg_iou_lo=0.0,
                  props_max_pos=32,
                  props_max_targets=128,
                  roi_pool_size=FASTER_ROI_POOL_SIZE,
