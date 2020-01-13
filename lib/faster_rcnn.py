@@ -501,7 +501,7 @@ class FasterRCNNTest(object):
         param_mean = param_out.new(self.param_normalize_mean).view(-1, 4)
         param_std  = param_out.new(self.param_normalize_std).view(-1, 4)
         param_out = param_out * param_std + param_mean
-        bbox = utils.param2bbox(rcnn_tar_bbox, param_out.t())
+        bbox = utils.param2bbox(rcnn_tar_props, param_out.t())
 
         # TODO: constrain predict bbox to image size
         bbox = torch.stack([bbox[0].clamp(0, w), bbox[1].clamp(0, h),

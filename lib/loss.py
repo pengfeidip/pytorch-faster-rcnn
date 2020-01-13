@@ -24,11 +24,13 @@ class RPNLoss(object):
 
     def __call__(self, cls_out, reg_out, label, param):
         if label.numel() == 0:
+            logging.warning('RPN receives no samples to train.')
             return zero_loss(cls_out.device)
         cls_loss = self.ce(cls_out.t(), label.long())
         n_samples = len(label)
         pos_arg = (label==1)
         if pos_arg.sum() == 0:
+            logging.warning('RPN receives no positive samples.')
             reg_loss = zero_loss(cls_out.device)
         else:
             # reg_loss = self.smooth_l1(reg_out[:, pos_arg], param[:, pos_arg]) / n_samples
@@ -45,6 +47,7 @@ class RCNNLoss(object):
 
     def __call__(self, cls_out, reg_out, label, param):
         if label.numel() == 0 or cls_out is None or reg_out is None:
+            logging.warning('RCNN receives no training rois.')
             return zero_loss(label.device)
         label = label.long()
         n_class = cls_out.shape[1]
@@ -54,6 +57,7 @@ class RCNNLoss(object):
         reg_out = reg_out[torch.arange(n_samples), :, label]
         pos_arg = (label>1)
         if pos_arg.sum() == 0:
+            logging.warning('RCNN recieves no positive samples.')
             reg_loss = zero_loss(label.device)
         else:
             pos_reg = reg_out[pos_arg, :]
