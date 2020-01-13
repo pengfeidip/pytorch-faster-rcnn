@@ -143,17 +143,15 @@ class FasterRCNNModule(nn.Module):
         img_size, feature = self.forward_backbone(x)
         logging.info('Finished feature extraction: {}'.format(feature.shape))
         rpn_cls_out, rpn_reg_out, rpn_tar_cls_out, \
-            rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, anchors \
+            rpn_tar_reg_out, rpn_tar_label, rpn_tar_bbox, rpn_tar_anchors, anchors \
             = self.forward_rpn(feature, img_size, gt_bbox)
         logging.info('Finished rpn forward pass \ncls_out.shape={} \nreg_out.shape={} \nanchors: {}'
                      .format(rpn_cls_out.shape, rpn_reg_out.shape, anchors.shape))
-        rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
+        rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_props, rcnn_tar_bbox \
             = self.forward_rcnn(feature, img_size, rpn_cls_out, rpn_reg_out, \
                                 anchors, gt_bbox, gt_label, scale)
-        #logging.info('Finished rcnn forward pass \ncls_out.shape={} \nreg_out.shape={}'\
-        #             .format(rcnn_cls_out.shape, rcnn_reg_out.shape))
-        return rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, \
-            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox
+        return rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_bbox, rpn_tar_anchors, \
+            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_props, rcnn_tar_bbox
             
     def forward_backbone(self, x):
         img_size = x.shape[-2:]
@@ -170,15 +168,16 @@ class FasterRCNNModule(nn.Module):
             rpn_reg_out.shape if rpn_reg_out is not None else None))
         anchors = self.anchor_creator(img_size, feat_size)
         anchors = anchors.view(4, -1)
-        tar_cls_out, tar_reg_out, tar_label, tar_param \
-            = None, None, None, None
+        tar_cls_out, tar_reg_out, tar_label, tar_bbox, tar_anchors \
+            = None, None, None, None, None
 
         if self.training:
-            inside_idx = region.find_inside_index(anchors, img_size)
+            inside_idx = region.inside_anchor_mask(anchors, img_size)
             in_anchors = anchors[:, inside_idx]
             # label is label of inside anchors, 1=pos, 0=neg and -1=ignore
-            label, param, bbox_labels \
-                = self.anchor_target_creator(img_size, feat_size, in_anchors, gt_bbox)
+            label, bbox_labels \
+                = self.anchor_target_creator(in_anchors, gt_bbox)
+            # params = utils.bbox2param(in_anchors, bbox_labels)
             # non_neg_label is chosen index of the inside anchors
             non_neg_label = (label!=-1)
             inside_arg = torch.nonzero(inside_idx)
@@ -190,7 +189,9 @@ class FasterRCNNModule(nn.Module):
             tar_cls_out = cls_out[:, chosen]
             tar_reg_out = reg_out[:, chosen]
             tar_label = label[non_neg_label]
-            tar_param = param[:, non_neg_label]
+            tar_bbox = bbox_labels[:, non_neg_label]
+            tar_anchors = in_anchors[:, non_neg_label]
+            #tar_param = params[:, non_neg_label]
             logging.info('rpn tar_cls_out.shape: {}'.format(tar_cls_out.shape))
             logging.info('rpn tar_reg_out.shape: {}'.format(tar_reg_out.shape))
             logging.info('rpn tar_label.shape: {}'.format(tar_label.shape))
@@ -200,8 +201,7 @@ class FasterRCNNModule(nn.Module):
                 (tar_label==-1).sum()))
         return \
             rpn_cls_out, rpn_reg_out, \
-            tar_cls_out, tar_reg_out, tar_label, tar_param, \
-            anchors
+            tar_cls_out, tar_reg_out, tar_label, tar_bbox,  tar_anchors, anchors
 
     def forward_rcnn(self,
                      feature, img_size, rpn_cls_out, rpn_reg_out, anchors,
@@ -217,7 +217,7 @@ class FasterRCNNModule(nn.Module):
         
         tar_bbox, tar_label, tar_param = None, None, None
         if self.training:
-            tar_bbox, tar_label, tar_param \
+            tar_props, tar_label, tar_bbox \
                 = self.props_target_creator(props, gt_bbox, gt_label)
             logging.info('rcnn tar_bbox: {}'.format(tar_bbox.shape))
             logging.info('rcnn tar_label.shape: {}'.format(tar_label.shape))
@@ -229,7 +229,7 @@ class FasterRCNNModule(nn.Module):
                                 'this is probably due to low IoU of proposals with GT')
 
         if self.training:
-            roi_crops = self.roi_crop(feature, tar_bbox, img_size)
+            roi_crops = self.roi_crop(feature, tar_props, img_size)
             roi_pool_out = self.roi_pool(roi_crops)
             rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         else:
@@ -238,8 +238,8 @@ class FasterRCNNModule(nn.Module):
             rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         # anchor_targets, props_targets will be None for test mode
         if not self.training:
-            tar_bbox = props
-        return rcnn_cls_out, rcnn_reg_out, tar_label, tar_param, tar_bbox
+            tar_props = props
+        return rcnn_cls_out, rcnn_reg_out, tar_label, tar_props, tar_bbox
 
     def train_mode(self):
         super(FasterRCNNModule, self).train()
@@ -303,6 +303,8 @@ class FasterRCNNTrain(object):
         self.loss_lambda = loss_lambda
         self.save_interval = save_interval
         self.rpn_only = rpn_only
+        self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
+        self.param_normalize_std  = (0.1, 0.1, 0.2, 0.2)
 
     def create_optimizer(self):
         lr = self.optim_kwargs['lr']
@@ -357,10 +359,13 @@ class FasterRCNNTrain(object):
         logging.debug('GT labels: {}'.format(labels))
         logging.debug('Scale: {}'.format(scale))
 
-        rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param, \
-            rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
+        rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_bbox, rpn_tar_anchors, \
+            rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_props, rcnn_tar_bbox \
             = self.faster_rcnn(img_data, bboxes, labels, scale)
-        
+        rpn_tar_param = utils.bbox2param(rpn_tar_anchors, rpn_tar_bbox)
+        rcnn_tar_param = utils.bbox2param(rcnn_tar_props, rcnn_tar_bbox)
+        param_mean = rcnn_tar_param.new(self.param_normalize_mean)
+        param_std  = rcnn_tar_param.new(self.param_normalize_std)
         rpnloss = rpn_loss(rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param)
         rcnnloss = rcnn_loss(rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param)
         combloss = rpnloss + self.loss_lambda * rcnnloss
@@ -484,8 +489,8 @@ class FasterRCNNTest(object):
         img_data = img_data.to(device=self.device)
         h, w = img_data.shape[-2:]
         
-        rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_param, \
-            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_param, rcnn_tar_bbox \
+        rpn_tar_cls_out, rpn_tar_reg_out, rpn_tar_label, rpn_tar_bbox, rpn_tar_anchors, \
+            rcnn_cls_out, rcnn_reg_out, rcnn_tar_label, rcnn_tar_props, rcnn_tar_bbox \
             = self.faster_rcnn(img_data, None, None, scale)
         soft = torch.softmax(rcnn_cls_out, dim=1)
         score, label = torch.max(soft, dim=1)

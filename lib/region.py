@@ -11,7 +11,15 @@ from . import config, utils
 #####################################################
 
 class AnchorCreator(object):
-
+    '''
+    It creates anchors based on image size(H, W) and feature size(h, w).
+    
+    Args:
+        img_size: tuple of (H, W)
+        grid: feature size, tupe of (h, w)
+    Returns:
+        anchors: a tensor of shapw (4, num_anchors, h, w)
+    '''
     MAX_CACHE_ANCHOR = 1000
     CACHE_REPORT_PERIOD = 100
     def __init__(self, base=16, scales=[8, 16, 32],
@@ -85,7 +93,7 @@ class AnchorCreator(object):
         anchors = torch.stack([x_min, y_min, x_max, y_max])
         return anchors
 
-def find_inside_index(anchors, img_size):
+def inside_anchor_mask(anchors, img_size):
     H, W = img_size
     inside = (anchors[0,:]>=0) & (anchors[1,:]>=0) & \
              (anchors[2,:]<=W) & (anchors[3,:]<=H)
@@ -108,13 +116,23 @@ def random_sample_label(labels, pos_num, tot_num):
     return labels
 
 class AnchorTargetCreator(object):
+    '''
+    It assigns gt bboxes to anchors based on some rules.
+    Args:
+        anchors: tensor of shape (4, n), n is number of anchors
+        gt_bbox: tensor of shape (4, m), m is number of gt bboxes
+    Returns:
+        labels: consists of 1=positive anchor, 0=negative anchor, -1=ignore
+        params: bbox adjustment values which will be regressed
+        bbox_labels: gt bboxes assigned to each anchor
+    '''
     def __init__(self, pos_iou=0.7, neg_iou=0.3, max_pos=128, max_targets=256):
         self.pos_iou = pos_iou
         self.neg_iou = neg_iou
         self.max_pos = max_pos
         self.max_targets = max_targets
 
-    def __call__(self, img_size, feat_size, anchors, gt_bbox):
+    def __call__(self, anchors, gt_bbox):
         assert anchors.shape[0] == 4 and gt_bbox.shape[0] == 4
         # TODO: find out why there is a diff btw old and new version
         with torch.no_grad():
@@ -136,11 +154,20 @@ class AnchorTargetCreator(object):
 
             labels = random_sample_label(labels, self.max_pos, self.max_targets)
             bbox_labels = gt_bbox[:,max_gt_arg]
-            param = utils.bbox2param(anchors, bbox_labels)
-        return labels, param, bbox_labels
+        return labels, bbox_labels
         
 
 class ProposalCreator(object):
+    '''
+    It propose regions that potentially contain objects.
+    Args:
+        rpn_cls_out: output of the classifer of RPN
+        rpn_reg_out: output of the regressor of RPN
+        anchors: (4, n) where n is number of anchors
+    Returns:
+        props_bbox: tensor of shape (4, n)
+        top_scores: objectness score
+    '''
     def __init__(self, max_pre_nms, max_post_nms, nms_iou, min_size):
         self.max_pre_nms = max_pre_nms
         self.max_post_nms = max_post_nms
@@ -182,16 +209,23 @@ class ProposalCreator(object):
         
 
 class ProposalTargetCreator(object):
-    r"""
-    From selected ROIs(around 2000, by ProposalCreator),
-    choose 128 samples for training Head.
+    """
+    Choose regions to train RCNN.
+    Args:
+        props_bbox: region proposals with shape (4, n) where n=number of regions
+        gt_bbox: gt bboxes with shape (4, m) where m=number of gt bboxes
+        gt_label: gt lables with shape (4,) where m=number of labels
+    Returns:
+        props_bbox: chosen bbox
+        roi_label: class labels of each chosen roi
+        roi_gt_bbox: gt assigned to each props_bbox
     """
     def __init__(self,
                  max_pos=32,
                  max_targets=128,
                  pos_iou=0.5,
                  neg_iou_hi=0.5,
-                 neg_iou_lo=0.1):
+                 neg_iou_lo=0.0):
         self.max_pos = max_pos
         self.max_targets = max_targets
         self.pos_iou = pos_iou
@@ -200,7 +234,6 @@ class ProposalTargetCreator(object):
         self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
         self.param_normalize_std  = (0.1, 0.1, 0.2, 0.2)
         
-
     def __call__(self, props_bbox, gt_bbox, gt_label):
         with torch.no_grad():
             gt_bbox = gt_bbox.to(props_bbox.dtype)
@@ -215,6 +248,7 @@ class ProposalTargetCreator(object):
             label = random_sample_label(label, self.max_pos, self.max_targets)
             pos_idx, neg_idx = (label==1), (label==0)
             chosen_idx = pos_idx | neg_idx
+            # just for logging purpose
             chosen_iou = max_gt_iou[chosen_idx]
             logging.debug('ProposalTargetCreator: max_iou={}, min_iou={}'.format(
                 chosen_iou.max(), chosen_iou.min()))
@@ -223,12 +257,12 @@ class ProposalTargetCreator(object):
             roi_label[neg_idx] = 0
             # find gt bbox for each roi
             roi_gt_bbox = gt_bbox[:,max_gt_arg]
-            roi_param = utils.bbox2param(props_bbox, roi_gt_bbox)
-            param_mean = roi_param.new(self.param_normalize_mean)
-            param_std  = roi_param.new(self.param_normalize_std)
-            roi_param = (roi_param - param_mean.view(4, 1))/param_std.view(4, 1)
+            #roi_param = utils.bbox2param(props_bbox, roi_gt_bbox)
+            #param_mean = roi_param.new(self.param_normalize_mean)
+            #param_std  = roi_param.new(self.param_normalize_std)
+            #roi_param = (roi_param - param_mean.view(4, 1))/param_std.view(4, 1)
         # next only choose rois of non-negative
-        return props_bbox[:,chosen_idx], roi_label[chosen_idx], roi_param[:,chosen_idx]
+        return props_bbox[:,chosen_idx], roi_label[chosen_idx], roi_gt_bbox[:, chosen_idx]
 
 
 def image2feature(bbox, img_size, feat_size):
@@ -238,7 +272,6 @@ def image2feature(bbox, img_size, feat_size):
     h_rat, w_rat = [feat_size[i]/img_size[i] for i in range(2)]
     return bbox * torch.tensor([[w_rat], [h_rat], [w_rat], [h_rat]],
                                device=bbox.device, dtype=torch.float32)
-    
     
 class ROICropping(object):
     def __init__(self):
