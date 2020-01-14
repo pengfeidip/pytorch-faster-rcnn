@@ -101,7 +101,7 @@ class FasterRCNNModule(nn.Module):
         self.roi_crop = region.ROICropping()
         self.roi_pool = region.ROIPooling(out_size=roi_pool_size)
         # next init networks
-        backbone, vgg_classifier = modules.decompose_vgg16()
+        backbone, vgg_classifier = modules.make_vgg16_backbone()
         self.backbone = backbone
         self.rpn = modules.RPN(num_classes=num_classes,
                                num_anchors=len(anchor_scales)*len(anchor_aspect_ratios))
@@ -269,7 +269,8 @@ class FasterRCNNTrain(object):
                  log_level=logging.INFO,
                  device=torch.device('cpu'),
                  save_interval=2,
-                 rpn_only=False):
+                 param_normalize_mean=(0.0, 0.0, 0.0, 0.0),
+                 param_normalize_std=(0.1, 0.1, 0.2, 0.2)):
         # get real path
         work_dir = osp.realpath(work_dir)
         
@@ -302,9 +303,8 @@ class FasterRCNNTrain(object):
         self.rcnn_loss_lambda = rcnn_loss_lambda
         self.loss_lambda = loss_lambda
         self.save_interval = save_interval
-        self.rpn_only = rpn_only
-        self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
-        self.param_normalize_std  = (0.1, 0.1, 0.2, 0.2)
+        self.param_normalize_mean = param_normalize_mean
+        self.param_normalize_std  = param_normalize_std
 
     def create_optimizer(self):
         lr = self.optim_kwargs['lr']
@@ -366,6 +366,7 @@ class FasterRCNNTrain(object):
         rcnn_tar_param = utils.bbox2param(rcnn_tar_props, rcnn_tar_bbox)
         param_mean = rcnn_tar_param.new(self.param_normalize_mean)
         param_std  = rcnn_tar_param.new(self.param_normalize_std)
+        rcnn_tar_param = (rcnn_tar_param - param_mean.view(4, 1))/param_std.view(4, 1)
         rpnloss = rpn_loss(rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param)
         rcnnloss = rcnn_loss(rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param)
         combloss = rpnloss + self.loss_lambda * rcnnloss
@@ -437,13 +438,15 @@ class FasterRCNNTest(object):
     """
     def __init__(self,
                  faster_configs,
+                 param_normalize_mean,
+                 param_normalize_std,
                  device=torch.device('cuda:0')):
         self.device = device
         self.faster_configs = faster_configs
         self.faster_configs['device'] = device
         self.faster_rcnn = FasterRCNNModule(**faster_configs)
-        self.param_normalize_mean = (0.0, 0.0, 0.0, 0.0)
-        self.param_normalize_std = (0.1, 0.1, 0.2, 0.2)
+        self.param_normalize_mean = param_normalize_mean
+        self.param_normalize_std = param_normalize_std
         
     def load_ckpt(self, ckpt):
         self.current_ckpt = ckpt

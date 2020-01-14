@@ -22,7 +22,83 @@ def decompose_vgg16():
             p.requires_grad = False
             
     return nn.Sequential(*features), classifier
-                                                                                        
+
+def make_vgg16_backbone():
+    vgg16 = tv.models.vgg16(pretrained=True)
+    feature_weights = vgg16.features[:30].state_dict()
+    backbone = VGG16Backbone()
+    backbone.features.load_state_dict(feature_weights)
+
+    cls_weights = nn.Sequential(vgg16.classifier[0], vgg16.classifier[1],
+                                vgg16.classifier[3], vgg16.classifier[4]).state_dict()
+    classifier = VGG16Classifier()
+    classifier.classifier.load_state_dict(cls_weights)
+
+    for layer in backbone.features[:10]:
+        for p in layer.parameters():
+            p.requires_grad = False
+
+    return backbone, classifier
+    
+
+class VGG16Classifier(nn.Module):
+    def __init__(self, device=None):
+        super(VGG16Classifier, self).__init__()
+        self.device=device
+        self.classifier = nn.Sequential(
+            nn.Linear(25088, 4096, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Linear(4096, 4096, bias=True),
+            nn.ReLU(inplace=True)
+        )
+        if device is not None:
+            self.to(device)
+
+    def forward(self, x):
+        return self.classifier(x)
+
+
+class VGG16Backbone(nn.Module):
+    def __init__(self, device=None):
+        super(VGG16Backbone, self).__init__()
+        self.device = device
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=(3, 3), stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=(3, 3), stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False),
+            nn.Conv2d(64, 128, kernel_size=(3, 3), stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=(3, 3), stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False),
+            nn.Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False),
+            nn.Conv2d(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False),
+            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            nn.ReLU(inplace=True),
+        )
+        if device is not None:
+            self.to(device)
+            
+    def forward(self, x):
+        return self.features(x)
 
 class VGGBackbone(nn.Module):
     r"""
@@ -79,8 +155,6 @@ class RCNN(nn.Module):
     def __init__(self, num_classes, cls_fc):
         super(RCNN, self).__init__()
         # in_features is 128 x 512 x 7 x 7 where 128 is batch size
-        # TO-DO: initialize fc layers with fc layers in VGG16
-        # self.bn = nn.BatchNorm2d(512)
         self.cls_fc = cls_fc
         self.classifier = nn.Linear(4096, num_classes+1)
         self.regressor  = nn.Linear(4096, (num_classes+1)*4)

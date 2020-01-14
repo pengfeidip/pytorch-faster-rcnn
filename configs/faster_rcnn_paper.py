@@ -55,7 +55,9 @@ train_cfg = dict(
     decay_epoch = {11:0.1},
     log_level=logging.DEBUG,
     device=torch.device('cpu'),
-    save_interval=2
+    save_interval=2,
+    param_normalize_mean=(0.0, 0.0, 0.0, 0.0),
+    param_normalize_std=(0.1, 0.1, 0.2, 0.2)
 )
 
 

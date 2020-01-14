@@ -268,6 +268,13 @@ def image2feature(bbox, img_size, feat_size):
                                device=bbox.device, dtype=torch.float32)
     
 class ROICropping(object):
+    '''
+    It crops feature based on proposals. First proposals are resized to feature size.
+    Args:
+        feature: feature map from a backbone
+        props: a batch of bboxes with shape (4, n)
+        image_size: (h, w)
+    '''
     def __init__(self):
         pass
 
@@ -285,6 +292,9 @@ class ROICropping(object):
 
 
 class ROIPooling(nn.Module):
+    '''
+    Map tensors of different sizes to a fixed sized tensor.
+    '''
     def __init__(self, out_size):
         super(ROIPooling, self).__init__()
         self.out_size = out_size

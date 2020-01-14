@@ -37,6 +37,7 @@ def main():
                         datefmt='%y%m%d_%H%M%S_%a',
                         level=logging.DEBUG)
     config = args.config
+    train_cfg = config.train_cfg
     data_opt = {'voc_data_dir':config.test_data_cfg.voc_data_dir}
     dataset = data_.TestDataset(data_opt)
 
@@ -45,7 +46,10 @@ def main():
     if args.gpu is not None:
         device = torch.device('cuda:{}'.format(args.gpu))
     
-    tester = faster_rcnn.FasterRCNNTest(config.model, device = device)
+    tester = faster_rcnn.FasterRCNNTest(config.model,
+                                        train_cfg.param_normalize_mean,
+                                        train_cfg.param_normalize_std,
+                                        device = device)
     tester.load_ckpt(args.ckpt)
     infer_res = tester.inference(dataloader, config.test_cfg.min_score)
     

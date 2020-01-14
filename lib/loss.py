@@ -55,7 +55,7 @@ class RCNNLoss(object):
         cls_loss = self.ce(cls_out, label)
         reg_out = reg_out.view(-1, 4, n_class)
         reg_out = reg_out[torch.arange(n_samples), :, label]
-        pos_arg = (label>1)
+        pos_arg = (label>=1)
         if pos_arg.sum() == 0:
             logging.warning('RCNN recieves no positive samples.')
             reg_loss = zero_loss(label.device)
