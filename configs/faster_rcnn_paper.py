@@ -57,7 +57,9 @@ train_cfg = dict(
     device=torch.device('cpu'),
     save_interval=2,
     param_normalize_mean=(0.0, 0.0, 0.0, 0.0),
-    param_normalize_std=(0.1, 0.1, 0.2, 0.2)
+    param_normalize_std=(0.1, 0.1, 0.2, 0.2),
+    wloss_lambda=1.0,
+    bloss_lambda=1.0
 )
 
 

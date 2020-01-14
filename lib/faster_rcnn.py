@@ -241,6 +241,13 @@ class FasterRCNNModule(nn.Module):
             tar_props = props
         return rcnn_cls_out, rcnn_reg_out, tar_label, tar_props, tar_bbox
 
+    def conv_parameters(self):
+        p = list(self.parameters())
+        p = p[8:28]
+        conv_filt, bias = p[0::2], p[1::2]
+        return conv_filt, bias
+        
+
     def train_mode(self):
         super(FasterRCNNModule, self).train()
         self.training = True
@@ -270,7 +277,9 @@ class FasterRCNNTrain(object):
                  device=torch.device('cpu'),
                  save_interval=2,
                  param_normalize_mean=(0.0, 0.0, 0.0, 0.0),
-                 param_normalize_std=(0.1, 0.1, 0.2, 0.2)):
+                 param_normalize_std=(0.1, 0.1, 0.2, 0.2),
+                 wloss_lambda=1.0,
+                 bloss_lambda=1.0):
         # get real path
         work_dir = osp.realpath(work_dir)
         
@@ -305,6 +314,8 @@ class FasterRCNNTrain(object):
         self.save_interval = save_interval
         self.param_normalize_mean = param_normalize_mean
         self.param_normalize_std  = param_normalize_std
+        self.wloss_lambda=wloss_lambda
+        self.bloss_lambda=bloss_lambda
 
     def create_optimizer(self):
         lr = self.optim_kwargs['lr']
@@ -369,9 +380,15 @@ class FasterRCNNTrain(object):
         rcnn_tar_param = (rcnn_tar_param - param_mean.view(4, 1))/param_std.view(4, 1)
         rpnloss = rpn_loss(rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param)
         rcnnloss = rcnn_loss(rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param)
-        combloss = rpnloss + self.loss_lambda * rcnnloss
+        filt_weight, bias = self.faster_rcnn.conv_parameters()
+        wloss, bloss = loss.normalize_weight(filt_weight, bias)
+        
+        combloss = rpnloss + self.loss_lambda * rcnnloss \
+                   + self.wloss_lambda * wloss + self.bloss_lambda * bloss
         logging.info('RPN loss: {}'.format(rpnloss.item()))
         logging.info('RCNN loss: {}'.format(rcnnloss.item()))
+        logging.info('WN loss: {}'.format(wloss.item()))
+        logging.info('BN loss: {}'.format(bloss.item()))
         logging.info('Combined loss: {}'.format(combloss.item()))
         combloss.backward()
         optimizer.step()

@@ -13,7 +13,23 @@ def smooth_l1_loss(x, y, sigma):
     val = mask.float() * (sigma_sqr / 2.0) * (abs_diff**2) + \
           (1 - mask.float()) * (abs_diff - 0.5/sigma_sqr)
     return val.sum()
-    
+
+def normalize_weight(filt_weight, bias):
+    assert len(filt_weight) > 0
+    device = filt_weight[0].device
+    wloss = []
+    for w in filt_weight:
+        w = w.view(w.shape[0], -1)
+        num_w = w.shape[0]
+        wnorm = torch.norm(w, dim=1)
+        abs_diff = torch.abs(wnorm-1).sum()
+        wloss.append(abs_diff/num_w)
+    bloss = []
+    for b in bias:
+        bnorm = torch.norm(b)
+        num_b = b.shape[0]
+        bloss.append(torch.abs(bnorm-1)/num_b)
+    return sum(wloss), sum(bloss)
 
 class RPNLoss(object):
     def __init__(self, lamb=1.0, sigma=3.0):
