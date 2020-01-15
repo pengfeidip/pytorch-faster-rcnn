@@ -145,7 +145,7 @@ class AnchorTargetCreator(object):
             # first label negative anchors, some of them might be replaced with positive later
             labels[(max_gt_iou < self.neg_iou)] = 0
             # next label positive anchors
-            labels[max_anchor_arg] = 1
+            labels[max_anchor_arg[max_anchor_iou >= self.neg_iou]] = 1
             labels[(max_gt_iou >= self.pos_iou)] = 1
             # chose anchor has the same max iou with GT as positive
             equal_max_anchor = (iou_tab == max_anchor_iou)
