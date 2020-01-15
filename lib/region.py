@@ -126,10 +126,11 @@ class AnchorTargetCreator(object):
         params: bbox adjustment values which will be regressed
         bbox_labels: gt bboxes assigned to each anchor
     '''
-    def __init__(self, pos_iou=0.7, neg_iou=0.3, max_pos=128, max_targets=256):
+    def __init__(self, pos_iou=0.7, neg_iou=0.3, min_pos_iou=0.3, max_pos=128, max_targets=256):
         self.pos_iou = pos_iou
         self.neg_iou = neg_iou
         self.max_pos = max_pos
+        self.min_pos_iou = min_pos_iou
         self.max_targets = max_targets
 
     def __call__(self, anchors, gt_bbox):
@@ -145,9 +146,11 @@ class AnchorTargetCreator(object):
             # first label negative anchors, some of them might be replaced with positive later
             labels[(max_gt_iou < self.neg_iou)] = 0
             # next label positive anchors
-            labels[max_anchor_arg[max_anchor_iou >= self.neg_iou]] = 1
+            valid_max_anchor = max_anchor_iou>=self.min_pos_iou
+            labels[max_anchor_arg[valid_max_anchor]] = 1
             labels[(max_gt_iou >= self.pos_iou)] = 1
             # chose anchor has the same max iou with GT as positive
+            max_anchor_iou[torch.bitwise_not(valid_max_anchor)] = -1
             equal_max_anchor = (iou_tab == max_anchor_iou)
             equal_max_anchor_idx = (equal_max_anchor.sum(1) > 0)
             labels[equal_max_anchor_idx] = 1

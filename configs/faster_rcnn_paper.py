@@ -24,6 +24,7 @@ model = dict(
     anchor_aspect_ratios=[0.5, 1.0, 2.0],
     anchor_pos_iou=0.7,
     anchor_neg_iou=0.3,
+    anchor_min_pos_iou=0.3,
     anchor_max_pos=128,
     anchor_max_targets=256,
     props_nms_iou=0.7,
@@ -58,8 +59,8 @@ train_cfg = dict(
     save_interval=2,
     param_normalize_mean=(0.0, 0.0, 0.0, 0.0),
     param_normalize_std=(0.1, 0.1, 0.2, 0.2),
-    wloss_lambda=1.0,
-    bloss_lambda=1.0
+    wloss_lambda=0.0,
+    bloss_lambda=0.0
 )
 
 

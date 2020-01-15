@@ -26,6 +26,7 @@ class FasterRCNNModule(nn.Module):
                  anchor_aspect_ratios=[0.5, 1.0, 2.0],
                  anchor_pos_iou=0.7,
                  anchor_neg_iou=0.3,
+                 anchor_min_pos_iou=0.3,
                  anchor_max_pos=128,
                  anchor_max_targets=256,
                  props_nms_iou=0.7,
@@ -50,6 +51,7 @@ class FasterRCNNModule(nn.Module):
         self.anchor_aspect_ratios=anchor_aspect_ratios
         self.anchor_pos_iou=anchor_pos_iou
         self.anchor_neg_iou=anchor_neg_iou
+        self.anchor_min_pos_iou=anchor_min_pos_iou
         self.anchor_max_pos=anchor_max_pos
         self.anchor_max_targets=anchor_max_targets
         self.props_nms_iou=props_nms_iou
@@ -76,6 +78,7 @@ class FasterRCNNModule(nn.Module):
         self.anchor_target_creator = region.AnchorTargetCreator(
             pos_iou=self.anchor_pos_iou,
             neg_iou=self.anchor_neg_iou,
+            min_pos_iou=self.anchor_min_pos_iou,
             max_pos=self.anchor_max_pos,
             max_targets=self.anchor_max_targets)
         # init proposal creator for training
