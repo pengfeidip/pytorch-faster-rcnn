@@ -407,7 +407,7 @@ class FasterRCNNTrain(object):
 
         dataset_size = len(self.dataloader)
         tot_iters = dataset_size * (self.max_epochs - self.current_epoch + 1)
-        eta_iters, eta_ct, iter_ct = 50, 0, 0
+        eta_iters, eta_ct, iter_ct = 200, 0, 0
         start = time.time()
 
         self.create_optimizer()

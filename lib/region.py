@@ -157,6 +157,15 @@ class AnchorTargetCreator(object):
 
             labels = random_sample_label(labels, self.max_pos, self.max_targets)
             bbox_labels = gt_bbox[:,max_gt_arg]
+            # for logging
+            pos_sample_iou = max_gt_iou[labels==1]
+            neg_sample_iou = max_gt_iou[labels==0]
+            logging.info('AnchorTargetCreator choose positive ious max={}, min={}'\
+                         .format(pos_sample_iou.max() if pos_sample_iou.numel()!=0 else None,
+                                 pos_sample_iou.min() if pos_sample_iou.numel()!=0 else None))
+            logging.info('AnchorTargetCreator choose negative ious max={}, min={}'\
+                         .format(neg_sample_iou.max() if neg_sample_iou.numel()!=0 else None,
+                                 neg_sample_iou.min() if neg_sample_iou.numel()!=0 else None))
         return labels, bbox_labels
         
 
