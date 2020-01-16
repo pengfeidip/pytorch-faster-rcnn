@@ -43,7 +43,8 @@ class FasterRCNNModule(nn.Module):
                  props_max_pos=32,
                  props_max_targets=128,
                  roi_pool_size=FASTER_ROI_POOL_SIZE,
-                 transfer_rcnn_fc=True,
+                 transfer_backbone_cls=True,
+                 freeze_first_layers=True,
                  device=DEF_CUDA):
         super(FasterRCNNModule, self).__init__()
         self.num_classes=num_classes
@@ -68,6 +69,8 @@ class FasterRCNNModule(nn.Module):
         self.props_max_pos=props_max_pos
         self.props_max_targets=props_max_targets
         self.roi_pool_size=roi_pool_size
+        self.transfer_backbone_cls=transfer_backbone_cls
+        self.freeze_first_layers=freeze_first_layers
         self.device = device
 
         # init anchor creator
@@ -104,7 +107,9 @@ class FasterRCNNModule(nn.Module):
         self.roi_crop = region.ROICropping()
         self.roi_pool = region.ROIPooling(out_size=roi_pool_size)
         # next init networks
-        backbone, vgg_classifier = modules.make_vgg16_backbone()
+        backbone, vgg_classifier = modules.make_vgg16_backbone(
+            freeze_first_layers=freeze_first_layers,
+            transfer_backbone_cls=transfer_backbone_cls)
         self.backbone = backbone
         self.rpn = modules.RPN(num_classes=num_classes,
                                num_anchors=len(anchor_scales)*len(anchor_aspect_ratios))
@@ -246,7 +251,8 @@ class FasterRCNNModule(nn.Module):
 
     def conv_parameters(self):
         p = list(self.parameters())
-        p = p[8:28]
+        p = [x for x in p[:28] if x.requires_grad==True]
+        # p = p[8:28]
         conv_filt, bias = p[0::2], p[1::2]
         return conv_filt, bias
         

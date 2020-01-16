@@ -102,3 +102,7 @@ def calc_iou(a, b):
     area_b = torch.prod(b[2:]-b[:2], dim=0)
     return area_i / (area_a.view(-1, 1) + area_b.view(1, -1) - area_i)
 
+def init_module_normal(m, mean=0.0, std=1.0):
+    m.weight.data.normal_(mean, std)
+    m.bias.data.zero_()
+            

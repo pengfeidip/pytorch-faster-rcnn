@@ -160,12 +160,18 @@ class AnchorTargetCreator(object):
             # for logging
             pos_sample_iou = max_gt_iou[labels==1]
             neg_sample_iou = max_gt_iou[labels==0]
-            logging.info('AnchorTargetCreator choose positive ious max={}, min={}'\
-                         .format(pos_sample_iou.max() if pos_sample_iou.numel()!=0 else None,
-                                 pos_sample_iou.min() if pos_sample_iou.numel()!=0 else None))
-            logging.info('AnchorTargetCreator choose negative ious max={}, min={}'\
-                         .format(neg_sample_iou.max() if neg_sample_iou.numel()!=0 else None,
-                                 neg_sample_iou.min() if neg_sample_iou.numel()!=0 else None))
+            logging.info('AnchorTargetCreator choose {} positive ious, max={}, min={}'\
+                         .format(
+                             (labels==1).sum(),
+                             pos_sample_iou.max() if pos_sample_iou.numel()!=0 else None,
+                             pos_sample_iou.min() if pos_sample_iou.numel()!=0 else None))
+            # logging.info('pos_sample_iou: {}'.format(pos_sample_iou.tolist()))
+            logging.info('AnchorTargetCreator choose {} negative ious, max={}, min={}'\
+                         .format(
+                             (labels==0).sum(),
+                             neg_sample_iou.max() if neg_sample_iou.numel()!=0 else None,
+                             neg_sample_iou.min() if neg_sample_iou.numel()!=0 else None))
+            # logging.info('neg_sample_iou: {}'.format(neg_sample_iou.tolist()))
         return labels, bbox_labels
         
 

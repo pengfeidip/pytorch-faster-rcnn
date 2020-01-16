@@ -24,7 +24,7 @@ model = dict(
     anchor_aspect_ratios=[0.5, 1.0, 2.0],
     anchor_pos_iou=0.7,
     anchor_neg_iou=0.3,
-    anchor_min_pos_iou=0.3,
+    anchor_min_pos_iou=0.3,   # paper=0, set to 0.3 in mmdet and intuitivly better 
     anchor_max_pos=128,
     anchor_max_targets=256,
     props_nms_iou=0.7,
@@ -41,7 +41,8 @@ model = dict(
     props_max_pos=32,
     props_max_targets=128,
     roi_pool_size=(7, 7),
-    transfer_rcnn_fc=True
+    transfer_backbone_cls=True,
+    freeze_first_layers=True
 )
 
 
@@ -59,8 +60,8 @@ train_cfg = dict(
     save_interval=2,
     param_normalize_mean=(0.0, 0.0, 0.0, 0.0),
     param_normalize_std=(0.1, 0.1, 0.2, 0.2),
-    wloss_lambda=0.0,
-    bloss_lambda=0.0
+    wloss_lambda=0.0,   # paper=0.0, 1.0 is validated to be OK
+    bloss_lambda=0.0    # paper=0.0, 2.0 is validated to be OK
 )
 
 
