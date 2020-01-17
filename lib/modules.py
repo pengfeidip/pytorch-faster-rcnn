@@ -43,7 +43,39 @@ def make_vgg16_backbone(freeze_first_layers=True, transfer_backbone_cls=True):
                 p.requires_grad = False
 
     return backbone, classifier
-    
+
+def make_res50_backbone(freeze_first_layers=True, transfer_backbone_cls=True):
+    res50 = tv.models.resnet50(pretrained=True)
+    # classifier
+    classifier = ResNet50Classifier()
+    utils.init_module_normal(classifier, mean=0.0, std=0.01)
+    # feature
+    backbone = nn.Sequential(res50.conv1, res50.bn1, res50.relu, res50.maxpool,
+                             res50.layer1, res50.layer2, res50.layer3)
+    if freeze_first_layers:
+        for i in range(4):
+            backbone[i].requires_grad=False
+    return backbone, classifier
+
+
+
+class ResNet50Classifier(nn.Module):
+    def __init__(self, device=None):
+        super(ResNet50Classifier, self).__init__()
+        self.device=device
+        self.classifier = nn.Sequential(
+            nn.Linear(25088*2, 4096, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Linear(4096, 4096, bias=True),
+            nn.ReLU(inplace=True)
+        )
+        if device is not None:
+            self.to(device)
+
+    def forward(self, x):
+        return self.classifier(x)
+
+
 
 class VGG16Classifier(nn.Module):
     def __init__(self, device=None):
@@ -108,13 +140,15 @@ class RPN(nn.Module):
     r"""
     Region proposal network.
     """
-    def __init__(self, num_classes, num_anchors):
+    def __init__(self, num_classes, num_anchors, in_channels, mid_channels):
         super(RPN, self).__init__()
         self.num_classes = num_classes
         self.num_anchors = num_anchors
-        self.conv = nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-        self.classifier = nn.Conv2d(512, num_anchors*2, kernel_size=(1, 1))
-        self.regressor  = nn.Conv2d(512, num_anchors*4, kernel_size=(1, 1))
+        self.in_channels = in_channels
+        self.conv = nn.Conv2d(in_channels, mid_channels,
+                              kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.classifier = nn.Conv2d(mid_channels, num_anchors*2, kernel_size=(1, 1))
+        self.regressor  = nn.Conv2d(mid_channels, num_anchors*4, kernel_size=(1, 1))
         utils.init_module_normal(self.conv, mean=0.0, std=0.01)
         utils.init_module_normal(self.classifier, mean=0.0, std=0.01)
         utils.init_module_normal(self.regressor, mean=0.0, std=0.01)

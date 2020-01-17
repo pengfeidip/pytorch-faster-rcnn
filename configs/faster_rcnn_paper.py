@@ -20,11 +20,11 @@ test_data_cfg = dict(
 
 model = dict(
     num_classes=20,
-    anchor_scales=[8, 16, 32],
+    anchor_scales=[8, 16, 32], # [4,8,16,32,64] in mmdet
     anchor_aspect_ratios=[0.5, 1.0, 2.0],
     anchor_pos_iou=0.7,
     anchor_neg_iou=0.3,
-    anchor_min_pos_iou=0.3,   # paper=0, set to 0.3 in mmdet and intuitivly better 
+    anchor_min_pos_iou=0.0,   # paper=0, set to 0.3 in mmdet 
     anchor_max_pos=128,
     anchor_max_targets=256,
     props_nms_iou=0.7,
@@ -42,7 +42,8 @@ model = dict(
     props_max_targets=128,
     roi_pool_size=(7, 7),
     transfer_backbone_cls=True,
-    freeze_first_layers=True
+    freeze_first_layers=True,
+    backbone_type='ResNet50'
 )
 
 

@@ -45,8 +45,11 @@ class FasterRCNNModule(nn.Module):
                  roi_pool_size=FASTER_ROI_POOL_SIZE,
                  transfer_backbone_cls=True,
                  freeze_first_layers=True,
-                 device=DEF_CUDA):
+                 device=DEF_CUDA,
+                 backbone_type='VGG16'):
         super(FasterRCNNModule, self).__init__()
+        assert backbone_type in ['VGG16', 'ResNet50']
+        self.backbone_type = backbone_type
         self.num_classes=num_classes
         self.anchor_scales=anchor_scales,
         self.anchor_aspect_ratios=anchor_aspect_ratios
@@ -107,14 +110,31 @@ class FasterRCNNModule(nn.Module):
         self.roi_crop = region.ROICropping()
         self.roi_pool = region.ROIPooling(out_size=roi_pool_size)
         # next init networks
-        backbone, vgg_classifier = modules.make_vgg16_backbone(
-            freeze_first_layers=freeze_first_layers,
-            transfer_backbone_cls=transfer_backbone_cls)
-        self.backbone = backbone
-        self.rpn = modules.RPN(num_classes=num_classes,
-                               num_anchors=len(anchor_scales)*len(anchor_aspect_ratios))
+        num_anchors = len(anchor_scales)*len(anchor_aspect_ratios)
+        if self.backbone_type == 'VGG16':
+            backbone, backbone_classifier = modules.make_vgg16_backbone(
+                freeze_first_layers=freeze_first_layers,
+                transfer_backbone_cls=transfer_backbone_cls)
+            self.backbone = backbone
+            self.rpn = modules.RPN(num_classes=num_classes,
+                                   num_anchors=num_anchors,
+                                   in_channels=512,
+                                   mid_channles=512)
+        elif self.backbone_type == 'ResNet50':
+            backbone, backbone_classifier = modules.make_res50_backbone(
+                freeze_first_layers=freeze_first_layers,
+                transfer_backbone_cls=transfer_backbone_cls)
+            self.backbone = backbone
+            self.rpn = modules.RPN(num_classes=num_classes,
+                                   num_anchors=num_anchors,
+                                   in_channels=1024,
+                                   mid_channels=512)
+        else:
+            raise ValueError('Unsupported backbone type:', backbone_type)
+        
+        # build rcnn head
         self.rcnn = modules.RCNN(num_classes,
-                                 vgg_classifier)
+                                 backbone_classifier)
         self.training=True
         self.to(device)
 
@@ -248,15 +268,19 @@ class FasterRCNNModule(nn.Module):
         if not self.training:
             tar_props = props
         return rcnn_cls_out, rcnn_reg_out, tar_label, tar_props, tar_bbox
-
+    
+    # this is only for VGG
+    # TODO: add support for ResNet later
     def conv_parameters(self):
+        if self.backbone_type != 'VGG16':
+            raise ValueError('Return of convolutional weights'
+                             ' and bias is only supported for VGG16.')
         p = list(self.parameters())
         p = [x for x in p[:28] if x.requires_grad==True]
         # p = p[8:28]
         conv_filt, bias = p[0::2], p[1::2]
         return conv_filt, bias
         
-
     def train_mode(self):
         super(FasterRCNNModule, self).train()
         self.training = True
@@ -389,15 +413,21 @@ class FasterRCNNTrain(object):
         rcnn_tar_param = (rcnn_tar_param - param_mean.view(4, 1))/param_std.view(4, 1)
         rpnloss = rpn_loss(rpn_tar_cls, rpn_tar_reg, rpn_tar_label, rpn_tar_param)
         rcnnloss = rcnn_loss(rcnn_cls, rcnn_reg, rcnn_tar_label, rcnn_tar_param)
-        filt_weight, bias = self.faster_rcnn.conv_parameters()
-        wloss, bloss = loss.normalize_weight(filt_weight, bias)
+
+        wloss = loss.zero_loss(self.device)
+        bloss = loss.zero_loss(self.device)
+        if self.faster_rcnn.backbone_type == 'VGG16':
+            filt_weight, bias = self.faster_rcnn.conv_parameters()
+            wloss, bloss = loss.normalize_weight(filt_weight, bias)
         
         combloss = rpnloss + self.loss_lambda * rcnnloss \
                    + self.wloss_lambda * wloss + self.bloss_lambda * bloss
         logging.info('RPN loss: {}'.format(rpnloss.item()))
         logging.info('RCNN loss: {}'.format(rcnnloss.item()))
-        logging.info('WN loss: {}'.format(wloss.item()))
-        logging.info('BN loss: {}'.format(bloss.item()))
+        logging.info('WN loss: {}'.format(
+            wloss.item() if wloss is not None else None))
+        logging.info('BN loss: {}'.format(
+            bloss.item() if bloss is not None else None))
         logging.info('Combined loss: {}'.format(combloss.item()))
         combloss.backward()
         optimizer.step()

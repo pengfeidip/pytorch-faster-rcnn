@@ -103,6 +103,9 @@ def calc_iou(a, b):
     return area_i / (area_a.view(-1, 1) + area_b.view(1, -1) - area_i)
 
 def init_module_normal(m, mean=0.0, std=1.0):
-    m.weight.data.normal_(mean, std)
-    m.bias.data.zero_()
+    for name, param in m.named_parameters():
+        if 'weight' in name:
+            param.data.normal_(mean, std)
+        if 'bias' in name:
+            param.data.zero_()
             
