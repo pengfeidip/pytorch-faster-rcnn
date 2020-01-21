@@ -146,10 +146,11 @@ class AnchorTargetCreator(object):
             # first label negative anchors, some of them might be replaced with positive later
             labels[(max_gt_iou < self.neg_iou)] = 0
             # next label positive anchors
-            valid_max_anchor = max_anchor_iou>=self.min_pos_iou
-            labels[max_anchor_arg[valid_max_anchor]] = 1
             labels[(max_gt_iou >= self.pos_iou)] = 1
+
+            # labels[max_anchor_arg[valid_max_anchor]] = 1 # this is redundant
             # chose anchor has the same max iou with GT as positive
+            valid_max_anchor = (max_anchor_iou>=self.min_pos_iou)
             max_anchor_iou[torch.bitwise_not(valid_max_anchor)] = -1
             equal_max_anchor = (iou_tab == max_anchor_iou)
             equal_max_anchor_idx = (equal_max_anchor.sum(1) > 0)

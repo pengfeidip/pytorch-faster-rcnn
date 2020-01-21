@@ -43,7 +43,9 @@ model = dict(
     roi_pool_size=(7, 7),
     transfer_backbone_cls=True,
     freeze_first_layers=True,
-    backbone_type='ResNet50'
+    backbone_type='VGG16',
+    rpn_hidden_channels=512,
+    rcnn_fc_hidden_channels=4096
 )
 
 

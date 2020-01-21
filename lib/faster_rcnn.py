@@ -46,7 +46,9 @@ class FasterRCNNModule(nn.Module):
                  transfer_backbone_cls=True,
                  freeze_first_layers=True,
                  device=DEF_CUDA,
-                 backbone_type='VGG16'):
+                 backbone_type='VGG16',
+                 rpn_hidden_channels=512,
+                 rcnn_fc_hidden_channels=4096):
         super(FasterRCNNModule, self).__init__()
         assert backbone_type in ['VGG16', 'ResNet50']
         self.backbone_type = backbone_type
@@ -75,6 +77,8 @@ class FasterRCNNModule(nn.Module):
         self.transfer_backbone_cls=transfer_backbone_cls
         self.freeze_first_layers=freeze_first_layers
         self.device = device
+        self.rpn_hidden_channels=rpn_hidden_channels
+        self.rcnn_fc_hidden_channels=rcnn_fc_hidden_channels
 
         # init anchor creator
         self.anchor_creator = region.AnchorCreator(scales=anchor_scales,
@@ -119,22 +123,23 @@ class FasterRCNNModule(nn.Module):
             self.rpn = modules.RPN(num_classes=num_classes,
                                    num_anchors=num_anchors,
                                    in_channels=512,
-                                   mid_channles=512)
+                                   hidden_channels=512)
+            self.rcnn = modules.RCNN(num_classes, backbone_classifier)
         elif self.backbone_type == 'ResNet50':
             backbone, backbone_classifier = modules.make_res50_backbone(
                 freeze_first_layers=freeze_first_layers,
-                transfer_backbone_cls=transfer_backbone_cls)
+                transfer_backbone_cls=transfer_backbone_cls,
+                fc_hidden_channels=rcnn_fc_hidden_channels)
             self.backbone = backbone
             self.rpn = modules.RPN(num_classes=num_classes,
                                    num_anchors=num_anchors,
                                    in_channels=1024,
-                                   mid_channels=512)
+                                   hidden_channels=rpn_hidden_channels)
+            self.rcnn = modules.RCNN(num_classes, backbone_classifier)
         else:
             raise ValueError('Unsupported backbone type:', backbone_type)
         
         # build rcnn head
-        self.rcnn = modules.RCNN(num_classes,
-                                 backbone_classifier)
         self.training=True
         self.to(device)
 

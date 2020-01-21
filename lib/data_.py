@@ -6,7 +6,7 @@ import random
 
 import resource
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-resource.setrlimit(resource.RLIMIT_NOFILE, (10000, rlimit[1]))
+resource.setrlimit(resource.RLIMIT_NOFILE, (15000, rlimit[1]))
 
 
 def read_image(path, dtype=np.float32, color=True):
