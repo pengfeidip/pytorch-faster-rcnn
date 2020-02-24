@@ -135,27 +135,32 @@ class AnchorTargetCreator(object):
 
     def __call__(self, anchors, gt_bbox):
         assert anchors.shape[0] == 4 and gt_bbox.shape[0] == 4
-        # TODO: find out why there is a diff btw old and new version
         with torch.no_grad():
             gt_bbox = gt_bbox.to(torch.float32)
             n_anchors, n_gts = anchors.shape[1], gt_bbox.shape[1]
+            # first label everything as -1(ignore)
             labels = torch.full((n_anchors,), -1, device=anchors.device, dtype=torch.int)
+            # calculate iou table, it has shape [num_anchors, num_gt_bboxes]
             iou_tab = utils.calc_iou(anchors, gt_bbox)
+            # for each gt, find the anchor with max iou overlap with it
             max_anchor_iou, max_anchor_arg = torch.max(iou_tab, dim=0)
+            # for each anchor, find the gt with max iou overlap with it
             max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
             # first label negative anchors, some of them might be replaced with positive later
             labels[(max_gt_iou < self.neg_iou)] = 0
             # next label positive anchors
             labels[(max_gt_iou >= self.pos_iou)] = 1
 
-            # labels[max_anchor_arg[valid_max_anchor]] = 1 # this is redundant
-            # chose anchor has the same max iou with GT as positive
-            valid_max_anchor = (max_anchor_iou>=self.min_pos_iou)
-            max_anchor_iou[torch.bitwise_not(valid_max_anchor)] = -1
-            equal_max_anchor = (iou_tab == max_anchor_iou)
-            equal_max_anchor_idx = (equal_max_anchor.sum(1) > 0)
-            labels[equal_max_anchor_idx] = 1
-
+            # find the anchor with the same max iou overlap with a gt, but the max iou must be >= min_pos_iou
+            equal_max_anchor = (iou_tab == max_anchor_iou) & (max_anchor_iou >= self.min_pos_iou)
+            # find the gt index
+            max_equal_arg = torch.max(equal_max_anchor, dim=1)[1]
+            # find where the equal happens
+            equal_places = (equal_max_anchor.sum(1) > 0)
+            # update max_gt_arg
+            max_gt_arg[equal_places] = max_equal_arg[equal_places]
+            labels[equal_places] = 1
+            
             labels = random_sample_label(labels, self.max_pos, self.max_targets)
             bbox_labels = gt_bbox[:,max_gt_arg]
             # for logging
