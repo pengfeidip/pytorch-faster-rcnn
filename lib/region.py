@@ -202,8 +202,6 @@ class ProposalCreator(object):
         assert anchors.shape[0] == 4 and len(anchors.shape) == 2
         n_anchors = anchors.shape[1]
         min_size = scale * self.min_size # this is the value from simple-faster-rcnn
-        #min_size = -1 # this is the old version value which is basically do not filter,
-                      # but will filter zero crops in ROI pooling layer
         H, W = img_size
         with torch.no_grad():
             cls_out = rpn_cls_out.view(2, -1)

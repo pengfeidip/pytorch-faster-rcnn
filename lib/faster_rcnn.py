@@ -42,7 +42,8 @@ class FasterRCNNModule(nn.Module):
                  props_neg_iou_lo=0.0,
                  props_max_pos=32,
                  props_max_targets=128,
-                 roi_pool_size=FASTER_ROI_POOL_SIZE,
+                 roi_out_size=FASTER_ROI_POOL_SIZE,
+                 roi_layer='RoIPool',
                  transfer_backbone_cls=True,
                  freeze_first_layers=True,
                  device=DEF_CUDA,
@@ -73,7 +74,8 @@ class FasterRCNNModule(nn.Module):
         self.props_neg_iou_lo=props_neg_iou_lo
         self.props_max_pos=props_max_pos
         self.props_max_targets=props_max_targets
-        self.roi_pool_size=roi_pool_size
+        self.roi_out_size=roi_out_size
+        self.roi_layer=roi_layer
         self.transfer_backbone_cls=transfer_backbone_cls
         self.freeze_first_layers=freeze_first_layers
         self.device = device
@@ -111,9 +113,16 @@ class FasterRCNNModule(nn.Module):
             neg_iou_hi=self.props_neg_iou_hi,
             neg_iou_lo=self.props_neg_iou_lo)
         # init cropping and pooling layer
-        self.roi_crop = region.ROICropping()
-        self.roi_pool = region.ROIPooling(out_size=roi_pool_size)
-        # next init networks
+        if roi_layer == 'RoIPool':
+            self.roi_extractor = torchvision.ops.RoIPool(output_size=roi_out_size,
+                                                         spatial_scale=1.0/16.0)
+        elif roi_layer == 'RoIAlign':
+            self.roi_extractor = torchvision.ops.RoIAlign(output_size=roi_out_size,
+                                                          spatial_scale=1.0/16.0,
+                                                          sampling_ratio=-1)
+        else:
+            raise ValueError('Unknown RoI Extractor type:{}'.format(roi_layer))
+        # next init backbone, rpn and rcnn
         num_anchors = len(anchor_scales)*len(anchor_aspect_ratios)
         if self.backbone_type == 'VGG16':
             backbone, backbone_classifier = modules.make_vgg16_backbone(
@@ -139,7 +148,6 @@ class FasterRCNNModule(nn.Module):
         else:
             raise ValueError('Unsupported backbone type:', backbone_type)
         
-        # build rcnn head
         self.training=True
         self.to(device)
 
@@ -262,13 +270,24 @@ class FasterRCNNModule(nn.Module):
                                 'this is probably due to low IoU of proposals with GT')
 
         if self.training:
-            roi_crops = self.roi_crop(feature, tar_props, img_size)
-            roi_pool_out = self.roi_pool(roi_crops)
-            rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
+            tar_props_t = tar_props.t()
+            batch_idx = torch.zeros(tar_props_t.shape[0], 1, device=tar_props.device)
+            tar_props_t = torch.cat([batch_idx, tar_props_t], dim=1)
+            roi_out = self.roi_extractor(feature, tar_props_t)
+            rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_out)
+            #roi_crops = self.roi_crop(feature, tar_props, img_size)
+            #roi_pool_out = self.roi_pool(roi_crops)
+            #rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         else:
-            roi_crops = self.roi_crop(feature, props, img_size)
-            roi_pool_out = self.roi_pool(roi_crops)
-            rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
+            props_t = props.t()
+            batch_idx = torch.zero(props_t.shape[0], 1, device=props_t.device)
+            props_t = torch.cat([batch_idx, props_t], dim=1)
+            roi_out = self.roi_extractor(feature, props_t)
+            rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_out)
+            
+            #roi_crops = self.roi_crop(feature, props, img_size)
+            #roi_pool_out = self.roi_pool(roi_crops)
+            #rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         # anchor_targets, props_targets will be None for test mode
         if not self.training:
             tar_props = props
