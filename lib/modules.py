@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import logging
 from . import config, utils
+from torch.nn.modules.batchnorm import _BatchNorm
 
 
 def decompose_vgg16():
@@ -45,7 +46,7 @@ def make_vgg16_backbone(freeze_first_layers=True, transfer_backbone_cls=True):
 
     return backbone, classifier
 
-def make_res50_backbone(freeze_first_layers=True,
+def make_res50_backbone_(freeze_first_layers=True,
                         transfer_backbone_cls=True,
                         fc_hidden_channels=1024):
     res50 = tv.models.resnet50(pretrained=True)
@@ -61,6 +62,64 @@ def make_res50_backbone(freeze_first_layers=True,
         for i in range(4):
             backbone[i].requires_grad=False
     return backbone, classifier
+
+def make_res50_backbone(freeze_first_layers=True,
+                        transfer_backbone_cls=True,
+                        fc_hidden_channels=1024):
+    # TODO: so far make freeze and pretrained all true
+    res50 = ResNet50()
+    classifier = RCNNClassifier(in_channels=1024, fc_hidden_channels=fc_hidden_channels)
+    utils.init_module_normal(classifier, mean=0.0, std=0.01)
+    return res50, classifier
+    
+    
+
+class ResNet50(nn.Module):
+    def __init__(self, frozen_stages=1, pretrained=True):
+        super(ResNet50, self).__init__()
+        self.frozen_stages = frozen_stages
+        self.pretrained = pretrained
+        res50 = tv.models.resnet50(pretrained=pretrained)
+        self.conv1 = res50.conv1
+        self.bn1 = res50.bn1
+        self.relu = res50.relu
+        self.maxpool = res50.maxpool
+        self.layer1 = res50.layer1
+        self.layer2 = res50.layer2
+        self.layer3 = res50.layer3
+        # self.layer4 = res50.layer4
+        self.freeze_stages(frozen_stages)
+
+    def train(self, mode=True):
+        super(ResNet50, self).train(mode)
+        self.freeze_stages(self.frozen_stages)
+        if mode:
+            for m in self.modules():
+                if isinstance(m, _BatchNorm):
+                    m.eval()
+
+    def freeze_stages(self, stages):
+        if stages >= 0:
+            self.bn1.eval()
+            for m in [self.conv1, self.bn1]:
+                for param in m.parameters():
+                    param.requires_grad=False
+        for i in range(1, stages+1):
+            m = getattr(self, 'layer{}'.format(i))
+            m.eval()
+            for param in m.parameters():
+                param.requires_grad=False
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        for i in range(1, 4):
+            layer = getattr(self, 'layer{}'.format(i))
+            x = layer(x)
+        return x
+    
 
 
 class RCNNClassifier(nn.Module):
