@@ -9,7 +9,7 @@ train_data_cfg = dict(
     voc_data_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_all/VOC2007',
     min_size=600,
     max_size=1000,
-    loader_cfg=dict(batch_size=1, num_workers=6, shuffle=True),
+    loader_cfg=dict(batch_size=1, num_workers=4, shuffle=True),
 )
 
 test_data_cfg = dict(
