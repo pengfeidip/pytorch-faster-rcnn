@@ -404,14 +404,21 @@ class ProposalTargetCreator(object):
         self.sampler = RandomSampler(max_num=max_targets, pos_num=max_pos)
         
     def __call__(self, props_bbox, gt_bbox, gt_label):
+        gt_bbox = gt_bbox.to(props_bbox.dtype)
+        props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
+        
         labels, overlaps_ious = self.assigner(props_bbox, gt_bbox)
         labels = self.sampler(labels)
+        pos_places = (labels > 0)
+        neg_places = (labels == 0)
         chosen_places = (labels>=0)
-
+        
         labels = labels - 1
         labels[labels<0] = 0
         label_bboxes = gt_bbox[:, labels]
         label_cls = gt_label[labels]
+        # it is very important to set neg places to 0 as 0 means background
+        label_cls[neg_places] = 0
         return props_bbox[:, chosen_places], label_cls[chosen_places], label_bboxes[:, chosen_places]
 
     
