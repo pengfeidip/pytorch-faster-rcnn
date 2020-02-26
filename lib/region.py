@@ -326,7 +326,7 @@ class ProposalCreator(object):
         return props_bbox[:, keep], top_scores[keep]
         
 
-class ProposalTargetCreator(object):
+class ProposalTargetCreator_(object):
     """
     Choose regions to train RCNN.
     Args:
@@ -377,7 +377,7 @@ class ProposalTargetCreator(object):
         return props_bbox[:,chosen_idx], roi_label[chosen_idx], roi_gt_bbox[:, chosen_idx]
 
 # using MaxIoUAssigner and RandomSampler
-class ProposalTargetCreator_(object):
+class ProposalTargetCreator(object):
     """
     Choose regions to train RCNN.
     Args:

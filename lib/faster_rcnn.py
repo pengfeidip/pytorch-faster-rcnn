@@ -38,8 +38,8 @@ class FasterRCNNModule(nn.Module):
                  test_props_post_nms=300,
                  test_props_min_size=16,
                  props_pos_iou=0.5,
-                 props_neg_iou_hi=0.5,
-                 props_neg_iou_lo=0.0,
+                 props_neg_iou=0.5,
+                 props_min_pos_iou=0.5,
                  props_max_pos=32,
                  props_max_targets=128,
                  roi_out_size=FASTER_ROI_POOL_SIZE,
@@ -70,8 +70,8 @@ class FasterRCNNModule(nn.Module):
         self.test_props_post_nms=test_props_post_nms
         self.test_props_min_size=test_props_min_size
         self.props_pos_iou=props_pos_iou
-        self.props_neg_iou_hi=props_neg_iou_hi
-        self.props_neg_iou_lo=props_neg_iou_lo
+        self.props_neg_iou=props_neg_iou
+        self.props_min_pos_iou=props_min_pos_iou
         self.props_max_pos=props_max_pos
         self.props_max_targets=props_max_targets
         self.roi_out_size=roi_out_size
@@ -110,8 +110,8 @@ class FasterRCNNModule(nn.Module):
             max_pos=self.props_max_pos,
             max_targets=self.props_max_targets,
             pos_iou=self.props_pos_iou,
-            neg_iou_hi=self.props_neg_iou_hi,
-            neg_iou_lo=self.props_neg_iou_lo)
+            neg_iou=self.props_neg_iou,
+            min_pos_iou=self.props_min_pos_iou)
         # init cropping and pooling layer
         if roi_layer == 'RoIPool':
             self.roi_extractor = torchvision.ops.RoIPool(output_size=roi_out_size,
