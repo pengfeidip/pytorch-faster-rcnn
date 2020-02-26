@@ -115,7 +115,7 @@ def random_sample_label(labels, pos_num, tot_num):
         labels[dis_idx] = -1
     return labels
 
-class AnchorTargetCreator(object):
+class AnchorTargetCreator_(object):
     '''
     It assigns gt bboxes to anchors based on some rules.
     Args:
@@ -123,7 +123,6 @@ class AnchorTargetCreator(object):
         gt_bbox: tensor of shape (4, m), m is number of gt bboxes
     Returns:
         labels: consists of 1=positive anchor, 0=negative anchor, -1=ignore
-        params: bbox adjustment values which will be regressed
         bbox_labels: gt bboxes assigned to each anchor
     '''
     def __init__(self, pos_iou=0.7, neg_iou=0.3, min_pos_iou=0.3, max_pos=128, max_targets=256):
@@ -178,8 +177,105 @@ class AnchorTargetCreator(object):
                              neg_sample_iou.max() if neg_sample_iou.numel()!=0 else None,
                              neg_sample_iou.min() if neg_sample_iou.numel()!=0 else None))
             # logging.info('neg_sample_iou: {}'.format(neg_sample_iou.tolist()))
-        return labels, bbox_labels
+        return labels, bbox_labels, max_gt_iou
+
+class AnchorTargetCreator(object):
+    '''
+    It assigns gt bboxes to anchors based on some rules.
+    Args:
+        anchors: tensor of shape (4, n), n is number of anchors
+        gt_bbox: tensor of shape (4, m), m is number of gt bboxes
+    Returns:
+        labels: consists of 1=positive anchor, 0=negative anchor, -1=ignore
+        bbox_labels: gt bboxes assigned to each anchor
+    '''
+    def __init__(self, pos_iou=0.7, neg_iou=0.3, min_pos_iou=0.3, max_pos=128, max_targets=256):
+        self.pos_iou = pos_iou
+        self.neg_iou = neg_iou
+        self.max_pos = max_pos
+        self.min_pos_iou = min_pos_iou
+        self.max_targets = max_targets
+        self.assigner = MaxIoUAssigner(pos_iou=pos_iou, neg_iou=neg_iou, min_pos_iou=min_pos_iou)
+        self.sampler = RandomSampler(max_num=max_targets, pos_num=max_pos)
+
+    def __call__(self, anchors, gt_bbox):
+        labels, overlap_ious = self.assigner(anchors, gt_bbox)
+        labels = self.sampler(labels)
         
+        labels_ = labels.clone().detach()
+        labels_[labels_>0] = 1
+
+        labels = labels - 1
+        labels[labels<0] = 0
+        label_bboxes = gt_bbox[:,labels]
+        return labels_, label_bboxes, overlap_ious
+    
+
+class MaxIoUAssigner(object):
+    '''
+    It assigns gt bboxes to anchors based on some rules.
+    Args:
+        anchors: tensor of shape (4, n), n is number of anchors
+        gt_bbox: tensor of shape (4, m), m is number of gt bboxes
+    Returns:
+        labels: consists of >0:positive anchor, 0:negative anchor, -1:ignore
+        bbox_labels: gt bboxes assigned to each anchor
+    '''
+    def __init__(self, pos_iou, neg_iou, min_pos_iou):
+        self.pos_iou = pos_iou
+        self.neg_iou = neg_iou
+        self.min_pos_iou = min_pos_iou
+
+    def __call__(self, bboxes, gt_bboxes):
+        assert bboxes.shape[0] == 4 and gt_bboxes.shape[0] == 4
+        num_gts = gt_bboxes.shape[-1]
+        with torch.no_grad():
+            gt_bbox = gt_bboxes.to(torch.float32)
+            n_bboxes, n_gts = bboxes.shape[1], gt_bboxes.shape[1]
+            # first label everything as -1(ignore)
+            labels_ = torch.full((n_bboxes,), -1, device=bboxes.device, dtype=torch.long)
+            # calculate iou table, it has shape [num_anchors, num_gt_bboxes]
+            iou_tab = utils.calc_iou(bboxes, gt_bboxes)
+            # for each gt, find the anchor with max iou overlap with it
+            max_bbox_iou, max_bbox_arg = torch.max(iou_tab, dim=0)
+            # for each anchor, find the gt with max iou overlap with it
+            max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
+            # first label negative bboxes, some of them might be replaced with positive later
+            labels_[(max_gt_iou < self.neg_iou)] = 0
+            # next to label positive bboxes
+            labels_[(max_gt_iou >= self.pos_iou)] = 1
+
+            # find all the bbox with the same max iou overlap with a gt, but the max iou must be >= min_pos_iou
+            equal_max_bbox = (iou_tab == max_bbox_iou) & (max_bbox_iou >= self.min_pos_iou)
+            # find the bbox index
+            _, max_equal_arg = torch.max(equal_max_bbox, dim=1)
+            # find where the equal happens
+            equal_places = (equal_max_bbox.sum(1) > 0)
+            # update max_gt_arg and max_gt_iou
+            max_gt_arg[equal_places] = max_equal_arg[equal_places]
+            max_gt_iou = iou_tab[torch.arange(n_bboxes), max_gt_arg]
+            # update labels_
+            labels_[equal_places] = 1
+            labels = labels_.clone().detach()
+            labels[labels_==1] = (max_gt_arg+1)[labels_==1]
+        return labels, max_gt_iou
+
+class RandomSampler(object):
+    def __init__(self, max_num, pos_num):
+        assert pos_num <= max_num
+        self.max_num = max_num
+        self.pos_num = pos_num
+        
+    def __call__(self, labels):
+        # labels is vector returned by an assigner where
+        # -1:ignore, 0:negative, >0:positive
+        labels_ = labels.clone().detach()
+        labels_[labels>0] = 1
+        labels_ = random_sample_label(labels_, self.pos_num, self.max_num)
+        pos_places = (labels_==1)
+        labels_[pos_places] = labels[pos_places]
+        return labels_
+
 
 class ProposalCreator(object):
     '''
@@ -280,7 +376,45 @@ class ProposalTargetCreator(object):
         # next only choose rois of non-negative
         return props_bbox[:,chosen_idx], roi_label[chosen_idx], roi_gt_bbox[:, chosen_idx]
 
+# using MaxIoUAssigner and RandomSampler
+class ProposalTargetCreator_(object):
+    """
+    Choose regions to train RCNN.
+    Args:
+        props_bbox: region proposals with shape (4, n) where n=number of regions
+        gt_bbox: gt bboxes with shape (4, m) where m=number of gt bboxes
+        gt_label: gt lables with shape (4,) where m=number of labels
+    Returns:
+        props_bbox: chosen bbox
+        label_cls: class labels of each chosen roi
+        label_bbox: gt assigned to each props_bbox
+    """
+    def __init__(self,
+                 max_pos=32,
+                 max_targets=128,
+                 pos_iou=0.5,
+                 neg_iou=0.5,
+                 min_pos_iou=0.5):
+        self.max_pos = max_pos
+        self.max_targets = max_targets
+        self.pos_iou = pos_iou
+        self.neg_iou = neg_iou
+        self.min_pos_iou = min_pos_iou
+        self.assigner = MaxIoUAssigner(pos_iou=pos_iou, neg_iou=neg_iou, min_pos_iou=min_pos_iou)
+        self.sampler = RandomSampler(max_num=max_targets, pos_num=max_pos)
+        
+    def __call__(self, props_bbox, gt_bbox, gt_label):
+        labels, overlaps_ious = self.assigner(props_bbox, gt_bbox)
+        labels = self.sampler(labels)
+        chosen_places = (labels>=0)
 
+        labels = labels - 1
+        labels[labels<0] = 0
+        label_bboxes = gt_bbox[:, labels]
+        label_cls = gt_label[labels]
+        return props_bbox[:, chosen_places], label_cls[chosen_places], label_bboxes[:, chosen_places]
+
+    
 def image2feature(bbox, img_size, feat_size):
     """
     transfer bbox size from image to feature

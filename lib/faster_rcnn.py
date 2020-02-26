@@ -122,7 +122,7 @@ class FasterRCNNModule(nn.Module):
                                                           sampling_ratio=-1)
         else:
             raise ValueError('Unknown RoI Extractor type:{}'.format(roi_layer))
-        # next init backbone, rpn and rcnn
+        # next init backbone
         num_anchors = len(anchor_scales)*len(anchor_aspect_ratios)
         if self.backbone_type == 'VGG16':
             backbone, backbone_classifier = modules.make_vgg16_backbone(
@@ -133,7 +133,6 @@ class FasterRCNNModule(nn.Module):
                                    num_anchors=num_anchors,
                                    in_channels=512,
                                    hidden_channels=512)
-            self.rcnn = modules.RCNN(num_classes, backbone_classifier)
         elif self.backbone_type == 'ResNet50':
             backbone, backbone_classifier = modules.make_res50_backbone(
                 freeze_first_layers=freeze_first_layers,
@@ -144,10 +143,10 @@ class FasterRCNNModule(nn.Module):
                                    num_anchors=num_anchors,
                                    in_channels=1024,
                                    hidden_channels=rpn_hidden_channels)
-            self.rcnn = modules.RCNN(num_classes, backbone_classifier)
         else:
             raise ValueError('Unsupported backbone type:', backbone_type)
         
+        self.rcnn = modules.RCNN(num_classes, backbone_classifier)        
         self.training=True
         self.to(device)
 
@@ -216,7 +215,7 @@ class FasterRCNNModule(nn.Module):
             inside_idx = region.inside_anchor_mask(anchors, img_size)
             in_anchors = anchors[:, inside_idx]
             # label is label of inside anchors, 1=pos, 0=neg and -1=ignore
-            label, bbox_labels \
+            label, bbox_labels, _ \
                 = self.anchor_target_creator(in_anchors, gt_bbox)
             # params = utils.bbox2param(in_anchors, bbox_labels)
             # non_neg_label is chosen index of the inside anchors
@@ -280,7 +279,7 @@ class FasterRCNNModule(nn.Module):
             #rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_pool_out)
         else:
             props_t = props.t()
-            batch_idx = torch.zero(props_t.shape[0], 1, device=props_t.device)
+            batch_idx = torch.zeros(props_t.shape[0], 1, device=props_t.device)
             props_t = torch.cat([batch_idx, props_t], dim=1)
             roi_out = self.roi_extractor(feature, props_t)
             rcnn_cls_out, rcnn_reg_out = self.rcnn(roi_out)
