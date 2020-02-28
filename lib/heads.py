@@ -44,22 +44,32 @@ class RPNHead(nn.Module):
         return self.classifier(x), self.regressor(x)
 
     def forward_train(self, feat, gt_bbox, img_size, train_cfg, scale):
+        logging.info('In forward_train of RPNHead')
         from .registry import build_module
         device = feat.device
         self.anchor_creator.to(device=device)
         feat_size = feat.shape[-2:]
         cls_out, reg_out = self(feat)
+        logging.debug('cls_out.shape: {}'.format(cls_out.shape))
+        logging.debug('reg_out.shape: {}'.format(reg_out.shape))
         anchors = self.anchor_creator(img_size, feat_size)
+        logging.debug('anchors: {}'.format(anchors.shape))
         anchors = anchors.view(4, -1)
         inside_idx = inside_anchor_mask(anchors, img_size)
+        logging.debug('inside_idx: {}'.format(inside_idx.shape))
         in_anchors = anchors[:, inside_idx]
-
+        logging.debug('in_anchors: {}'.format(in_anchors.shape))
+        
         # assign and sample anchors to gt bboxes
         assigner = build_module(train_cfg.rpn.assigner)
         sampler = build_module(train_cfg.rpn.sampler)
         labels, overlap_ious = assigner(in_anchors, gt_bbox)
+        logging.debug('labels before sample: {}, {}, {}'\
+                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
         labels = sampler(labels)
-        
+        logging.debug('labels after sample: {}, {}, {}'\
+                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
+
         # labels_ contains only -1, 0, 1
         # labels contains -1, 0 and positive index of gt bboxes
         labels_ = labels.clone().detach()
@@ -80,7 +90,7 @@ class RPNHead(nn.Module):
         tar_anchors = in_anchors[:, non_neg_label] # 128 chosen anchors 
         tar_bbox = label_bboxes[:, non_neg_label] #128 target bbox where anchors should regress to(only those pos anchors)
         tar_param = utils.bbox2param(tar_anchors, tar_bbox) # deltas where tar_reg_out should regress to(only pos)
-        
+        logging.debug('labels chosen to train RPNHead: {}, {}'.format((tar_labels==0).sum(), (tar_labels==1).sum()))
         cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
 
         # calculate losses
@@ -100,6 +110,7 @@ class RPNHead(nn.Module):
         # next propose bboxes
         props_creator = ProposalCreator_v2(**train_cfg.rpn_proposal)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
+        logging.debug('props by RPNHead: {}'.format(props.shape))
 
         return \
             cls_loss * self.cls_loss_weight, \
@@ -201,6 +212,10 @@ class BBoxHead(nn.Module):
     # props: proposals proposed by RPNHead in train mode setting
     # train_cfg: only one of the many training cfg for RCNN heads
     def forward_train(self, feat, props_bbox, gt_bbox, gt_label, train_cfg):
+        logging.debug('In forward_train of BBoxHead')
+        logging.debug('props_bbox.shape: {}'.format(props_bbox.shape))
+        logging.debug('gt_bbox: {}'.format(gt_bbox))
+        logging.debug('gt_label: {}'.format(gt_label))
         from .registry import build_module
         device = feat.device
         assigner = build_module(train_cfg.assigner)
@@ -209,7 +224,11 @@ class BBoxHead(nn.Module):
         props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
 
         labels, overlaps_ious = assigner(props_bbox, gt_bbox)
+        logging.debug('labels after assigner: -1:{}, 0:{}, >0:{}'\
+                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
         labels = sampler(labels)
+        logging.debug('labels after sampler: -1:{}, 0:{}, >0:{}'\
+                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
         pos_places = (labels > 0)
         neg_places = (labels == 0)
         chosen_places = (labels>=0)
@@ -244,12 +263,12 @@ class BBoxHead(nn.Module):
             else:
                 reg_out = reg_out.view(-1, 4, n_classes)
                 reg_out = reg_out[torch.arange(n_samples), :, tar_label]
-            pos_arg = (tar_label<0)
+            pos_arg = (tar_label>0)
             if pos_arg.sum() == 0:
                 logging.warning('BBoxHead recieves no positive samples to train.')
             else:
-                pos_arg = reg_out[pos_arg, :]
-                reg_loss = smooth_l1_loss_v2(pos_reg, param[:, pos_arg].t(), self.bbox_loss_beta) / n_samples
+                pos_reg = reg_out[pos_arg, :]
+                reg_loss = loss.smooth_l1_loss_v2(pos_reg, tar_param[:, pos_arg].t(), self.bbox_loss_beta) / n_samples
         else:
             logging.warning('BBoxHead recieves no samples to train, return dummpy losses')
 
