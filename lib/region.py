@@ -6,6 +6,7 @@ import time, sys, os
 import os.path as osp
 from . import config, utils
 
+
 #####################################################
 ### new implementation using vertorized computing ###
 #####################################################
@@ -40,8 +41,8 @@ class AnchorCreator(object):
 
     def to(self, device):
         self.device = device
-        self.anchor_ws.to(device)
-        self.anchor_hs.to(device)
+        self.anchor_ws = self.anchor_ws.to(device)
+        self.anchor_hs = self.anchor_hs.to(device)
 
     def report_cache(self):
         count_info = [[k, v[0]] for k,v in self.cached.items()]
@@ -115,70 +116,6 @@ def random_sample_label(labels, pos_num, tot_num):
         labels[dis_idx] = -1
     return labels
 
-class AnchorTargetCreator_(object):
-    '''
-    It assigns gt bboxes to anchors based on some rules.
-    Args:
-        anchors: tensor of shape (4, n), n is number of anchors
-        gt_bbox: tensor of shape (4, m), m is number of gt bboxes
-    Returns:
-        labels: consists of 1=positive anchor, 0=negative anchor, -1=ignore
-        bbox_labels: gt bboxes assigned to each anchor
-    '''
-    def __init__(self, pos_iou=0.7, neg_iou=0.3, min_pos_iou=0.3, max_pos=128, max_targets=256):
-        self.pos_iou = pos_iou
-        self.neg_iou = neg_iou
-        self.max_pos = max_pos
-        self.min_pos_iou = min_pos_iou
-        self.max_targets = max_targets
-
-    def __call__(self, anchors, gt_bbox):
-        assert anchors.shape[0] == 4 and gt_bbox.shape[0] == 4
-        with torch.no_grad():
-            gt_bbox = gt_bbox.to(torch.float32)
-            n_anchors, n_gts = anchors.shape[1], gt_bbox.shape[1]
-            # first label everything as -1(ignore)
-            labels = torch.full((n_anchors,), -1, device=anchors.device, dtype=torch.int)
-            # calculate iou table, it has shape [num_anchors, num_gt_bboxes]
-            iou_tab = utils.calc_iou(anchors, gt_bbox)
-            # for each gt, find the anchor with max iou overlap with it
-            max_anchor_iou, max_anchor_arg = torch.max(iou_tab, dim=0)
-            # for each anchor, find the gt with max iou overlap with it
-            max_gt_iou, max_gt_arg = torch.max(iou_tab, dim=1)
-            # first label negative anchors, some of them might be replaced with positive later
-            labels[(max_gt_iou < self.neg_iou)] = 0
-            # next label positive anchors
-            labels[(max_gt_iou >= self.pos_iou)] = 1
-
-            # find the anchor with the same max iou overlap with a gt, but the max iou must be >= min_pos_iou
-            equal_max_anchor = (iou_tab == max_anchor_iou) & (max_anchor_iou >= self.min_pos_iou)
-            # find the gt index
-            max_equal_arg = torch.max(equal_max_anchor, dim=1)[1]
-            # find where the equal happens
-            equal_places = (equal_max_anchor.sum(1) > 0)
-            # update max_gt_arg
-            max_gt_arg[equal_places] = max_equal_arg[equal_places]
-            labels[equal_places] = 1
-            
-            labels = random_sample_label(labels, self.max_pos, self.max_targets)
-            bbox_labels = gt_bbox[:,max_gt_arg]
-            # for logging
-            pos_sample_iou = max_gt_iou[labels==1]
-            neg_sample_iou = max_gt_iou[labels==0]
-            logging.info('AnchorTargetCreator choose {} positive ious, max={}, min={}'\
-                         .format(
-                             (labels==1).sum(),
-                             pos_sample_iou.max() if pos_sample_iou.numel()!=0 else None,
-                             pos_sample_iou.min() if pos_sample_iou.numel()!=0 else None))
-            # logging.info('pos_sample_iou: {}'.format(pos_sample_iou.tolist()))
-            logging.info('AnchorTargetCreator choose {} negative ious, max={}, min={}'\
-                         .format(
-                             (labels==0).sum(),
-                             neg_sample_iou.max() if neg_sample_iou.numel()!=0 else None,
-                             neg_sample_iou.min() if neg_sample_iou.numel()!=0 else None))
-            # logging.info('neg_sample_iou: {}'.format(neg_sample_iou.tolist()))
-        return labels, bbox_labels, max_gt_iou
-
 class AnchorTargetCreator(object):
     '''
     It assigns gt bboxes to anchors based on some rules.
@@ -211,6 +148,25 @@ class AnchorTargetCreator(object):
         return labels_, label_bboxes, overlap_ious
     
 
+class AnchorTargetCreator_v2(object):
+    def __init__(self, assigner, sampler):
+        from .builder import build_module
+        self.assigner = build_module(assigner)
+        self.sampler = build_module(sampler)
+
+    def __call__(self, anchors, gt_bbox):
+        labels, overlap_ious = self.assigner(anchors, gt_bbox)
+        labels = self.sampler(labels)
+        
+        labels_ = labels.clone().detach()
+        labels_[labels_>0] = 1
+
+        labels = labels - 1
+        labels[labels<0] = 0
+        label_bboxes = gt_bbox[:,labels]
+        return labels_, label_bboxes, overlap_ious
+
+    
 class MaxIoUAssigner(object):
     '''
     It assigns gt bboxes to anchors based on some rules.
@@ -324,6 +280,49 @@ class ProposalCreator(object):
             keep = torchvision.ops.nms(props_bbox.t(), top_scores, self.nms_iou)
             keep = keep[:self.max_post_nms]
         return props_bbox[:, keep], top_scores[keep]
+
+class ProposalCreator_v2(object):
+    def __init__(self,
+                 pre_nms,
+                 post_nms,
+                 nms_iou,
+                 min_size):
+        self.pre_nms = pre_nms
+        self.post_nms = post_nms
+        self.nms_iou = nms_iou
+        self.min_size = min_size
+
+    def __call__(self, rpn_cls_out, rpn_reg_out, anchors, img_size, scale=1.0):
+        assert anchors.shape[0] == 4 and len(anchors.shape) == 2
+        n_anchors = anchors.shape[1]
+        min_size = scale * self.min_size # this is the value from simple-faster-rcnn
+        H, W = img_size
+        with torch.no_grad():
+            cls_out = rpn_cls_out.view(2, -1)
+            reg_out = rpn_reg_out.view(4, -1)
+            scores = torch.softmax(cls_out, 0)[1]
+            props_bbox = utils.param2bbox(anchors, reg_out)
+            props_bbox = torch.stack([
+                torch.clamp(props_bbox[0], 0.0, W),
+                torch.clamp(props_bbox[1], 0.0, H),
+                torch.clamp(props_bbox[2], 0.0, W),
+                torch.clamp(props_bbox[3], 0.0, H)
+            ])
+            small_area_mask = (props_bbox[2] - props_bbox[0] < min_size) \
+                              | (props_bbox[3] - props_bbox[1] < min_size)
+            num_small_area = small_area_mask.sum()
+            scores[small_area_mask] = -1
+            sort_args = torch.argsort(scores, descending=True)
+            if num_small_area > 0:
+                sort_args = sort_args[:-num_small_area]
+            top_sort_args = sort_args[:self.pre_nms]
+            
+            props_bbox = props_bbox[:, top_sort_args]
+            top_scores = scores[top_sort_args]
+            keep = torchvision.ops.nms(props_bbox.t(), top_scores, self.nms_iou)
+            keep = keep[:self.post_nms]
+        return props_bbox[:, keep], top_scores[keep]
+        
         
 
 class ProposalTargetCreator_(object):

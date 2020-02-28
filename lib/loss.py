@@ -5,6 +5,7 @@ from . import region
 def zero_loss(device):
     return torch.tensor(0.0, device=device, requires_grad=True)
 
+# with no reduction
 def smooth_l1_loss(x, y, sigma):
     assert x.shape == y.shape
     abs_diff = torch.abs(x - y)
@@ -12,6 +13,14 @@ def smooth_l1_loss(x, y, sigma):
     mask = abs_diff < 1 / (sigma_sqr)
     val = mask.float() * (sigma_sqr / 2.0) * (abs_diff**2) + \
           (1 - mask.float()) * (abs_diff - 0.5/sigma_sqr)
+    return val.sum()
+
+def smooth_l1_loss_v2(x, y, beta):
+    assert beta > 0
+    assert x.shape == y.shape
+    abs_diff = torch.abs(x-y)
+    mask = abs_diff < beta
+    val = mask.float() * (abs_diff**2) / (2*beta) + (1-mask.float()) * (abs_diff - 0.5 * beta)
     return val.sum()
 
 def normalize_weight(filt_weight, bias):
@@ -30,6 +39,7 @@ def normalize_weight(filt_weight, bias):
         num_b = b.shape[0]
         bloss.append(torch.abs(bnorm-1)/num_b)
     return sum(wloss), sum(bloss)
+
 
 class RPNLoss(object):
     def __init__(self, lamb=1.0, sigma=3.0):
