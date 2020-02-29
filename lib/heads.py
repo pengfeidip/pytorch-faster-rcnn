@@ -185,7 +185,7 @@ class BBoxHead(nn.Module):
         
         self.classifier = nn.Linear(fc_channels[-1], num_classes)
         self.regressor = nn.Linear(fc_channels[-1],
-                                   4 if reg_class_agnostic else num_class*4)
+                                   4 if reg_class_agnostic else self.num_classes*4)
         self.init_weight()
         logging.info('Constructed BBoxHead with num_classes={}'.format(num_classes))
 
@@ -284,18 +284,19 @@ class BBoxHead(nn.Module):
         soft = torch.softmax(cls_out, dim=1)
         score, label = torch.max(soft, dim=1)
         n_props = cls_out.shape[0]
+        n_classes = self.num_classes
         refined = None
-        if self.reg_class_agnostic:
-            param_mean = reg_out.new(self.target_means).view(-1, 4)
-            param_std  = reg_out.new(self.target_stds).view(-1, 4)
-            reg_out = reg_out * param_std + param_mean
-            refined = utils.param2bbox(props, reg_out.t())
-            if img_size is not None:
-                h, w = img_size
-                refined = torch.stack([refined[0].clamp(0, w), refined[1].clamp(0, h),
-                                       refined[2].clamp(0, w), refined[3].clamp(0, h)])
-        else:
-            raise ValueError('Refinement for class specific mode is not implemented.')
+        param_mean = reg_out.new(self.target_means).view(-1, 4)
+        param_std  = reg_out.new(self.target_stds).view(-1, 4)
+        if not self.reg_class_agnostic:
+            reg_out = reg_out.view(-1, 4, n_classes)
+            reg_out = reg_out[torch.arange(n_props), :, label]
+        reg_out = reg_out * param_std + param_mean
+        refined = utils.param2bbox(props, reg_out.t())
+        if img_size is not None:
+            h, w = img_size
+            refined = torch.stack([refined[0].clamp(0, w), refined[1].clamp(0, h),
+                                   refined[2].clamp(0, w), refined[3].clamp(0, h)])
         return refined, label, score
         
 
