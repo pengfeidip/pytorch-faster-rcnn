@@ -26,30 +26,6 @@ model=dict(
             target_stds=[0.1, 0.1, 0.2, 0.2],
             reg_class_agnostic=True,
             bbox_loss_beta=1.0
-        ),
-        dict(
-            type='BBoxHead',
-            in_channels=1024,
-            fc_channels=[1024, 1024],
-            roi_out_size=(7, 7),
-            roi_extractor='RoIPool',
-            num_classes=21,
-            target_means=[.0, .0, .0, .0],
-            target_stds=[0.05, 0.05, 0.1, 0.1],
-            reg_class_agnostic=True,
-            bbox_loss_beta=1.0
-        ),
-        dict(
-            type='BBoxHead',
-            in_channels=1024,
-            fc_channels=[1024, 1024],
-            roi_out_size=(7, 7),
-            roi_extractor='RoIPool',
-            num_classes=21,
-            target_means=[.0, .0, .0, .0],
-            target_stds=[0.033, 0.033, 0.067, 0.067],
-            reg_class_agnostic=True,
-            bbox_loss_beta=1.0
         )
     ]
 )
@@ -124,7 +100,7 @@ test_cfg = dict(
         nms_iou=0.7,
         min_size=0.0,
     ),
-    rcnn=dict(min_score=0.05, nms_iou=0.3)
+    rcnn=dict(score_thr=0.05, nms_iou=0.3)
 ) 
 
 
@@ -133,11 +109,11 @@ data = dict(
         voc_data_dir='/home/lee/datasets/voc2007_comb/VOC2007',
         min_size=600,
         max_size=1000,
-        loader=dict(batch_size=1, num_workers=4, shuffle=True)
+        loader=dict(batch_size=1, num_workers=2, shuffle=True)
     ),
     test=dict(
         voc_data_dir='/home/lee/datasets/voc2007_comb/VOC2007',
-        loader=dict(batch_size=1, num_workers=4, shuffle=False)
+        loader=dict(batch_size=1, num_workers=2, shuffle=False)
     )
 )
 

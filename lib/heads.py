@@ -123,6 +123,7 @@ class RPNHead(nn.Module):
         feat_size = feat.shape[-2:]
         cls_out, reg_out = self(feat)
         anchors = self.anchor_creator(img_size, feat_size)
+        anchors = anchors.view(4, -1)
         props_creator = ProposalCreator_v2(**test_cfg.rpn)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
         return props, score
@@ -298,9 +299,6 @@ class BBoxHead(nn.Module):
         return refined, label, score
         
 
-    def forward_test(self):
-        pass
+    def forward_test(self, feat, props, img_size=None):
+        return self.refine_props(feat, props, img_size)
 
-    def load_classifier(cls):
-        pass
-            

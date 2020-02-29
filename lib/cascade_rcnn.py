@@ -3,7 +3,7 @@ from copy import deepcopy
 from . import utils
 import logging, time, random, traceback
 import os.path as osp
-import torch
+import torch, torchvision
 
 
 class CascadeRCNN(nn.Module):
@@ -54,6 +54,42 @@ class CascadeRCNN(nn.Module):
         rcnn_cls_losses.append(rcnn_cls_loss)
         rcnn_reg_losses.append(rcnn_reg_loss)
         return rpn_cls_loss, rpn_reg_loss, rcnn_cls_losses, rcnn_reg_losses
+
+    def forward_test(self, img_data, scale):
+        logging.info('Star to forward in eval mode')
+        img_size=img_data.shape[-2:]
+        feat=self.backbone(img_data)
+        test_cfg=deepcopy(self.test_cfg)
+        props, score = self.rpn_head.forward_test(feat, img_size, test_cfg, scale)
+
+        rcnn_test_cfg=self.test_cfg.rcnn
+        for i in range(self.num_stages):
+            cur_rcnn_head=self.rcnn_head[i]
+            props, label, score = cur_rcnn_head.forward_test(feat, props, img_size)
+
+        num_classes = self.rcnn_head[0].num_classes
+        nms_iou = self.test_cfg.rcnn.nms_iou
+        min_score = self.test_cfg.rcnn.min_score
+        bbox_res, score_res, class_res = [], [], []
+        for i in range(num_classes - 1):
+            cur_label = (label==i+1)
+            if cur_label.numel()==0:
+                continue
+            if cur_label.sum() == 0:
+                continue
+            cur_score = score[cur_label]
+            cur_bbox = props[:, cur_label]
+            non_small = cur_score > min_score
+            cur_score = cur_score[non_small]
+            cur_bbox = cur_bbox[:, non_small]
+            keep = torchvision.ops.nms(cur_bbox.t(), cur_score, nms_iou)
+            bbox_res.append(cur_bbox[:, keep])
+            score_res.append(cur_score[keep])
+            class_res += [i+1] * len(keep)
+        if len(bbox_res) == 0:
+            return bbox_res, score_res, class_res
+        return torch.cat(bbox_res, dim=1), torch.cat(score_res), class_res
+        
 
 
 class CascadeRCNNTrain(object):
@@ -211,3 +247,63 @@ class CascadeRCNNTrain(object):
         print('Finished Training:)!!!')
 
         
+class CascadeRCNNTest(object):
+    def __init__(self,
+                 cascade_cfg,
+                 train_cfg,
+                 test_cfg,
+                 device=torch.device('cpu')):
+        self.device=device
+        self.cascade_cfg=deepcopy(cascade_cfg)
+        self.train_cfg=train_cfg
+        self.test_cfg=deepcopy(test_cfg)
+        self.cascade_rcnn=None
+
+
+    def init_detector(self):
+        from .registry import build_module
+        self.cascade_rcnn=build_module(self.cascade_cfg, train_cfg=self.train_cfg, test_cfg=self.test_cfg)
+        self.cascade_rcnn.to(self.device)
+
+    def load_ckpt(self, ckpt):
+        assert self.cascade_rcnn is not None
+        self.current_ckpt=ckpt
+        self.cascade_rcnn.load_state_dict(
+            torch.load(ckpt, map_location=self.device))
+        logging.info('loaded ckpt: {}'.format(ckpt))
+
+    def inference(self, dataloader):
+        self.cascade_rcnn.eval()
+        inf_res, ith = [], 0
+        logging.info('Start to inference {} images...'.format(len(dataloader)))
+        with torch.no_grad():
+            for img_data, img_size, bbox, label, difficult, iid in dataloader:
+                tsr_size = img_data.shape[2:]
+                iid = int(iid[0])
+                logging.info('Inference {}-th image with image id: {}'.format(ith, iid))
+                ith += 1
+                scale=tsr_size[0]/img_size[0].item()
+                scale=torch.tensor(scale, device=self.device)
+                img_w, img_h=img_size
+                img_res={'width':img_w, 'height': img_h, 'image_id':iid}
+                bbox, score, category=self.inference_one(img_data, scale)
+                if len(bbox)==0:
+                    logging.warning('0 predictions for image {}'.format(iid))
+                    continue
+                img_res['bbox']=utils.xyxy2xywh(bbox).t()/scale
+                img_res['score']=score
+                img_res['category']=category
+                logging.info('{} bbox predictions for {}-th image with image id {}'.format(bbox.shape[1], ith, iid))
+                inf_res.append(img_res)
+        return inf_res
+
+    def inference_one(self, img_data, scale):
+        img_data = img_data.to(device=self.device)
+        h, w = img_data.shape[-2:]
+        return self.cascade_rcnn.forward_test(img_data, scale)
+
+
+    
+        
+
+    
