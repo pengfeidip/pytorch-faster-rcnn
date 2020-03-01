@@ -25,10 +25,12 @@ class CascadeRCNN(nn.Module):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
 
+    def init_weights(self):
+        pass
+
     # gt_bbox: (4, n) where n is number of gt bboxes
     # gt_label: (n,)
     # scale: ogiginal_image_size * scale = img_data image size
-    # 
     def forward_train(self, img_data, gt_bbox, gt_label, scale):
         logging.info('Start to forward in train mode')
         img_size = img_data.shape[-2:]

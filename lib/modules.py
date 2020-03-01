@@ -90,6 +90,9 @@ class ResNet50(nn.Module):
         # self.layer4 = res50.layer4
         self.freeze_stages(frozen_stages)
 
+    def init_weights(self):
+        pass
+
     def train(self, mode=True):
         super(ResNet50, self).train(mode)
         self.freeze_stages(self.frozen_stages)

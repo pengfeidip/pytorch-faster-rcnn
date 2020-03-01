@@ -100,7 +100,7 @@ test_cfg = dict(
         nms_iou=0.7,
         min_size=0.0,
     ),
-    rcnn=dict(score_thr=0.05, nms_iou=0.3)
+    rcnn=dict(min_score=0.05, nms_iou=0.3)
 ) 
 
 
