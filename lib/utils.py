@@ -108,4 +108,10 @@ def init_module_normal(m, mean=0.0, std=1.0):
             param.data.normal_(mean, std)
         if 'bias' in name:
             param.data.zero_()
-            
+
+# label has -1:ignore, 0:negative, >0:specific positive index
+# turn positive values into uniformly 1
+def simplify_label(label):
+    label_ = label.clone().detach()
+    label_[labels>0]=1
+    return label_

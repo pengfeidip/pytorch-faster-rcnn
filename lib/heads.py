@@ -34,10 +34,13 @@ class RPNHead(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.classifier = nn.Conv2d(feat_channels, self.num_anchors*2, kernel_size=1)
         self.regressor = nn.Conv2d(feat_channels, self.num_anchors*4, kernel_size=1)
+        logging.info('Constructed RPNHead with in_channels={}, feat_channels={}'.format(in_channels, feat_channels))
+
+    def init_weights(self):
         init_module_normal(self.conv, mean=0.0, std=0.01)
         init_module_normal(self.classifier, mean=0.0, std=0.01)
         init_module_normal(self.regressor, mean=0.0, std=0.01)
-        logging.info('Constructed RPNHead with in_channels={}, feat_channels={}'.format(in_channels, feat_channels))
+        logging.info('Initialized weights for RPNHead.')
         
     def forward(self, x):
         x = self.relu(self.conv(x))
@@ -72,8 +75,7 @@ class RPNHead(nn.Module):
 
         # labels_ contains only -1, 0, 1
         # labels contains -1, 0 and positive index of gt bboxes
-        labels_ = labels.clone().detach()
-        labels_[labels_>0] = 1
+        labels_ = utils.simplify_label(labels)
         labels = labels - 1
         labels[labels<0]=0
         label_bboxes = gt_bbox[:, labels]
@@ -186,15 +188,15 @@ class BBoxHead(nn.Module):
         self.classifier = nn.Linear(fc_channels[-1], num_classes)
         self.regressor = nn.Linear(fc_channels[-1],
                                    4 if reg_class_agnostic else self.num_classes*4)
-        self.init_weight()
         logging.info('Constructed BBoxHead with num_classes={}'.format(num_classes))
 
-    def init_weight(self):
+    def init_weights(self):
         for fc in self.shared_fcs:
             if isinstance(fc, nn.Linear):
                 init_module_normal(fc, mean=0.0, std=0.01)
         init_module_normal(self.classifier, mean=0.0, std=0.01)
         init_module_normal(self.regressor, mean=0.0, std=0.001)
+        logging.info('Initialized weights for BBoxHead.')
 
     # assume props has shape (4, n)
     def forward(self, feat, props):
@@ -280,23 +282,24 @@ class BBoxHead(nn.Module):
 
     # use RCNN to refine proposals
     def refine_props(self, feat, props, img_size=None):
-        cls_out, reg_out = self(feat, props)
-        soft = torch.softmax(cls_out, dim=1)
-        score, label = torch.max(soft, dim=1)
-        n_props = cls_out.shape[0]
-        n_classes = self.num_classes
-        refined = None
-        param_mean = reg_out.new(self.target_means).view(-1, 4)
-        param_std  = reg_out.new(self.target_stds).view(-1, 4)
-        if not self.reg_class_agnostic:
-            reg_out = reg_out.view(-1, 4, n_classes)
-            reg_out = reg_out[torch.arange(n_props), :, label]
-        reg_out = reg_out * param_std + param_mean
-        refined = utils.param2bbox(props, reg_out.t())
-        if img_size is not None:
-            h, w = img_size
-            refined = torch.stack([refined[0].clamp(0, w), refined[1].clamp(0, h),
-                                   refined[2].clamp(0, w), refined[3].clamp(0, h)])
+        with torch.no_grad():
+            cls_out, reg_out = self(feat, props)
+            soft = torch.softmax(cls_out, dim=1)
+            score, label = torch.max(soft, dim=1)
+            n_props = cls_out.shape[0]
+            n_classes = self.num_classes
+            refined = None
+            param_mean = reg_out.new(self.target_means).view(-1, 4)
+            param_std  = reg_out.new(self.target_stds).view(-1, 4)
+            if not self.reg_class_agnostic:
+                reg_out = reg_out.view(-1, 4, n_classes)
+                reg_out = reg_out[torch.arange(n_props), :, label]
+            reg_out = reg_out * param_std + param_mean
+            refined = utils.param2bbox(props, reg_out.t())
+            if img_size is not None:
+                h, w = img_size
+                refined = torch.stack([refined[0].clamp(0, w), refined[1].clamp(0, h),
+                                       refined[2].clamp(0, w), refined[3].clamp(0, h)])
         return refined, label, score
         
 
