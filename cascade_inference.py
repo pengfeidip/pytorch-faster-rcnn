@@ -62,7 +62,6 @@ def main():
             }
             out_json.append(cur_pred)
             anno_idx += 1
-    print(out_json)
     json.dump(out_json, open(args.out, 'w'))
     
 if __name__ == '__main__':

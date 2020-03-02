@@ -47,7 +47,7 @@ class RPNHead(nn.Module):
         return self.classifier(x), self.regressor(x)
 
     def forward_train(self, feat, gt_bbox, img_size, train_cfg, scale):
-        logging.info('In forward_train of RPNHead')
+        logging.debug('START of RPNHead forward_train'.center(50, '='))
         from .registry import build_module
         device = feat.device
         self.anchor_creator.to(device=device)
@@ -67,10 +67,10 @@ class RPNHead(nn.Module):
         assigner = build_module(train_cfg.rpn.assigner)
         sampler = build_module(train_cfg.rpn.sampler)
         labels, overlap_ious = assigner(in_anchors, gt_bbox)
-        logging.debug('labels before sample: {}, {}, {}'\
+        logging.debug('labels before sample(-1, 0, >0): {}, {}, {}'\
                       .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
         labels = sampler(labels)
-        logging.debug('labels after sample: {}, {}, {}'\
+        logging.debug('labels after sample(-1, 0, >0): {}, {}, {}'\
                       .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
 
         # labels_ contains only -1, 0, 1
@@ -92,7 +92,8 @@ class RPNHead(nn.Module):
         tar_anchors = in_anchors[:, non_neg_label] # 128 chosen anchors 
         tar_bbox = label_bboxes[:, non_neg_label] #128 target bbox where anchors should regress to(only those pos anchors)
         tar_param = utils.bbox2param(tar_anchors, tar_bbox) # deltas where tar_reg_out should regress to(only pos)
-        logging.debug('labels chosen to train RPNHead: {}, {}'.format((tar_labels==0).sum(), (tar_labels==1).sum()))
+        logging.debug('labels chosen to train RPNHead neg={}, pos={}'\
+                      .format((tar_labels==0).sum(), (tar_labels==1).sum()))
         cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
 
         # calculate losses
@@ -112,7 +113,8 @@ class RPNHead(nn.Module):
         # next propose bboxes
         props_creator = ProposalCreator_v2(**train_cfg.rpn_proposal)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
-        logging.debug('props by RPNHead: {}'.format(props.shape))
+        logging.debug('Proposals by RPNHead: {}'.format(props.shape))
+        logging.debug('End of RPNHead forward_train'.center(50, '='))
 
         return \
             cls_loss * self.cls_loss_weight, \
@@ -215,26 +217,41 @@ class BBoxHead(nn.Module):
     # props: proposals proposed by RPNHead in train mode setting
     # train_cfg: only one of the many training cfg for RCNN heads
     def forward_train(self, feat, props_bbox, gt_bbox, gt_label, train_cfg):
-        logging.debug('In forward_train of BBoxHead')
+        logging.debug('START of BBoxHead forward_train'.center(50, '='))
         logging.debug('props_bbox.shape: {}'.format(props_bbox.shape))
         logging.debug('gt_bbox: {}'.format(gt_bbox))
         logging.debug('gt_label: {}'.format(gt_label))
+        logging.debug('train_cfg: {}'.format(train_cfg))
         from .registry import build_module
         device = feat.device
         assigner = build_module(train_cfg.assigner)
         sampler = build_module(train_cfg.sampler)
         gt_bbox = gt_bbox.to(props_bbox.dtype)
         props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
+        logging.debug('props_bbox after adding GT: {}'.format(props_bbox.shape))
 
         labels, overlaps_ious = assigner(props_bbox, gt_bbox)
-        logging.debug('labels after assigner: -1:{}, 0:{}, >0:{}'\
-                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
+        logging.debug('labels after assigner: -1:{}, 0:{}, >0:{}, >=0: {}'\
+                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
         labels = sampler(labels)
-        logging.debug('labels after sampler: -1:{}, 0:{}, >0:{}'\
-                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
+        logging.debug('labels after sampler: -1:{}, 0:{}, >0:{}, >=0: {}'\
+                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
         pos_places = (labels > 0)
         neg_places = (labels == 0)
         chosen_places = (labels>=0)
+
+        # find out where in the propo_bbox gts are
+        n_props_bbox = props_bbox.shape[1]
+        n_gts = gt_label.numel()
+        is_gt = labels.new_zeros(n_props_bbox)
+        is_gt[:n_gts]=1
+        is_gt_chosen=is_gt[chosen_places]
+        logging.debug('chosen gt: {}, number of gt: {}'.format(is_gt_chosen.sum(), n_gts))
+
+        # check IoU of assigned pos props
+        pos_iou = overlaps_ious[pos_places]
+        logging.debug('IoU of positively assigned props: n={}, avg={}'\
+                      .format(len(pos_iou), pos_iou.mean()))
         
         labels = labels - 1
         labels[labels<0] = 0
@@ -243,14 +260,21 @@ class BBoxHead(nn.Module):
         # it is very important to set neg places to 0 as 0 means background
         label_cls[neg_places] = 0
 
+        tar_is_gt = is_gt_chosen
         tar_props = props_bbox[:, chosen_places]
         tar_label = label_cls[chosen_places] # class of each gt label, 0 means background
+        logging.debug('class of each target label, 0 means background')
+        logging.debug('{}'.format(tar_label))
         tar_bbox = label_bboxes[:, chosen_places]
         # calc target param which reg_out regress to
         tar_param = utils.bbox2param(tar_props, tar_bbox)
+        
         # for debug
-        logging.debug('mean of tar_param of RCNN: {}'.format(tar_param.mean(dim=1)))
-        logging.debug('std  of tar_param of RCNN: {}'.format(tar_param.std(dim=1)))
+        pos_tar_param = tar_param[:, (tar_label>0)]
+        logging.debug('mean of pos_tar_param of RCNN: {}'.format(pos_tar_param.mean(dim=1)))
+        logging.debug('std  of pos_tar_param of RCNN: {}'.format(pos_tar_param.std(dim=1)))
+        # for debug
+        
         param_mean = tar_param.new(self.target_means).view(4, 1)
         param_std  = tar_param.new(self.target_stds).view(4, 1)
         tar_param = (tar_param - param_mean) / param_std # normalize the regression values
@@ -278,13 +302,30 @@ class BBoxHead(nn.Module):
         else:
             logging.warning('BBoxHead recieves no samples to train, return dummpy losses')
 
+        logging.debug('END of BBoxHead forward_train'.center(50, '='))
+
         # next find proposals
+        tar_reg_out = reg_out
         return \
             cls_loss * self.cls_loss_weight, \
-            reg_loss * self.bbox_loss_weight
+            reg_loss * self.bbox_loss_weight, \
+            tar_props, tar_reg_out, tar_label, tar_is_gt
 
     # use RCNN to refine proposals
-    def refine_props(self, feat, props, img_size=None):
+    def refine_props(self, props, reg_out, is_gt, img_size=None):
+        assert props.shape[1] == reg_out.shape[0] == is_gt.numel()
+        is_gt = is_gt.to(dtype=torch.bool)
+        props = props[:, ~is_gt]
+        reg_out = reg_out.t()[:, ~is_gt]
+        param_mean = reg_out.new(self.target_means).view(4, -1)
+        param_std  = reg_out.new(self.target_stds).view(4, -1)
+        reg_out = reg_out * param_std + param_mean
+        refined = utils.param2bbox(props, reg_out)
+        return refined
+
+    def forward_test(self, feat, props, img_size=None):
+        logging.debug('START of BBoxHead refine_props'.center(50, '='))
+        logging.debug('received props: {}'.format(props.shape))
         with torch.no_grad():
             cls_out, reg_out = self(feat, props)
             soft = torch.softmax(cls_out, dim=1)
@@ -294,7 +335,9 @@ class BBoxHead(nn.Module):
             refined = None
             param_mean = reg_out.new(self.target_means).view(-1, 4)
             param_std  = reg_out.new(self.target_stds).view(-1, 4)
-            if not self.reg_class_agnostic:
+            if self.reg_class_agnostic:
+                reg_out = reg_out.view(-1, 4)
+            else:
                 reg_out = reg_out.view(-1, 4, n_classes)
                 reg_out = reg_out[torch.arange(n_props), :, label]
             reg_out = reg_out * param_std + param_mean
@@ -303,9 +346,6 @@ class BBoxHead(nn.Module):
                 h, w = img_size
                 refined = torch.stack([refined[0].clamp(0, w), refined[1].clamp(0, h),
                                        refined[2].clamp(0, w), refined[3].clamp(0, h)])
+        logging.debug('END of BBoxHead refine_props'.center(50, '='))
         return refined, label, score
-        
-
-    def forward_test(self, feat, props, img_size=None):
-        return self.refine_props(feat, props, img_size)
 

@@ -43,23 +43,23 @@ class CascadeRCNN(nn.Module):
         train_cfg = deepcopy(self.train_cfg)
         rpn_cls_loss, rpn_reg_loss, props \
             = self.rpn_head.forward_train(feat, gt_bbox, img_size, train_cfg, scale)
+        logging.debug('proposals from RPN: {}'.format(props.shape))
         rcnn_cls_losses = []
         rcnn_reg_losses = []
-        for i in range(self.num_stages - 1):
+        for i in range(self.num_stages):
+            logging.debug('IN RCNN_HEAD {}'.center(50, '-').format(i))
+            logging.debug('props before feed to rcnn_head: {}'.format(props.shape))
             cur_rcnn_head = self.rcnn_head[i]
             cur_rcnn_train_cfg = train_cfg.rcnn[i]
-            rcnn_cls_loss, rcnn_reg_loss \
+            rcnn_cls_loss, rcnn_reg_loss, tar_props, tar_reg_out, tar_label, tar_is_gt \
                 = cur_rcnn_head.forward_train(feat, props, gt_bbox, gt_label, cur_rcnn_train_cfg)
+            logging.debug('target proposals from rcnn_head: {}'.format(tar_props.shape))
             rcnn_cls_losses.append(rcnn_cls_loss)
             rcnn_reg_losses.append(rcnn_reg_loss)
-            refined_props, label, score = cur_rcnn_head.refine_props(feat, props, img_size)
-            props = refined_props
-        last_rcnn_head = self.rcnn_head[-1]
-        last_rcnn_train_cfg = train_cfg.rcnn[-1]
-        rcnn_cls_loss, rcnn_reg_loss = last_rcnn_head.forward_train(feat, props, gt_bbox, gt_label,
-                                                                    last_rcnn_train_cfg)
-        rcnn_cls_losses.append(rcnn_cls_loss)
-        rcnn_reg_losses.append(rcnn_reg_loss)
+            if i < self.num_stages-1:
+                refined_props = cur_rcnn_head.refine_props(tar_props, tar_reg_out, tar_is_gt)
+                props = refined_props
+                
         return rpn_cls_loss, rpn_reg_loss, rcnn_cls_losses, rcnn_reg_losses
 
     def forward_test(self, img_data, scale):
@@ -307,7 +307,6 @@ class CascadeRCNNTest(object):
                 img_res['category']=category
                 logging.info('{} bbox predictions for {}-th image with image id {}'.format(bbox.shape[1], ith, iid))
                 inf_res.append(img_res)
-                break
         return inf_res
 
     def inference_one(self, img_data, scale):

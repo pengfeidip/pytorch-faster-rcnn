@@ -405,12 +405,18 @@ class ProposalTargetCreator(object):
     def __call__(self, props_bbox, gt_bbox, gt_label):
         gt_bbox = gt_bbox.to(props_bbox.dtype)
         props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
+
         
         labels, overlaps_ious = self.assigner(props_bbox, gt_bbox)
         labels = self.sampler(labels)
         pos_places = (labels > 0)
         neg_places = (labels == 0)
         chosen_places = (labels>=0)
+
+        n_props_bbox = props_bbox.shape[1]
+        n_gts = gt_label.numel()
+        is_gt = labels.new_zeros(n_props_bbox)
+        is_gt[:n_gts]=1
         
         labels = labels - 1
         labels[labels<0] = 0
@@ -418,7 +424,10 @@ class ProposalTargetCreator(object):
         label_cls = gt_label[labels]
         # it is very important to set neg places to 0 as 0 means background
         label_cls[neg_places] = 0
-        return props_bbox[:, chosen_places], label_cls[chosen_places], label_bboxes[:, chosen_places]
+        is_gt_chosen = is_gt[chosen]
+        logging.debug('Chosen gt: {}, number of gt: {}'.format(is_gt_chosen.sum(), n_gts))
+        return props_bbox[:, chosen_places], label_cls[chosen_places], \
+            label_bboxes[:, chosen_places], is_gt_chosen
 
     
 def image2feature(bbox, img_size, feat_size):
