@@ -113,5 +113,5 @@ def init_module_normal(m, mean=0.0, std=1.0):
 # turn positive values into uniformly 1
 def simplify_label(label):
     label_ = label.clone().detach()
-    label_[labels>0]=1
+    label_[label>0]=1
     return label_

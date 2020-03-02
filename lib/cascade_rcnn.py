@@ -69,47 +69,16 @@ class CascadeRCNN(nn.Module):
         test_cfg=deepcopy(self.test_cfg)
         props, score = self.rpn_head.forward_test(feat, img_size, test_cfg, scale)
 
+        '''
         dog_bbox = props.new([47,239,195,371]).view(4, -1)
         dog_bbox = dog_bbox * scale
-
-        # TODO
-        print('***RPN***')
-        iou_tab = utils.calc_iou(props, dog_bbox)
-        print('iou_tab with the dog')
-        print(iou_tab.t())
-        print('iou_tab.shape', iou_tab.shape)
-        max_iou, max_arg = iou_tab.max(0)
-        print(max_iou, max_arg)
-        print('score of max_arg:', score[max_arg])
-        print('***RPN***')
-        
+        '''
 
         rcnn_test_cfg=self.test_cfg.rcnn
         for i in range(self.num_stages):
-            print('In RCNN {}'.format(i))
             cur_rcnn_head=self.rcnn_head[i]
             props, label, score = cur_rcnn_head.forward_test(feat, props, img_size)
-            iou_tab = utils.calc_iou(props, dog_bbox)
-            print('iou_tab with the dog')
-            print(iou_tab.t())
 
-            max_iou, max_arg = iou_tab.max(0)
-            print('max iou with the dog:', max_iou.item(), max_arg.item())
-            print('iou of the original max bbox:', iou_tab[32].item())
-            print('label of max_arg after rcnn', label[max_arg])
-            print('score of max_arg after rcnn', score[max_arg])
-            print('label', label)
-            print('score', score)
-
-            
-        print('test first RCNN using proposal from last RCNN')
-        tmp_props, label, score = self.rcnn_head[0].forward_test(feat, props, img_size)
-        print('label:', label)
-        print('score:', score)
-        print('iou with dog:')
-        print(utils.calc_iou(props, dog_bbox).t())
-
-            
         num_classes = self.rcnn_head[0].num_classes
         nms_iou = self.test_cfg.rcnn.nms_iou
         min_score = self.test_cfg.rcnn.min_score

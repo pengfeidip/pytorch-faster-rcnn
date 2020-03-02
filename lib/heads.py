@@ -248,6 +248,9 @@ class BBoxHead(nn.Module):
         tar_bbox = label_bboxes[:, chosen_places]
         # calc target param which reg_out regress to
         tar_param = utils.bbox2param(tar_props, tar_bbox)
+        # for debug
+        logging.debug('mean of tar_param of RCNN: {}'.format(tar_param.mean(dim=1)))
+        logging.debug('std  of tar_param of RCNN: {}'.format(tar_param.std(dim=1)))
         param_mean = tar_param.new(self.target_means).view(4, 1)
         param_std  = tar_param.new(self.target_stds).view(4, 1)
         tar_param = (tar_param - param_mean) / param_std # normalize the regression values
