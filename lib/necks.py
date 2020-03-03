@@ -1,9 +1,9 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from .utils import ConvModule
 from mmcv.cnn import xavier_init
 
+"""
 class FPN_(nn.Module):
     def __init__(self,
                  in_channels,
@@ -60,7 +60,7 @@ class FPN_(nn.Module):
                 outs.append(F.max_pool2d(outs[-1], 1, stride=2))
         return tuple(outs)
         
-        
+"""     
         
     
 class FPN(nn.Module):
