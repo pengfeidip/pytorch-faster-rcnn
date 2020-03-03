@@ -75,9 +75,15 @@ class CascadeRCNN(nn.Module):
         '''
 
         rcnn_test_cfg=self.test_cfg.rcnn
+        cls_scores = []
         for i in range(self.num_stages):
             cur_rcnn_head=self.rcnn_head[i]
-            props, label, score = cur_rcnn_head.forward_test(feat, props, img_size)
+            props, label, cls_score = cur_rcnn_head.forward_test(feat, props, img_size)
+            cls_scores.append(cls_score)
+        cls_score = sum(cls_scores) / self.num_stages
+
+        soft = torch.softmax(cls_score, dim=1)
+        score, label = torch.max(soft, dim=1)
 
         num_classes = self.rcnn_head[0].num_classes
         nms_iou = self.test_cfg.rcnn.nms_iou

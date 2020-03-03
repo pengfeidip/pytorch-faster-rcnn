@@ -324,7 +324,7 @@ class BBoxHead(nn.Module):
         return refined
 
     def forward_test(self, feat, props, img_size=None):
-        logging.debug('START of BBoxHead refine_props'.center(50, '='))
+        logging.debug('START of BBoxHead forward_test'.center(50, '='))
         logging.debug('received props: {}'.format(props.shape))
         with torch.no_grad():
             cls_out, reg_out = self(feat, props)
@@ -346,6 +346,6 @@ class BBoxHead(nn.Module):
                 h, w = img_size
                 refined = torch.stack([refined[0].clamp(0, w), refined[1].clamp(0, h),
                                        refined[2].clamp(0, w), refined[3].clamp(0, h)])
-        logging.debug('END of BBoxHead refine_props'.center(50, '='))
-        return refined, label, score
+        logging.debug('END of BBoxHead forward_test'.center(50, '='))
+        return refined, label, cls_out
 
