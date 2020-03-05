@@ -136,8 +136,6 @@ class BBoxHead(nn.Module):
     def __init__(self,
                  in_channels,
                  fc_channels=[1024, 1024],
-                 roi_out_size = (7, 7),
-                 roi_extractor='RoIPool',
                  num_classes=21,
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[0.1, 0.1, 0.2, 0.2],
@@ -157,17 +155,6 @@ class BBoxHead(nn.Module):
         else:
             roi_out_size = tuple(roi_out_size)
         self.roi_out_size = roi_out_size
-
-        # build roi extractor
-        if roi_extractor == 'RoIPool':
-            self.roi_extractor = torchvision.ops.RoIPool(output_size=roi_out_size,
-                                                         spatial_scale=1.0/16.0)
-        elif roi_extractor == 'RoIAlign':
-            self.roi_extractor = torchvision.ops.RoIAlign(output_size=roi_out_size,
-                                                          spatial_scale=1.0/16.0,
-                                                          sampling_ratio=-1)
-        else:
-            raise ValueError('Unknown RoI Extractor type: {}'.format(roi_extractor))
 
         num_fcs = len(fc_channels)
         roi_out_channels = roi_out_size[0] * roi_out_size[1]
