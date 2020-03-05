@@ -65,10 +65,13 @@ class CascadeRCNN(nn.Module):
     def forward_test(self, img_data, scale):
         logging.info('Star to forward in eval mode')
         img_size=img_data.shape[-2:]
+        logging.info('Image size: {}'.format(img_size))
         feat=self.backbone(img_data)
+        logging.debug('Feature size: {}'.format(feat.shape))
         test_cfg=deepcopy(self.test_cfg)
         props, score = self.rpn_head.forward_test(feat, img_size, test_cfg, scale)
-
+        logging.info('Proposals from RPN: {}'.format(props.shape))
+        
         '''
         dog_bbox = props.new([47,239,195,371]).view(4, -1)
         dog_bbox = dog_bbox * scale
@@ -77,13 +80,24 @@ class CascadeRCNN(nn.Module):
         rcnn_test_cfg=self.test_cfg.rcnn
         cls_scores = []
         for i in range(self.num_stages):
+            logging.info('In stage {}'.format(i))
+            if i < self.num_stages-1:
+                img_size_ = None # for non-last stages, do not restrict bbox to image size
+            else:
+                img_size_ = img_size
             cur_rcnn_head=self.rcnn_head[i]
-            props, label, cls_score = cur_rcnn_head.forward_test(feat, props, img_size)
+            props, label, cls_score = cur_rcnn_head.forward_test(feat, props, img_size_)
+            logging.debug('cls_score:')
+            logging.debug(cls_score)
             cls_scores.append(cls_score)
         cls_score = sum(cls_scores) / self.num_stages
 
         soft = torch.softmax(cls_score, dim=1)
         score, label = torch.max(soft, dim=1)
+        logging.info('label:')
+        logging.info(label)
+        logging.info('Score:')
+        logging.info(score)
 
         num_classes = self.rcnn_head[0].num_classes
         nms_iou = self.test_cfg.rcnn.nms_iou
@@ -106,6 +120,7 @@ class CascadeRCNN(nn.Module):
             class_res += [i+1] * len(keep)
         if len(bbox_res) == 0:
             return bbox_res, score_res, class_res
+
         return torch.cat(bbox_res, dim=1), torch.cat(score_res), class_res
         
 
@@ -294,6 +309,10 @@ class CascadeRCNNTest(object):
         self.cascade_rcnn.eval()
         inf_res, ith = [], 0
         logging.info('Start to inference {} images...'.format(len(dataloader)))
+        logging.info('CascadeRCNN config:')
+        logging.info(str(self.cascade_cfg))
+        logging.info('Test config:')
+        logging.info(str(self.test_cfg))
         with torch.no_grad():
             for img_data, img_size, bbox, label, difficult, iid in dataloader:
                 tsr_size = img_data.shape[2:]

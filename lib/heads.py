@@ -263,8 +263,8 @@ class BBoxHead(nn.Module):
         tar_is_gt = is_gt_chosen
         tar_props = props_bbox[:, chosen_places]
         tar_label = label_cls[chosen_places] # class of each gt label, 0 means background
-        logging.debug('class of each target label, 0 means background')
-        logging.debug('{}'.format(tar_label))
+        # logging.debug('class of each target label, 0 means background')
+        # logging.debug('{}'.format(tar_label))
         tar_bbox = label_bboxes[:, chosen_places]
         # calc target param which reg_out regress to
         tar_param = utils.bbox2param(tar_props, tar_bbox)
@@ -328,6 +328,8 @@ class BBoxHead(nn.Module):
         logging.debug('received props: {}'.format(props.shape))
         with torch.no_grad():
             cls_out, reg_out = self(feat, props)
+            logging.info('cls_out {}'.format(cls_out))
+            
             soft = torch.softmax(cls_out, dim=1)
             score, label = torch.max(soft, dim=1)
             n_props = cls_out.shape[0]
