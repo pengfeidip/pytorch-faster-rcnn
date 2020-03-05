@@ -489,3 +489,20 @@ class ROIPooling(nn.Module):
             logging.warning('No rois with positive area, ignore this batch!')
             return None
         return torch.stack([self.adaptive_pool(x) for x in pos_area])
+
+class SingleRoIExtractor(nn.Module):
+    def __init__(self, roi_layer='RoIPool', output_size=7, spatial_scale=1.0/16.0):
+        if roi_layer='RoIPool':
+            self.roi_layer = torchvision.ops.RoIPool(output_size=output_size,
+                                                     spatial_scale=spatial_scale)
+        elif roi_layer == 'RoIAlign':
+            self.roi_layer = torchvision.ops.RoIAlign(output_size=output_size,
+                                                      spatial_scale=spatial_scale,
+                                                      sampling_ratio=2)
+        else:
+            raise ValueError('Unknown roi_layer type: {}'.format(roi_layer))
+        self.output_size=output_size
+        self.spatial_scale=spatial_scale
+
+    def forward(self, x):
+        return self.roi_layer(x)
