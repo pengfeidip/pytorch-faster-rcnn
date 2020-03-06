@@ -4,24 +4,46 @@ from . import utils
 import logging, time, random, traceback
 import os.path as osp
 import torch, torchvision
+from .bbox import bbox_target
 
 
 class CascadeRCNN(nn.Module):
     def __init__(self,
-                 backbone,
-                 rpn_head,
-                 rcnn_head,
-                 train_cfg,
-                 test_cfg):
+                 num_stages=3,
+                 backbone=None,
+                 rpn_head=None,
+                 roi_extractor=None,
+                 shared_head=None,
+                 rcnn_head=None,
+                 train_cfg=None,
+                 test_cfg=None):
         super(CascadeRCNN, self).__init__()
         from .registry import build_module
+        assert num_stages > 0
+        self.num_stages=num_stages
         self.backbone = build_module(backbone)
         self.rpn_head = build_module(rpn_head)
-        self.num_stages = len(rcnn_head)
-        heads = nn.ModuleList()
-        for i in range(self.num_stages):
-            heads.append(build_module(rcnn_head[i]))
-        self.rcnn_head = heads
+        if isinstance(roi_extractor, list):
+            assert len(roi_extractor) >= self.num_stages
+            self.roi_extractors = [build_module(roi_extractor[i]) for i in range(self.num_stages)]
+
+        else:
+            self.roi_extractors = [build_module(roi_extractor) for _ in range(self.num_stages)]
+        if shared_head is not None:
+            self.shared_head = build_module(shared_head)
+            self.with_shared_head=True
+        else:
+            self.with_shared_head=False
+
+        if isinstance(rcnn_head, list):
+            assert len(rcnn_head) >= self.num_stages
+            rcnn_head=[build_module(rcnn_head[i]) for i in range(self.num_stages)]
+        else:
+            assert self.num_stages==1, 'rcnn_head must be consistent with num_stages'
+            rcnn_head = [build_module(rcnn_head)]
+
+        self.rcnn_head=nn.ModuleList(rcnn_head)
+            
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
 
@@ -30,8 +52,10 @@ class CascadeRCNN(nn.Module):
         for i, bbox_head in enumerate(self.rcnn_head):
             bbox_head.init_weights()
             logging.info('(weights of bbox_head={})'.format(i))
+        if self.with_shared_head:
+            self.shared_head.init_weights()
         logging.info('Initialized weights for CascadeRCNN')
-        pass
+
 
     # gt_bbox: (4, n) where n is number of gt bboxes
     # gt_label: (n,)
@@ -48,17 +72,41 @@ class CascadeRCNN(nn.Module):
         rcnn_reg_losses = []
         for i in range(self.num_stages):
             logging.debug('IN RCNN_HEAD {}'.center(50, '-').format(i))
-            logging.debug('props before feed to rcnn_head: {}'.format(props.shape))
+            logging.debug('props before target selecting: {}'.format(props.shape))
+
             cur_rcnn_head = self.rcnn_head[i]
+            cur_roi_extractor = self.roi_extractors[i]
             cur_rcnn_train_cfg = train_cfg.rcnn[i]
-            rcnn_cls_loss, rcnn_reg_loss, tar_props, tar_reg_out, tar_label, tar_is_gt \
-                = cur_rcnn_head.forward_train(feat, props, gt_bbox, gt_label, cur_rcnn_train_cfg)
-            logging.debug('target proposals from rcnn_head: {}'.format(tar_props.shape))
+            
+            # sample positive and negative bboxes to train rcnn_head
+            tar_props, tar_bbox, tar_label, tar_param, tar_is_gt \
+                = bbox_target(props, gt_bbox, gt_label, cur_rcnn_train_cfg.assigner,
+                              cur_rcnn_train_cfg.sampler,
+                              cur_rcnn_head.target_means, cur_rcnn_head.target_stds)
+            
+            logging.debug('target proposals after selecting: {}'.format(tar_props.shape))
+            # extract features from backbone based on the target bboxes
+            roi_out = cur_roi_extractor(feat, tar_props)
+
+            logging.debug('roi_out after roi_extractor: {}'.format(roi_out.shape))
+
+            # shared_head can be regarded as part of rcnn_head, but it is shared among all rcnn_heads
+            if self.with_shared_head:
+                roi_out = self.shared_head(roi_out)
+                logging.info('RoI output after shared head: {}'.format(roi_out.shape))
+
+            cls_out, reg_out = cur_rcnn_head(roi_out)
+            logging.debug('cls_out of rcnn_head: {}'.format(cls_out.shape))
+            logging.debug('reg_out of rcnn_head: {}'.format(reg_out.shape))
+            rcnn_cls_loss, rcnn_reg_loss \
+                = cur_rcnn_head.loss(cls_out, reg_out, tar_label, tar_param)
+            
             rcnn_cls_losses.append(rcnn_cls_loss)
             rcnn_reg_losses.append(rcnn_reg_loss)
             if i < self.num_stages-1:
-                refined_props = cur_rcnn_head.refine_props(tar_props, tar_reg_out, tar_is_gt)
-                props = refined_props
+                with torch.no_grad():
+                    refined_props = cur_rcnn_head.refine_props(tar_props, reg_out, tar_is_gt)
+                    props = refined_props
                 
         return rpn_cls_loss, rpn_reg_loss, rcnn_cls_losses, rcnn_reg_losses
 
@@ -72,32 +120,29 @@ class CascadeRCNN(nn.Module):
         props, score = self.rpn_head.forward_test(feat, img_size, test_cfg, scale)
         logging.info('Proposals from RPN: {}'.format(props.shape))
         
-        '''
-        dog_bbox = props.new([47,239,195,371]).view(4, -1)
-        dog_bbox = dog_bbox * scale
-        '''
-
-        rcnn_test_cfg=self.test_cfg.rcnn
         cls_scores = []
         for i in range(self.num_stages):
-            logging.info('In stage {}'.format(i))
+            logging.info('In stage: {}'.format(i))
             if i < self.num_stages-1:
                 img_size_ = None # for non-last stages, do not restrict bbox to image size
             else:
                 img_size_ = img_size
-            cur_rcnn_head=self.rcnn_head[i]
-            props, label, cls_score = cur_rcnn_head.forward_test(feat, props, img_size_)
-            logging.debug('cls_score:')
-            logging.debug(cls_score)
-            cls_scores.append(cls_score)
+
+            cur_roi_extractor = self.roi_extractors[i]
+            roi_out = cur_roi_extractor(feat, props)
+            logging.debug('roi_out after current roi_extractor: {}'.format(roi_out.shape))
+            if self.with_shared_head:
+                roi_out = self.shared_head(roi_out)
+                logging.debug('roi_out after shared_head: {}'.format(roi_out.shape))
+                
+            cur_rcnn_head = self.rcnn_head[i]
+            refined, label, cls_out = cur_rcnn_head.forward_test(roi_out, props, img_size_)
+            cls_scores.append(cls_out)
+
         cls_score = sum(cls_scores) / self.num_stages
 
         soft = torch.softmax(cls_score, dim=1)
         score, label = torch.max(soft, dim=1)
-        logging.info('label:')
-        logging.info(label)
-        logging.info('Score:')
-        logging.info(score)
 
         num_classes = self.rcnn_head[0].num_classes
         nms_iou = self.test_cfg.rcnn.nms_iou

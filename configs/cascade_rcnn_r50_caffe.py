@@ -3,21 +3,22 @@
 
 model=dict(
     type='CascadeRCNN',
+    num_stages=3,
     backbone=dict(type='ResNet50', frozen_stages=1),
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,
-        feat_channels=256,
+        feat_channels=1024,
         anchor_base=16,
-        anchor_scales=[4,8,16,32],
-        anchor_ratios=[0.5,1.0,2.0],
+        anchor_scales=[2, 4, 8, 16, 32],
+        anchor_ratios=[0.5, 1.0, 2.0],
         cls_loss_weight=1.0,
         bbox_loss_weight=1.0,
         bbox_loss_beta=1.0/9.0),
     roi_extractor=dict(
         type='SingleRoIExtractor',
-        roi_layer='RoIPool',
-        output_size=7,
+        roi_layer='RoIAlign',
+        output_size=(14, 14),
         spatial_scale=1.0/16.0
     ),
     shared_head=dict(
@@ -27,36 +28,38 @@ model=dict(
     rcnn_head=[
         dict(
             type='BBoxHead',
-            in_channels=1024,
-            fc_channels=[1024, 1024],
+            in_channels=2048,
+            roi_out_size=(7, 7),
+            with_avg_pool=True,
+            fc_channels=None,
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
-            reg_class_agnostic=False,
+            reg_class_agnostic=True,
             bbox_loss_beta=1.0
         ),
         dict(
             type='BBoxHead',
-            in_channels=1024,
-            fc_channels=[1024, 1024],
+            in_channels=2048,
             roi_out_size=(7, 7),
-            roi_extractor='RoIPool',
+            with_avg_pool=True,
+            fc_channels=None,
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.05, 0.05, 0.1, 0.1],
-            reg_class_agnostic=False,
+            reg_class_agnostic=True,
             bbox_loss_beta=1.0
         ),
         dict(
             type='BBoxHead',
-            in_channels=1024,
-            fc_channels=[1024, 1024],
+            in_channels=2048,
             roi_out_size=(7, 7),
-            roi_extractor='RoIPool',
+            with_avg_pool=True,
+            fc_channels=None,
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.033, 0.033, 0.067, 0.067],
-            reg_class_agnostic=False,
+            reg_class_agnostic=True,
             bbox_loss_beta=1.0
         )
     ]
@@ -81,7 +84,7 @@ train_cfg = dict(
         pre_nms=12000,
         post_nms=2000,
         nms_iou=0.7,
-        min_size=16,
+        min_size=0,
     ),
     rcnn=[
         dict(
@@ -92,8 +95,8 @@ train_cfg = dict(
                 min_pos_iou=0.5),
             sampler=dict(
                 type='RandomSampler',
-                max_num=128,
-                pos_num=32)),
+                max_num=512,
+                pos_num=128)),
         dict(
             assigner=dict(
                 type='MaxIoUAssigner',
@@ -102,8 +105,8 @@ train_cfg = dict(
                 min_pos_iou=0.6),
             sampler=dict(
                 type='RandomSampler',
-                max_num=128,
-                pos_num=32)),
+                max_num=512,
+                pos_num=128)),
         dict(
             assigner=dict(
                 type='MaxIoUAssigner',
@@ -112,8 +115,8 @@ train_cfg = dict(
                 min_pos_iou=0.7),
             sampler=dict(
                 type='RandomSampler',
-                max_num=128,
-                pos_num=32))
+                max_num=512,
+                pos_num=128))
     ],
     stage_loss_weight=[1, 0.5, 0.25],
     
@@ -128,7 +131,7 @@ train_cfg = dict(
 test_cfg = dict(
     rpn=dict(
         pre_nms=6000,
-        post_nms=300,
+        post_nms=1000,
         nms_iou=0.7,
         min_size=0.0,
     ),
@@ -138,13 +141,13 @@ test_cfg = dict(
 
 data = dict(
     train=dict(
-        voc_data_dir='/home/lee/datasets/voc2007_comb/VOC2007',
+        voc_data_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007',
         min_size=600,
         max_size=1000,
         loader=dict(batch_size=1, num_workers=4, shuffle=True)
     ),
     test=dict(
-        voc_data_dir='/home/lee/datasets/voc2007_comb/VOC2007',
+        voc_data_dir='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007',
         loader=dict(batch_size=1, num_workers=4, shuffle=False)
     )
 )

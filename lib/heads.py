@@ -135,6 +135,8 @@ class RPNHead(nn.Module):
 class BBoxHead(nn.Module):
     def __init__(self,
                  in_channels,
+                 roi_out_size=7,
+                 with_avg_pool=False,
                  fc_channels=[1024, 1024],
                  num_classes=21,
                  target_means=[0.0, 0.0, 0.0, 0.0],
@@ -145,27 +147,30 @@ class BBoxHead(nn.Module):
                  bbox_loss_beta=1.0):
         super(BBoxHead, self).__init__()
         self.in_channels=in_channels
-        if isinstance(fc_channels, int):
-            fc_channels = tuple([fc_channels, fc_channels])
-        else:
-            fc_channels = tuple(fc_channels)
-        self.fc_channels=fc_channels
-        if isinstance(roi_out_size, int):
-            roi_out_size = tuple([roi_out_size, roi_out_size])
-        else:
-            roi_out_size = tuple(roi_out_size)
-        self.roi_out_size = roi_out_size
+        self.roi_out_size=utils.to_pair(roi_out_size)
+        cur_channels=in_channels
+        cur_spatial_size=self.roi_out_size[0]*self.roi_out_size[1]
 
-        num_fcs = len(fc_channels)
-        roi_out_channels = roi_out_size[0] * roi_out_size[1]
-        fcs = nn.ModuleList()
-        fcs.append(nn.Linear(roi_out_channels*in_channels, fc_channels[0]))
-        fcs.append(nn.ReLU(inplace=True))
-        for i in range(1, num_fcs):
-            fcs.append(nn.Linear(fc_channels[i-1], fc_channels[i]))
-            fcs.append(nn.ReLU(inplace=True))
-        self.shared_fcs = nn.Sequential(*fcs)
+        self.with_avg_pool=with_avg_pool
+        if self.with_avg_pool:
+            self.avg_pool = nn.AvgPool2d(self.roi_out_size)
+            cur_spatial_size=1
 
+        if not fc_channels:
+            self.fc_channels=[]
+            self.with_shared_fcs=False
+        else:
+            self.with_shared_fcs=True
+            fc_channels=list(fc_channels)
+            self.fc_channels=fc_channels
+            fcs = nn.ModuleList()
+            for fc_channel in self.fc_channels:
+                fcs.append(nn.Linear(cur_channels*cur_spatial_size, fc_channel))
+                fcs.append(nn.ReLU(inplace=True))
+                cur_spatial_size=1
+                cur_channels=fc_channel
+            self.shared_fcs = nn.Sequential(*fcs)
+            
         self.num_classes = num_classes
         self.target_means = target_means
         self.target_stds = target_stds
@@ -173,22 +178,35 @@ class BBoxHead(nn.Module):
         self.bbox_loss_beta = bbox_loss_beta
         self.bbox_loss_weight = bbox_loss_weight
         self.cls_loss_weight = cls_loss_weight
-        
-        self.classifier = nn.Linear(fc_channels[-1], num_classes)
-        self.regressor = nn.Linear(fc_channels[-1],
+
+        self.classifier = nn.Linear(cur_channels*cur_spatial_size, num_classes)
+        self.regressor = nn.Linear(cur_channels*cur_spatial_size,
                                    4 if reg_class_agnostic else self.num_classes*4)
         logging.info('Constructed BBoxHead with num_classes={}'.format(num_classes))
+        
+
 
     def init_weights(self):
-        for fc in self.shared_fcs:
-            if isinstance(fc, nn.Linear):
-                init_module_normal(fc, mean=0.0, std=0.01)
+        if self.with_shared_fcs:
+            for fc in self.shared_fcs:
+                if isinstance(fc, nn.Linear):
+                    init_module_normal(fc, mean=0.0, std=0.01)
         init_module_normal(self.classifier, mean=0.0, std=0.01)
         init_module_normal(self.regressor, mean=0.0, std=0.001)
         logging.info('Initialized weights for BBoxHead.')
 
-    # assume props has shape (4, n)
-    def forward(self, feat, props):
+    # x is roi out
+    def forward(self, x):
+        if self.with_avg_pool:
+            x = self.avg_pool(x)
+        x = x.view(x.shape[0], -1)
+        if self.with_shared_fcs:
+            x = self.shared_fcs(x)
+        cls_out = self.classifier(x)
+        reg_out = self.regressor(x)
+        return cls_out, reg_out
+        
+        """
         device = feat.device
         props_t = props.t()
         batch_idx = torch.zeros(props_t.shape[0], 1, device=props_t.device)
@@ -199,75 +217,12 @@ class BBoxHead(nn.Module):
         fc_out = self.shared_fcs(roi_out)
         cls_out = self.classifier(fc_out)
         reg_out = self.regressor(fc_out)
+        """
         return cls_out, reg_out
 
-    # props: proposals proposed by RPNHead in train mode setting
-    # train_cfg: only one of the many training cfg for RCNN heads
-    def forward_train(self, feat, props_bbox, gt_bbox, gt_label, train_cfg):
-        logging.debug('START of BBoxHead forward_train'.center(50, '='))
-        logging.debug('props_bbox.shape: {}'.format(props_bbox.shape))
-        logging.debug('gt_bbox: {}'.format(gt_bbox))
-        logging.debug('gt_label: {}'.format(gt_label))
-        logging.debug('train_cfg: {}'.format(train_cfg))
-        from .registry import build_module
-        device = feat.device
-        assigner = build_module(train_cfg.assigner)
-        sampler = build_module(train_cfg.sampler)
-        gt_bbox = gt_bbox.to(props_bbox.dtype)
-        props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
-        logging.debug('props_bbox after adding GT: {}'.format(props_bbox.shape))
-
-        labels, overlaps_ious = assigner(props_bbox, gt_bbox)
-        logging.debug('labels after assigner: -1:{}, 0:{}, >0:{}, >=0: {}'\
-                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
-        labels = sampler(labels)
-        logging.debug('labels after sampler: -1:{}, 0:{}, >0:{}, >=0: {}'\
-                      .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
-        pos_places = (labels > 0)
-        neg_places = (labels == 0)
-        chosen_places = (labels>=0)
-
-        # find out where in the propo_bbox gts are
-        n_props_bbox = props_bbox.shape[1]
-        n_gts = gt_label.numel()
-        is_gt = labels.new_zeros(n_props_bbox)
-        is_gt[:n_gts]=1
-        is_gt_chosen=is_gt[chosen_places]
-        logging.debug('chosen gt: {}, number of gt: {}'.format(is_gt_chosen.sum(), n_gts))
-
-        # check IoU of assigned pos props
-        pos_iou = overlaps_ious[pos_places]
-        logging.debug('IoU of positively assigned props: n={}, avg={}'\
-                      .format(len(pos_iou), pos_iou.mean()))
-        
-        labels = labels - 1
-        labels[labels<0] = 0
-        label_bboxes = gt_bbox[:, labels]
-        label_cls = gt_label[labels]
-        # it is very important to set neg places to 0 as 0 means background
-        label_cls[neg_places] = 0
-
-        tar_is_gt = is_gt_chosen
-        tar_props = props_bbox[:, chosen_places]
-        tar_label = label_cls[chosen_places] # class of each gt label, 0 means background
-        # logging.debug('class of each target label, 0 means background')
-        # logging.debug('{}'.format(tar_label))
-        tar_bbox = label_bboxes[:, chosen_places]
-        # calc target param which reg_out regress to
-        tar_param = utils.bbox2param(tar_props, tar_bbox)
-        
-        # for debug
-        pos_tar_param = tar_param[:, (tar_label>0)]
-        logging.debug('mean of pos_tar_param of RCNN: {}'.format(pos_tar_param.mean(dim=1)))
-        logging.debug('std  of pos_tar_param of RCNN: {}'.format(pos_tar_param.std(dim=1)))
-        # for debug
-        
-        param_mean = tar_param.new(self.target_means).view(4, 1)
-        param_std  = tar_param.new(self.target_stds).view(4, 1)
-        tar_param = (tar_param - param_mean) / param_std # normalize the regression values
-
-        cls_out, reg_out = self(feat, tar_props)
-        # next calculate cls_loss and reg_loss
+    def loss(self, cls_out, reg_out, tar_label, tar_param):
+        logging.debug('Calculating loss of BBoxHead...')
+        device=cls_out.device
         cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
         if tar_label.numel() != 0:
             tar_label = tar_label.long()
@@ -291,14 +246,13 @@ class BBoxHead(nn.Module):
 
         logging.debug('END of BBoxHead forward_train'.center(50, '='))
 
-        # next find proposals
-        tar_reg_out = reg_out
         return \
             cls_loss * self.cls_loss_weight, \
-            reg_loss * self.bbox_loss_weight, \
-            tar_props, tar_reg_out, tar_label, tar_is_gt
+            reg_loss * self.bbox_loss_weight
+
 
     # use RCNN to refine proposals
+    # needs to filter gt proposals
     def refine_props(self, props, reg_out, is_gt, img_size=None):
         assert props.shape[1] == reg_out.shape[0] == is_gt.numel()
         is_gt = is_gt.to(dtype=torch.bool)
@@ -310,11 +264,13 @@ class BBoxHead(nn.Module):
         refined = utils.param2bbox(props, reg_out)
         return refined
 
-    def forward_test(self, feat, props, img_size=None):
+    # roi_out: input tensor to BBoxHead
+    # props: proposal bboxes
+    def forward_test(self, roi_out, props, img_size=None):
         logging.debug('START of BBoxHead forward_test'.center(50, '='))
         logging.debug('received props: {}'.format(props.shape))
         with torch.no_grad():
-            cls_out, reg_out = self(feat, props)
+            cls_out, reg_out = self(roi_out)
             logging.info('cls_out {}'.format(cls_out))
             
             soft = torch.softmax(cls_out, dim=1)

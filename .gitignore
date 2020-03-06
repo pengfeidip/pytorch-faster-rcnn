@@ -12,3 +12,6 @@ test/test_train_12epoch_with_new_nms.stdout
 test/nohup.out
 __pycache__/
 nohup.out
+val_cascade
+work_dir_cascade
+work_dir_faster

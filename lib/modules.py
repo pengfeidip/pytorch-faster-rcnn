@@ -295,9 +295,9 @@ class ResLayerC5(nn.Module):
     def __init__(self, bn_requires_grad=True, pretrained=True):
         self.bn_requires_grad=bn_requires_grad
         super(ResLayerC5, self).__init__()
-        res50 = tv.modules.resnet50(pretrained=True)
+        res50 = tv.models.resnet50(pretrained=True)
         self.res_layer = res50.layer4
-
+        
         if not bn_requires_grad:
             for m in self.modules():
                 if isinstance(m, nn.BatchNorm2d):
@@ -305,10 +305,13 @@ class ResLayerC5(nn.Module):
 
 
     def train(self, mode=True):
-        super(ResLayerC5, self).__train(mode)
+        super(ResLayerC5, self).train(mode)
         for m in self.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
 
     def forward(self, x):
         return self.res_layer(x)
+    
+    def init_weights(self):
+        pass

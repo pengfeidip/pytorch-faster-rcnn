@@ -21,8 +21,8 @@ class AnchorCreator(object):
     Returns:
         anchors: a tensor of shapw (4, num_anchors, h, w)
     '''
-    MAX_CACHE_ANCHOR = 1000
-    CACHE_REPORT_PERIOD = 100
+    MAX_CACHE_ANCHOR = 1
+    CACHE_REPORT_PERIOD = 1
     def __init__(self, base=16, scales=[8, 16, 32],
                  aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cuda:0')):
         self.device = device
@@ -74,30 +74,32 @@ class AnchorCreator(object):
         return anchors
         
     def _create_anchors_(self, img_size, grid):
-        assert len(img_size) == 2 and len(grid) == 2
-        imag_h, imag_w = img_size
-        grid_h, grid_w = grid
-        grid_dist_h, grid_dist_w = imag_h/grid_h, imag_w/grid_w
+        with torch.no_grad():
+            assert len(img_size) == 2 and len(grid) == 2
+            imag_h, imag_w = img_size
+            grid_h, grid_w = grid
+            grid_dist_h, grid_dist_w = imag_h/grid_h, imag_w/grid_w
         
-        center_h = torch.linspace(0, imag_h, grid_h+1,
-                                  device=self.device, dtype=torch.float32)[:-1] + grid_dist_h/2
-        center_w = torch.linspace(0, imag_w, grid_w+1,
-                                  device=self.device, dtype=torch.float32)[:-1] + grid_dist_w/2
-        mesh_h, mesh_w = torch.meshgrid(center_h, center_w)
-        # NOTE that the corresponding is h <-> y and w <-> x
-        anchor_hs = self.anchor_hs.view(-1, 1, 1)
-        anchor_ws = self.anchor_ws.view(-1, 1, 1)
-        x_min = mesh_w - anchor_ws / 2
-        x_max = mesh_w + anchor_ws / 2
-        y_min = mesh_h - anchor_hs / 2
-        y_max = mesh_h + anchor_hs / 2
-        anchors = torch.stack([x_min, y_min, x_max, y_max])
+            center_h = torch.linspace(0, imag_h, grid_h+1,
+                                      device=self.device, dtype=torch.float32)[:-1] + grid_dist_h/2
+            center_w = torch.linspace(0, imag_w, grid_w+1,
+                                      device=self.device, dtype=torch.float32)[:-1] + grid_dist_w/2
+            mesh_h, mesh_w = torch.meshgrid(center_h, center_w)
+            # NOTE that the corresponding is h <-> y and w <-> x
+            anchor_hs = self.anchor_hs.view(-1, 1, 1)
+            anchor_ws = self.anchor_ws.view(-1, 1, 1)
+            x_min = mesh_w - anchor_ws / 2
+            x_max = mesh_w + anchor_ws / 2
+            y_min = mesh_h - anchor_hs / 2
+            y_max = mesh_h + anchor_hs / 2
+            anchors = torch.stack([x_min, y_min, x_max, y_max])
         return anchors
 
 def inside_anchor_mask(anchors, img_size):
-    H, W = img_size
-    inside = (anchors[0,:]>=0) & (anchors[1,:]>=0) & \
-             (anchors[2,:]<=W) & (anchors[3,:]<=H)
+    with torch.no_grad():
+        H, W = img_size
+        inside = (anchors[0,:]>=0) & (anchors[1,:]>=0) & \
+                 (anchors[2,:]<=W) & (anchors[3,:]<=H)
     return inside
 
 def random_sample_label(labels, pos_num, tot_num):
@@ -492,7 +494,9 @@ class ROIPooling(nn.Module):
 
 class SingleRoIExtractor(nn.Module):
     def __init__(self, roi_layer='RoIPool', output_size=7, spatial_scale=1.0/16.0):
-        if roi_layer='RoIPool':
+        super(SingleRoIExtractor, self).__init__()
+        output_size=utils.to_pair(output_size)
+        if roi_layer == 'RoIPool':
             self.roi_layer = torchvision.ops.RoIPool(output_size=output_size,
                                                      spatial_scale=spatial_scale)
         elif roi_layer == 'RoIAlign':
@@ -504,5 +508,15 @@ class SingleRoIExtractor(nn.Module):
         self.output_size=output_size
         self.spatial_scale=spatial_scale
 
-    def forward(self, x):
-        return self.roi_layer(x)
+    def forward(self, feat, props):
+        '''
+        Args:
+            feat(Tensor): feature map from a backbone
+            props(Tensor(4, n)): proposals
+        '''
+        device=feat.device
+        props_t = props.t()
+        batch_idx = torch.zeros(props_t.shape[0], 1, device=props_t.device)
+        props_t = torch.cat([batch_idx, props_t], dim=1)
+        roi_out = self.roi_layer(feat, props_t)
+        return roi_out

@@ -126,3 +126,12 @@ def simplify_label(label):
     label_ = label.clone().detach()
     label_[label>0]=1
     return label_
+
+def to_pair(val):
+    if isinstance(val, int):
+        pair=tuple([val, val])
+    else:
+        val = list(val)
+        assert len(val) == 2
+        pair = tuple(val)
+    return pair
