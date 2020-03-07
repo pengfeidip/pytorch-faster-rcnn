@@ -253,8 +253,11 @@ class BBoxHead(nn.Module):
 
     # use RCNN to refine proposals
     # needs to filter gt proposals
-    def refine_props(self, props, reg_out, is_gt, img_size=None):
+    def refine_props(self, props, labels, reg_out, is_gt, img_size=None):
         assert props.shape[1] == reg_out.shape[0] == is_gt.numel()
+        if not self.reg_class_agnostic:
+            reg_out = reg_out.view(-1, 4, n_classes)
+            ret_out = reg_out[torch.arange(reg_out.shape[0]), :, label]
         is_gt = is_gt.to(dtype=torch.bool)
         props = props[:, ~is_gt]
         reg_out = reg_out.t()[:, ~is_gt]

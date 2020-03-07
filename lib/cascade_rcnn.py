@@ -110,7 +110,7 @@ class CascadeRCNN(nn.Module):
             rcnn_reg_losses.append(rcnn_reg_loss)
             if i < self.num_stages-1:
                 with torch.no_grad():
-                    refined_props = cur_rcnn_head.refine_props(tar_props, reg_out, tar_is_gt)
+                    refined_props = cur_rcnn_head.refine_props(tar_props, tar_label, reg_out, tar_is_gt)
                     props = refined_props
                 
         return rpn_cls_loss, rpn_reg_loss, rcnn_cls_losses, rcnn_reg_losses
@@ -141,7 +141,7 @@ class CascadeRCNN(nn.Module):
                 logging.debug('roi_out after shared_head: {}'.format(roi_out.shape))
                 
             cur_rcnn_head = self.rcnn_head[i]
-            refined, label, cls_out = cur_rcnn_head.forward_test(roi_out, props, img_size_)
+            props, label, cls_out = cur_rcnn_head.forward_test(roi_out, props, img_size_)
             cls_scores.append(cls_out)
 
         cls_score = sum(cls_scores) / self.num_stages
