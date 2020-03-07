@@ -4,7 +4,7 @@ import copy, random, logging
 import numpy as np
 import time, sys, os
 import os.path as osp
-from . import config, utils
+from . import utils
 
 
 #####################################################

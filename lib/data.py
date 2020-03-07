@@ -4,9 +4,10 @@ import os.path as osp
 import torchvision as tv
 import random
 
-from . import config
 from PIL import Image
 
+IMGNET_MEAN = [0.485, 0.456, 0.406]
+IMGNET_STD  = [0.229, 0.224, 0.225]
 
 class ResizeFasterInput(object):
     r"""
@@ -53,10 +54,10 @@ class ResizeFasterInput(object):
 # ToTensor and Normalize only
 BASIC_TRANSFORM = tv.transforms.Compose(
     [tv.transforms.ToTensor(),
-     tv.transforms.Normalize(mean=config.IMGNET_MEAN, std=config.IMGNET_STD)])
+     tv.transforms.Normalize(mean=IMGNET_MEAN, std=IMGNET_STD)])
 
 # Resize input image to Faster RCNN acceptable sizes
-def faster_transform(longer, shorter, mean=config.IMGNET_MEAN, std=config.IMGNET_STD):
+def faster_transform(longer, shorter, mean=IMGNET_MEAN, std=IMGNET_STD):
     return tv.transforms.Compose([
         ResizeFasterInput(longer, shorter),
         tv.transforms.ToTensor(),
