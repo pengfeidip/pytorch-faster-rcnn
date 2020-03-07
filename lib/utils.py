@@ -23,6 +23,11 @@ def dict2str(d):
     return '{ '+', '.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()])+' }' \
         if isinstance(d, dict) else str(d)
 
+def image2feature(bbox, img_size, feat_size):                                                                             
+    h_rat, w_rat = [feat_size[i]/img_size[i] for i in range(2)]
+    return bbox * torch.tensor([[w_rat], [h_rat], [w_rat], [h_rat]],
+                               device=bbox.device, dtype=torch.float32)
+
 def index_of(bool_tsr):
     return tuple(torch.nonzero(bool_tsr).t())
 

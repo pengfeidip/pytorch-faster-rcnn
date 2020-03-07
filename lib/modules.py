@@ -287,7 +287,6 @@ class RCNN(nn.Module):
         utils.init_module_normal(self.regressor, mean=0.0, std=0.001)
         logging.info('Constructed RCNN with num_classes={}'.format(num_classes))
 
-    # roi_batch is a batch of fixed tensors which is the result of ROIPooling
     def forward(self, roi_batch):
         if roi_batch is None or len(roi_batch) == 0:
             return None, None

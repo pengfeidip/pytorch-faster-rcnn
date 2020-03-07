@@ -1,5 +1,5 @@
 from torch import nn
-from .region import AnchorCreator, inside_anchor_mask, ProposalCreator_v2
+from .region import AnchorCreator, inside_anchor_mask, ProposalCreator
 from .utils import init_module_normal
 from . import loss
 from . import utils
@@ -111,7 +111,7 @@ class RPNHead(nn.Module):
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
             
         # next propose bboxes
-        props_creator = ProposalCreator_v2(**train_cfg.rpn_proposal)
+        props_creator = ProposalCreator(**train_cfg.rpn_proposal)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
         logging.debug('Proposals by RPNHead: {}'.format(props.shape))
         logging.debug('End of RPNHead forward_train'.center(50, '='))
@@ -128,7 +128,7 @@ class RPNHead(nn.Module):
         cls_out, reg_out = self(feat)
         anchors = self.anchor_creator(img_size, feat_size)
         anchors = anchors.view(4, -1)
-        props_creator = ProposalCreator_v2(**test_cfg.rpn)
+        props_creator = ProposalCreator(**test_cfg.rpn)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
         return props, score
 
@@ -274,7 +274,6 @@ class BBoxHead(nn.Module):
         logging.debug('received props: {}'.format(props.shape))
         with torch.no_grad():
             cls_out, reg_out = self(roi_out)
-            logging.info('cls_out {}'.format(cls_out))
             
             soft = torch.softmax(cls_out, dim=1)
             score, label = torch.max(soft, dim=1)
