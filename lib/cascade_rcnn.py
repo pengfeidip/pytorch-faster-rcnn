@@ -5,6 +5,7 @@ import logging, time, random, traceback
 import os.path as osp
 import torch, torchvision
 from .bbox import bbox_target
+from torch.nn.modules.batchnorm import _BatchNorm
 
 
 class CascadeRCNN(nn.Module):
@@ -25,10 +26,10 @@ class CascadeRCNN(nn.Module):
         self.rpn_head = build_module(rpn_head)
         if isinstance(roi_extractor, list):
             assert len(roi_extractor) >= self.num_stages
-            self.roi_extractors = [build_module(roi_extractor[i]) for i in range(self.num_stages)]
+            self.roi_extractors = nn.ModuleList([build_module(roi_extractor[i]) for i in range(self.num_stages)])
 
         else:
-            self.roi_extractors = [build_module(roi_extractor) for _ in range(self.num_stages)]
+            self.roi_extractors = nn.ModuleList([build_module(roi_extractor) for _ in range(self.num_stages)])
         if shared_head is not None:
             self.shared_head = build_module(shared_head)
             self.with_shared_head=True
@@ -46,6 +47,10 @@ class CascadeRCNN(nn.Module):
             
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+        logging.info('Constructed CascadeRCNN')
+        logging.info('Number of stages: {}'.format(self.num_stages))
+        logging.info(str(self))
+
 
     def init_weights(self):
         self.rpn_head.init_weights()

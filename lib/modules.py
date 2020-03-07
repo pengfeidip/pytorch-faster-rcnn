@@ -101,7 +101,7 @@ class VGG16(nn.Module):
     
 
 class ResNet50(nn.Module):
-    def __init__(self, frozen_stages=1, pretrained=True):
+    def __init__(self, frozen_stages=1, bn_requires_grad=True, pretrained=True):
         super(ResNet50, self).__init__()
         self.frozen_stages = frozen_stages
         self.pretrained = pretrained
@@ -115,6 +115,14 @@ class ResNet50(nn.Module):
         self.layer3 = res50.layer3
         # self.layer4 = res50.layer4
         self.freeze_stages(frozen_stages)
+
+        self.bn_requires_grad=bn_requires_grad
+        if not bn_requires_grad:
+            for m in self.modules():
+                if isinstance(m, _BatchNorm):
+                    m.weight.requires_grad=False
+                    m.bias.requires_grad=False
+        
 
     def init_weights(self):
         pass
@@ -300,14 +308,15 @@ class ResLayerC5(nn.Module):
         
         if not bn_requires_grad:
             for m in self.modules():
-                if isinstance(m, nn.BatchNorm2d):
-                    m.requires_grad=False
+                if isinstance(m, _BatchNorm):
+                    m.weight.requires_grad=False
+                    m.bias.requires_grad=False
 
 
     def train(self, mode=True):
         super(ResLayerC5, self).train(mode)
         for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
+            if isinstance(m, _BatchNorm):
                 m.eval()
 
     def forward(self, x):

@@ -21,8 +21,8 @@ class AnchorCreator(object):
     Returns:
         anchors: a tensor of shapw (4, num_anchors, h, w)
     '''
-    MAX_CACHE_ANCHOR = 1
-    CACHE_REPORT_PERIOD = 1
+    MAX_CACHE_ANCHOR = 2000
+    CACHE_REPORT_PERIOD = 200
     def __init__(self, base=16, scales=[8, 16, 32],
                  aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cuda:0')):
         self.device = device
