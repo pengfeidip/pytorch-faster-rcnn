@@ -12,6 +12,7 @@ class CascadeRCNN(nn.Module):
     def __init__(self,
                  num_stages=3,
                  backbone=None,
+                 neck=None,
                  rpn_head=None,
                  roi_extractor=None,
                  shared_head=None,
@@ -22,20 +23,33 @@ class CascadeRCNN(nn.Module):
         from .registry import build_module
         assert num_stages > 0
         self.num_stages=num_stages
+
+        # backbone is a must
         self.backbone = build_module(backbone)
+        # neck is optional
+        if neck is not None:
+            self.neck = build_module(neck)
+            self.with_neck=True
+        else:
+            self.with_neck=False
+        # rpn is a must
         self.rpn_head = build_module(rpn_head)
+
+        # roi_extractor is a must
         if isinstance(roi_extractor, list):
             assert len(roi_extractor) >= self.num_stages
             self.roi_extractors = nn.ModuleList([build_module(roi_extractor[i]) for i in range(self.num_stages)])
-
         else:
             self.roi_extractors = nn.ModuleList([build_module(roi_extractor) for _ in range(self.num_stages)])
+            
+        # shared head is optional
         if shared_head is not None:
             self.shared_head = build_module(shared_head)
             self.with_shared_head=True
         else:
             self.with_shared_head=False
-
+            
+        # rcnn_head is a must
         if isinstance(rcnn_head, list):
             assert len(rcnn_head) >= self.num_stages
             rcnn_head=[build_module(rcnn_head[i]) for i in range(self.num_stages)]
@@ -50,6 +64,12 @@ class CascadeRCNN(nn.Module):
         logging.info('Constructed CascadeRCNN')
         logging.info('Number of stages: {}'.format(self.num_stages))
         logging.info(str(self))
+
+    def extract_feat(self, x):
+        x = self.backbone(x)
+        if self.with_neck:
+            x = self.neck(x)
+        return x
 
 
     def init_weights(self):
@@ -67,12 +87,15 @@ class CascadeRCNN(nn.Module):
     # scale: ogiginal_image_size * scale = img_data image size
     def forward_train(self, img_data, img_size, gt_bbox, gt_label, scale):
         logging.info('Start to forward in train mode')
-        feat = self.backbone(img_data)
+        feats = self.extract_feat(img_data)
+        logging.info('features: {}'.format([feat.shape for feat in feats]))
+        
         train_cfg = self.train_cfg
         pad_size = img_data.shape[-2:]
         rpn_cls_loss, rpn_reg_loss, props \
-            = self.rpn_head.forward_train(feat, gt_bbox, img_size, pad_size, train_cfg, scale)
+            = self.rpn_head.forward_train(feats, gt_bbox, img_size, pad_size, train_cfg, scale)
         logging.debug('proposals from RPN: {}'.format(props.shape))
+        exit()
         rcnn_cls_losses = []
         rcnn_reg_losses = []
         for i in range(self.num_stages):

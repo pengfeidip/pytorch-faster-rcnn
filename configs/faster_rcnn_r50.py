@@ -1,9 +1,10 @@
 
 
-
+# Faster RCNN is equivalent to CascadeRCNN with one stage?
 model=dict(
     type='CascadeRCNN',
-    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=True),
+    num_stages=1,
+    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=True, out_layers=(3, )),
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,
@@ -18,8 +19,8 @@ model=dict(
         type='SingleRoIExtractor',
         roi_layer='RoIPool',
         output_size=(7, 7),
-        spatial_scale=1.0/16.0,
-    )
+        spatial_scale=1.0/16.0
+    ),
     rcnn_head=[
         dict(
             type='BBoxHead',
@@ -30,31 +31,7 @@ model=dict(
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
-            reg_class_agnostic=True,
-            bbox_loss_beta=1.0
-        ),
-        dict(
-            type='BBoxHead',
-            in_channels=1024,
-            roi_out_size=(7, 7),
-            fc_channels=[1024, 1024],
-            with_avg_pool=False,
-            num_classes=21,
-            target_means=[.0, .0, .0, .0],
-            target_stds=[0.05, 0.05, 0.1, 0.1],
-            reg_class_agnostic=True,
-            bbox_loss_beta=1.0
-        ),
-        dict(
-            type='BBoxHead',
-            in_channels=1024,
-            roi_out_size=(7, 7),
-            fc_channels=[1024, 1024],
-            with_avg_pool=False,
-            num_classes=21,
-            target_means=[.0, .0, .0, .0],
-            target_stds=[0.033, 0.033, 0.067, 0.067],
-            reg_class_agnostic=True,
+            reg_class_agnostic=False,
             bbox_loss_beta=1.0
         )
     ]
@@ -91,29 +68,9 @@ train_cfg = dict(
             sampler=dict(
                 type='RandomSampler',
                 max_num=128,
-                pos_num=32)),
-        dict(
-            assigner=dict(
-                type='MaxIoUAssigner',
-                pos_iou=0.6,
-                neg_iou=0.6,
-                min_pos_iou=0.6),
-            sampler=dict(
-                type='RandomSampler',
-                max_num=128,
-                pos_num=32)),
-        dict(
-            assigner=dict(
-                type='MaxIoUAssigner',
-                pos_iou=0.7,
-                neg_iou=0.7,
-                min_pos_iou=0.7),
-            sampler=dict(
-                type='RandomSampler',
-                max_num=128,
                 pos_num=32))
     ],
-    stage_loss_weight=[1, 0.5, 0.25],
+    stage_loss_weight=[1.0],
     
     total_epochs=14,
     optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005),
@@ -134,8 +91,10 @@ test_cfg = dict(
 ) 
 
 
+
 img_norm = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+
 
 train_pipeline=[
     dict(type='LoadImageFromFile'),
@@ -157,6 +116,7 @@ test_pipeline=[
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img']),
 ]
+
 data = dict(
     train=dict(
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
@@ -168,7 +128,7 @@ data = dict(
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
         img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
         pipeline=test_pipeline,
-        loader=dict(batch_size=1, num_workers=2, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     )
 )
 

@@ -12,30 +12,35 @@ class RPNHead(nn.Module):
     def __init__(self,
                  in_channels,
                  feat_channels,
-                 anchor_base=16,
-                 anchor_scales=[4, 8, 16, 32],
+                 anchor_scales=[8],
                  anchor_ratios=[0.5, 1.0, 2.0],
+                 anchor_strides=[4, 8, 16, 32, 64],
                  cls_loss_weight=1.0,
                  bbox_loss_weight=1.0,
                  bbox_loss_beta=1.0/9.0):
         super(RPNHead, self).__init__()
         self.in_channels = in_channels
         self.feat_channels = feat_channels
-        self.anchor_base = anchor_base
+        
         self.anchor_scales = anchor_scales
         self.anchor_ratios = anchor_ratios
+        self.anchor_strides = anchor_strides
         self.cls_loss_weight = cls_loss_weight
         self.bbox_loss_weight = bbox_loss_weight
         self.bbox_loss_beta = bbox_loss_beta
-        self.anchor_creator = AnchorCreator(base=anchor_base,
-                                            scales=anchor_scales,
-                                            aspect_ratios=anchor_ratios)
+        self.base_sizes = tuple(anchor_strides)
+        self.anchor_creators = [AnchorCreator(base=base_size,
+                                              scales=anchor_scales,
+                                              aspect_ratios=anchor_ratios)
+                                for base_size in self.base_sizes]
+        
         self.num_anchors = len(anchor_scales) * len(anchor_ratios)
         self.conv = nn.Conv2d(in_channels, feat_channels, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.classifier = nn.Conv2d(feat_channels, self.num_anchors*2, kernel_size=1)
         self.regressor = nn.Conv2d(feat_channels, self.num_anchors*4, kernel_size=1)
-        logging.info('Constructed RPNHead with in_channels={}, feat_channels={}'.format(in_channels, feat_channels))
+        logging.info('Constructed RPNHead with in_channels={}, feat_channels={}, num_levels={}, num_anchors={}'\
+                     .format(in_channels, feat_channels, len(self.anchor_creators), self.num_anchors))
 
     def init_weights(self):
         init_module_normal(self.conv, mean=0.0, std=0.01)
@@ -43,36 +48,32 @@ class RPNHead(nn.Module):
         init_module_normal(self.regressor, mean=0.0, std=0.01)
         logging.info('Initialized weights for RPNHead.')
         
-    def forward(self, x):
-        x = self.relu(self.conv(x))
-        return self.classifier(x), self.regressor(x)
+    def forward(self, xs):
+        conv_outs = [self.relu(self.conv(x)) for x in xs]
+        cls_outs = [self.classifier(x) for x in conv_outs]
+        reg_outs = [self.regressor(x) for x in conv_outs]
+        return cls_outs, reg_outs
 
-    def forward_train(self, feat, gt_bbox, img_size, pad_size, train_cfg, scale):
-        logging.debug('START of RPNHead forward_train'.center(50, '='))
+    def anchor_target(self, cls_out, reg_out, in_anchors, in_mask, gt_bbox,
+                      assigner, sampler, target_means=None, target_stds=None):
         from .registry import build_module
-        device = feat.device
-        feat_size = feat.shape[-2:]
-        self.anchor_creator.to(device=device)
-        cls_out, reg_out = self(feat)
-        logging.debug('cls_out.shape: {}'.format(cls_out.shape))
-        logging.debug('reg_out.shape: {}'.format(reg_out.shape))
-        anchors = self.anchor_creator(pad_size, feat_size)
-        logging.debug('anchors: {}'.format(anchors.shape))
-        anchors = anchors.view(4, -1)
-        inside_idx = inside_anchor_mask(anchors, pad_size)
-        logging.debug('inside_idx: {}'.format(inside_idx.shape))
-        in_anchors = anchors[:, inside_idx]
-        logging.debug('in_anchors: {}'.format(in_anchors.shape))
-        
         # assign and sample anchors to gt bboxes
-        assigner = build_module(train_cfg.rpn.assigner)
-        sampler = build_module(train_cfg.rpn.sampler)
+        if isinstance(assigner, dict):
+            assigner = build_module(assigner)
+        if isinstance(sampler, dict):
+            sampler = build_module(sampler)
+
         labels, overlap_ious = assigner(in_anchors, gt_bbox)
         logging.debug('labels before sample(-1, 0, >0): {}, {}, {}'\
                       .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
         labels = sampler(labels)
         logging.debug('labels after sample(-1, 0, >0): {}, {}, {}'\
                       .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum()))
+        pos_places = (labels>0)
+        num_pos_places = pos_places.sum()
+        logging.debug('average overlap iou after sampling: {} with {} pos anchors'\
+                      .format(None if num_pos_places==0 else \
+                              overlap_ious[pos_places].sum()/num_pos_places, num_pos_places))
 
         # labels_ contains only -1, 0, 1
         # labels contains -1, 0 and positive index of gt bboxes
@@ -82,7 +83,7 @@ class RPNHead(nn.Module):
         label_bboxes = gt_bbox[:, labels]
 
         non_neg_label = (labels_!=-1)
-        inside_arg=torch.nonzero(inside_idx)
+        inside_arg=torch.nonzero(in_mask)
         chosen = inside_arg[non_neg_label].squeeze()
         cls_out_ = cls_out.view(2, -1)
         reg_out_ = reg_out.view(4, -1)
@@ -93,8 +94,51 @@ class RPNHead(nn.Module):
         tar_anchors = in_anchors[:, non_neg_label] # 128 chosen anchors 
         tar_bbox = label_bboxes[:, non_neg_label] #128 target bbox where anchors should regress to(only those pos anchors)
         tar_param = utils.bbox2param(tar_anchors, tar_bbox) # deltas where tar_reg_out should regress to(only pos)
+        if target_means is not None and target_stds is not None:
+            param_mean = tar_param.new(target_means).new(4, 1)
+            param_std  = tar_param.new(target_stds).new(4, 1)
+            tar_param = (tar_param - param_mean) / param_std
         logging.debug('labels chosen to train RPNHead neg={}, pos={}'\
                       .format((tar_labels==0).sum(), (tar_labels==1).sum()))
+        return tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param
+        
+
+    def forward_train(self, feats, gt_bbox, img_size, pad_size, train_cfg, scale):
+        logging.debug('START of RPNHead forward_train'.center(50, '='))
+        from .registry import build_module
+        assert len(feats) > 0
+        device = feats[0].device
+        feat_sizes = [feat.shape[-2:] for feat in feats]
+        num_levels = len(self.anchor_creators)
+        _ = [ac.to(device=device) for ac in self.anchor_creators]
+        
+        cls_outs, reg_outs = self(feats)
+        logging.debug('cls_out.shape: {}'.format([cls_out.shape for cls_out in cls_outs]))
+        logging.debug('reg_out.shape: {}'.format([reg_out.shape for reg_out in reg_outs]))
+        cls_outs = [cls_out.view(2, -1) for cls_out in cls_outs]
+        reg_outs = [reg_out.view(4, -1) for reg_out in reg_outs]
+        cls_out_comb = torch.cat(cls_outs, dim=1)
+        reg_out_comb = torch.cat(reg_outs, dim=1)
+        
+        anchors = [self.anchor_creators[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
+        logging.debug('anchors: {}'.format([ac.shape for ac in anchors]))
+        anchors = [ac.view(4, -1) for ac in anchors]
+        inside_masks = [inside_anchor_mask(ac, pad_size) for ac in anchors]
+        logging.debug('inside_masks: {}'.format([iidx.shape for iidx in inside_masks]))
+        #in_anchors = [ac[:, iidx] for iidx in inside_idxs ]
+        in_anchors = [anchors[i][:, inside_masks[i]] for i in range(num_levels)]
+        logging.debug('in_anchors: {}'.format([in_ac.shape for in_ac in in_anchors]))
+        # combine anchors from all levels
+        in_anchors = torch.cat(in_anchors, dim=1)
+        in_mask = torch.cat(inside_masks, dim=0)
+        
+        logging.debug('inside anchors after cat all levels: {}'.format(in_anchors.shape))
+        logging.debug('inside masks after cat all levels: {}'.format(in_mask.shape))
+
+        assigner = build_module(train_cfg.rpn.assigner)
+        sampler = build_module(train_cfg.rpn.sampler)
+        tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param \
+            = self.anchor_target(cls_out_comb, reg_out_comb, in_anchors, in_mask, gt_bbox, assigner, sampler)
         cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
 
         # calculate losses
@@ -112,6 +156,7 @@ class RPNHead(nn.Module):
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
             
         # next propose bboxes
+        exit()
         props_creator = ProposalCreator(**train_cfg.rpn_proposal)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
         logging.debug('Proposals by RPNHead: {}'.format(props.shape))

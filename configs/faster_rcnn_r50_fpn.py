@@ -4,14 +4,20 @@
 model=dict(
     type='CascadeRCNN',
     num_stages=1,
-    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=True),
+    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
+    neck=dict(
+        type='FPN',
+        in_channels=[256, 512, 1024, 2048],
+        out_channels=256,
+        num_outs=5
+    ),
     rpn_head=dict(
         type='RPNHead',
-        in_channels=1024,
+        in_channels=256,
         feat_channels=256,
-        anchor_base=16,
-        anchor_scales=[4,8,16,32],
-        anchor_ratios=[0.5,1.0,2.0],
+        anchor_scales=[8],
+        anchor_ratios=[0.5, 1.0, 2.0],
+        anchor_strides=[4, 8, 16, 32, 64],
         cls_loss_weight=1.0,
         bbox_loss_weight=1.0,
         bbox_loss_beta=1.0/9.0),
@@ -24,7 +30,7 @@ model=dict(
     rcnn_head=[
         dict(
             type='BBoxHead',
-            in_channels=1024,
+            in_channels=256,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
             with_avg_pool=False,
@@ -74,7 +80,7 @@ train_cfg = dict(
     
     total_epochs=14,
     optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005),
-    log_file='train.log',
+    log_file=None,
     lr_decay={11: 0.1},
     save_interval=2
 )
@@ -110,6 +116,7 @@ train_pipeline=[
 test_pipeline=[
     dict(type='LoadImageFromFile'),
     dict(type='Resize', img_scale=(1000, 600), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm),
     dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),

@@ -32,10 +32,17 @@ class VGG16(nn.Module):
 
 
 class ResNet50(nn.Module):
-    def __init__(self, frozen_stages=1, bn_requires_grad=True, pretrained=True):
+    def __init__(self,
+                 out_layers=(3, ),
+                 frozen_stages=1,
+                 bn_requires_grad=True,
+                 pretrained=True):
         super(ResNet50, self).__init__()
         self.frozen_stages = frozen_stages
         self.pretrained = pretrained
+        self.out_layers=out_layers
+
+        # borrow key components from pytorch resnet50
         res50 = tv.models.resnet50(pretrained=pretrained)
         self.conv1 = res50.conv1
         self.bn1 = res50.bn1
@@ -44,7 +51,8 @@ class ResNet50(nn.Module):
         self.layer1 = res50.layer1
         self.layer2 = res50.layer2
         self.layer3 = res50.layer3
-        # self.layer4 = res50.layer4                                                                                       
+        self.layer4 = res50.layer4
+        
         self.freeze_stages(frozen_stages)
 
         self.bn_requires_grad=bn_requires_grad
@@ -83,10 +91,13 @@ class ResNet50(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        for i in range(1, 4):
+        outs = []
+        for i in range(1, 5):
             layer = getattr(self, 'layer{}'.format(i))
             x = layer(x)
-        return x
+            if i in self.out_layers:
+                outs.append(x)
+        return outs
 
 class ResLayerC5(nn.Module):
     def __init__(self, bn_requires_grad=True, pretrained=True):
@@ -97,7 +108,7 @@ class ResLayerC5(nn.Module):
 
         if not bn_requires_grad:
             for m in self.modules():
-                if isinstance(m, _BatchNorm):
+                if isinstance(m, nn.BatchNorm2d):
                     m.weight.requires_grad=False
                     m.bias.requires_grad=False
 
