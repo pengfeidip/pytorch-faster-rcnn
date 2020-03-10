@@ -3,15 +3,15 @@
 # faster rcnn
 model=dict(
     type='CascadeRCNN',
-    num_stages=1,
-    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=False),
+    num_stages=3,
+    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(3, ), bn_requires_grad=False),
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,
         feat_channels=1024,
-        anchor_base=16,
         anchor_scales=[2, 4, 8, 16, 32],
         anchor_ratios=[0.5, 1.0, 2.0],
+        anchor_strides=[16],
         cls_loss_weight=1.0,
         bbox_loss_weight=1.0,
         bbox_loss_beta=1.0/9.0),
@@ -19,7 +19,7 @@ model=dict(
         type='SingleRoIExtractor',
         roi_layer='RoIAlign',
         output_size=(14, 14),
-        spatial_scale=1.0/16.0
+        featmap_strides=[16]
     ),
     shared_head=dict(
         type='ResLayerC5',
@@ -35,7 +35,7 @@ model=dict(
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
-            reg_class_agnostic=False,
+            reg_class_agnostic=True,
             bbox_loss_beta=1.0
         ),
         dict(
@@ -135,7 +135,7 @@ test_cfg = dict(
         nms_iou=0.7,
         min_size=0.0,
     ),
-    rcnn=dict(min_score=0.05, nms_iou=0.3)
+    rcnn=dict(min_score=0.05, nms_iou=0.5)
 ) 
 
 

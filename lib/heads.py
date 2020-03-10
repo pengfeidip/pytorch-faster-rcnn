@@ -156,9 +156,9 @@ class RPNHead(nn.Module):
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
             
         # next propose bboxes
-        exit()
+        anchors = torch.cat(anchors, dim=1)
         props_creator = ProposalCreator(**train_cfg.rpn_proposal)
-        props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
+        props, score = props_creator(cls_out_comb, reg_out_comb, anchors, img_size, scale)
         logging.debug('Proposals by RPNHead: {}'.format(props.shape))
         logging.debug('End of RPNHead forward_train'.center(50, '='))
 

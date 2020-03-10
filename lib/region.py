@@ -230,30 +230,53 @@ class ProposalCreator(object):
         
 
 class SingleRoIExtractor(nn.Module):
-    def __init__(self, roi_layer='RoIPool', output_size=7, spatial_scale=1.0/16.0):
+    def __init__(self, roi_layer='RoIPool', output_size=7, featmap_strides=[16], finest_scale=56):
         super(SingleRoIExtractor, self).__init__()
         output_size=utils.to_pair(output_size)
-        if roi_layer == 'RoIPool':
-            self.roi_layer = torchvision.ops.RoIPool(output_size=output_size,
-                                                     spatial_scale=spatial_scale)
-        elif roi_layer == 'RoIAlign':
-            self.roi_layer = torchvision.ops.RoIAlign(output_size=output_size,
-                                                      spatial_scale=spatial_scale,
-                                                      sampling_ratio=2)
-        else:
-            raise ValueError('Unknown roi_layer type: {}'.format(roi_layer))
+        self.roi_layer=roi_layer
+        assert roi_layer in ['RoIPool', 'RoIAlign'], 'Unknown roi_layer type: {}'.format(roi_layer)
         self.output_size=output_size
-        self.spatial_scale=spatial_scale
+        self.featmap_strides=featmap_strides
+        self.finest_scale=finest_scale
 
-    def forward(self, feat, props):
+
+    def map_props_to_levels(self, props, num_lvls):
+        # borrow from mmdet
+        with torch.no_grad():
+            scale = torch.sqrt(
+                (props[2]-props[0]+1) * (props[3]-props[1]+1)
+            )
+            tar_lvls = torch.floor(torch.log2(scale/self.finest_scale+1e-6))
+            tar_lvls = tar_lvls.clamp(0, num_lvls-1).long()
+        return tar_lvls
+
+    def forward_one_level(self, feat, props, spatial_scale):
+        props_t = props.t()
+        batch_idx = torch.zeros(props_t.shape[0], 1, device=props.device)
+        props_t = torch.cat([batch_idx, props_t], dim=1)
+        if self.roi_layer == 'RoIPool':
+            return torchvision.ops.roi_pool(feat, props_t, self.output_size, spatial_scale)
+        else:
+            return torchvision.ops.roi_align(feat, props_t, self.output_size, spatial_scale, 2)
+            
+    def forward(self, feats, props):
         '''
         Args:
-            feat(Tensor): feature map from a backbone
+            feat(Tensor): a list of feature maps from a backbone or neck
             props(Tensor(4, n)): proposals
         '''
-        device=feat.device
-        props_t = props.t()
-        batch_idx = torch.zeros(props_t.shape[0], 1, device=props_t.device)
-        props_t = torch.cat([batch_idx, props_t], dim=1)
-        roi_out = self.roi_layer(feat, props_t)
-        return roi_out
+        assert len(feats) > 0
+        assert len(feats) >= len(self.featmap_strides)
+        num_lvls = len(self.featmap_strides)
+        if num_lvls==1:
+            return self.forward_one_level(feats[0], props, 1.0/self.featmap_strides[0])
+        
+        tar_lvls = self.map_props_to_levels(props, num_lvls)
+        roi_outs = []
+        for i in range(num_lvls):
+            feat = feats[i]
+            spatial_scale = 1.0/ self.featmap_strides[i]
+            cur_props = props[:, tar_lvls==i]
+            roi_outs.append(self.forward_one_level(feat, cur_props, spatial_scale))
+        return torch.cat(roi_outs, dim=0)
+        

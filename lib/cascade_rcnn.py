@@ -95,7 +95,6 @@ class CascadeRCNN(nn.Module):
         rpn_cls_loss, rpn_reg_loss, props \
             = self.rpn_head.forward_train(feats, gt_bbox, img_size, pad_size, train_cfg, scale)
         logging.debug('proposals from RPN: {}'.format(props.shape))
-        exit()
         rcnn_cls_losses = []
         rcnn_reg_losses = []
         for i in range(self.num_stages):
@@ -114,7 +113,7 @@ class CascadeRCNN(nn.Module):
             
             logging.debug('target proposals after selecting: {}'.format(tar_props.shape))
             # extract features from backbone based on the target bboxes
-            roi_out = cur_roi_extractor(feat, tar_props)
+            roi_out = cur_roi_extractor(feats, tar_props)
 
             logging.debug('roi_out after roi_extractor: {}'.format(roi_out.shape))
 

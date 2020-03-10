@@ -25,7 +25,7 @@ model=dict(
         type='SingleRoIExtractor',
         roi_layer='RoIPool',
         output_size=(7, 7),
-        spatial_scale=1.0/16.0
+        featmap_strides=[4, 8, 16, 32],
     ),
     rcnn_head=[
         dict(
@@ -59,10 +59,10 @@ train_cfg = dict(
         )
     ),
     rpn_proposal=dict(
-        pre_nms=12000,
+        pre_nms=2000,
         post_nms=2000,
         nms_iou=0.7,
-        min_size=16,
+        min_size=0,
     ),
     rcnn=[
         dict(
@@ -73,27 +73,27 @@ train_cfg = dict(
                 min_pos_iou=0.5),
             sampler=dict(
                 type='RandomSampler',
-                max_num=128,
-                pos_num=32))
+                max_num=512,
+                pos_num=128))
     ],
     stage_loss_weight=[1.0],
     
     total_epochs=14,
-    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005),
-    log_file=None,
-    lr_decay={11: 0.1},
+    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001),
+    log_file='train.log',
+    lr_decay={9:0.1, 12:0.1},
     save_interval=2
 )
 
 
 test_cfg = dict(
     rpn=dict(
-        pre_nms=6000,
-        post_nms=300,
+        pre_nms=1000,
+        post_nms=1000,
         nms_iou=0.7,
         min_size=0.0,
     ),
-    rcnn=dict(min_score=0.05, nms_iou=0.3)
+    rcnn=dict(min_score=0.05, nms_iou=0.5)
 ) 
 
 

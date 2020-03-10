@@ -4,14 +4,15 @@
 model=dict(
     type='CascadeRCNN',
     num_stages=1,
-    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=True, out_layers=(3, )),
+    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(3, )),
+    neck=None,
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,
         feat_channels=256,
-        anchor_base=16,
-        anchor_scales=[4,8,16,32],
-        anchor_ratios=[0.5,1.0,2.0],
+        anchor_scales=[4, 8, 32, 64],
+        anchor_ratios=[0.5, 1.0, 2.0],
+        anchor_strides=[16],
         cls_loss_weight=1.0,
         bbox_loss_weight=1.0,
         bbox_loss_beta=1.0/9.0),
@@ -19,7 +20,7 @@ model=dict(
         type='SingleRoIExtractor',
         roi_layer='RoIPool',
         output_size=(7, 7),
-        spatial_scale=1.0/16.0
+        featmap_strides=[16],
     ),
     rcnn_head=[
         dict(
