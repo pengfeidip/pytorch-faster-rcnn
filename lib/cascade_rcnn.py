@@ -141,8 +141,8 @@ class CascadeRCNN(nn.Module):
     def forward_test(self, img_data, img_size, scale):
         logging.info('Star to forward in eval mode')
         logging.info('Image size: {}'.format(img_size))
-        feat=self.backbone(img_data)
-        logging.debug('Feature size: {}'.format(feat.shape))
+        feats=self.extract_feat(img_data)
+        logging.debug('Feature size: {}'.format([feat.shape for feat in feats]))
         test_cfg=self.test_cfg
         pad_size = img_data.shape[-2:]
         props, score = self.rpn_head.forward_test(feat, img_size, pad_size, test_cfg, scale)

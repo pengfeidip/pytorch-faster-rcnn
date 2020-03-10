@@ -167,9 +167,27 @@ class RPNHead(nn.Module):
             reg_loss * self.bbox_loss_weight, \
             props
 
-    def forward_test(self, feat, img_size, pad_size, test_cfg, scale):
-        device = feat.device
-        self.anchor_creator.to(device)
+    def forward_test(self, feats, img_size, pad_size, test_cfg, scale):
+        assert len(feats) > 0
+        device = feats[0].device
+        feat_sizes = [feat.shape[-2:] for feat in feats]
+        num_levels = len(feats)
+        
+        _ = [ac.to(device) for ac in self.anchor_creators]
+        cls_outs, reg_outs = self(feats)
+        cls_outs = [cls_out.view(2, -1) for cls_out in cls_outs]
+        reg_outs = [reg_out.view(4, -1) for reg_out in reg_outs]
+        cls_out_comb = torch.cat(cls_outs, dim=1)
+        reg_out_comb = torch.cat(reg_outs, dim=1)
+        
+        anchors = [self.anchor_creator[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
+        anchors = [ac.view(4, -1) for ac in anchors]
+        anchors = torch.cat(anchors, dim=1)
+        props_creator = ProposalCreator(**test_cfg.rpn)
+        props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
+        TODO
+
+        
         feat_size = feat.shape[-2:]
         cls_out, reg_out = self(feat)
         anchors = self.anchor_creator(pad_size, feat.shape[-2:])
