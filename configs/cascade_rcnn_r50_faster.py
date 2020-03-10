@@ -3,7 +3,8 @@
 # Faster RCNN is equivalent to CascadeRCNN with one stage?
 model=dict(
     type='CascadeRCNN',
-    backbone=dict(type='ResNet50', frozen_stages=1),
+    num_stages=1,
+    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=True),
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,
@@ -14,13 +15,19 @@ model=dict(
         cls_loss_weight=1.0,
         bbox_loss_weight=1.0,
         bbox_loss_beta=1.0/9.0),
+    roi_extractor=dict(
+        type='SingleRoIExtractor',
+        roi_layer='RoIPool',
+        output_size=(7, 7),
+        spatial_scale=1.0/16.0
+    ),
     rcnn_head=[
         dict(
             type='BBoxHead',
             in_channels=1024,
-            fc_channels=[1024, 1024],
             roi_out_size=(7, 7),
-            roi_extractor='RoIPool',
+            fc_channels=[1024, 1024],
+            with_avg_pool=False,
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
@@ -84,16 +91,43 @@ test_cfg = dict(
 ) 
 
 
+
+img_norm = dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+
+
+train_pipeline=[
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', img_scale=(1000, 600), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    dict(type='Normalize', **img_norm),
+    dict(type='Pad', size_divisor=32),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+]
+
+test_pipeline=[
+    dict(type='LoadImageFromFile'),
+    dict(type='Resize', img_scale=(1000, 600), keep_ratio=True),
+    dict(type='Normalize', **img_norm),
+    dict(type='Pad', size_divisor=32),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img']),
+]
+
 data = dict(
     train=dict(
-        voc_data_dir='/home/lee/datasets/voc2007_comb/VOC2007',
-        min_size=600,
-        max_size=1000,
-        loader=dict(batch_size=1, num_workers=4, shuffle=True)
+        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
+        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        pipeline=train_pipeline,
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
-        voc_data_dir='/home/lee/datasets/voc2007_comb/VOC2007',
-        loader=dict(batch_size=1, num_workers=2, shuffle=False)
+        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
+        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        pipeline=test_pipeline,
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     )
 )
 

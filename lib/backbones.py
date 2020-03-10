@@ -105,7 +105,7 @@ class ResLayerC5(nn.Module):
     def train(self, mode=True):
         super(ResLayerC5, self).train(mode)
         for m in self.modules():
-            if isinstance(m, _BatchNorm):
+            if isinstance(m, nn.BatchNorm2d):
                 m.eval()
 
     def forward(self, x):

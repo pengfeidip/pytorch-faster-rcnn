@@ -5,6 +5,7 @@ from . import loss
 from . import utils
 import logging
 import torchvision, torch
+from copy import copy
 
 
 class RPNHead(nn.Module):
@@ -46,19 +47,19 @@ class RPNHead(nn.Module):
         x = self.relu(self.conv(x))
         return self.classifier(x), self.regressor(x)
 
-    def forward_train(self, feat, gt_bbox, img_size, train_cfg, scale):
+    def forward_train(self, feat, gt_bbox, img_size, pad_size, train_cfg, scale):
         logging.debug('START of RPNHead forward_train'.center(50, '='))
         from .registry import build_module
         device = feat.device
-        self.anchor_creator.to(device=device)
         feat_size = feat.shape[-2:]
+        self.anchor_creator.to(device=device)
         cls_out, reg_out = self(feat)
         logging.debug('cls_out.shape: {}'.format(cls_out.shape))
         logging.debug('reg_out.shape: {}'.format(reg_out.shape))
-        anchors = self.anchor_creator(img_size, feat_size)
+        anchors = self.anchor_creator(pad_size, feat_size)
         logging.debug('anchors: {}'.format(anchors.shape))
         anchors = anchors.view(4, -1)
-        inside_idx = inside_anchor_mask(anchors, img_size)
+        inside_idx = inside_anchor_mask(anchors, pad_size)
         logging.debug('inside_idx: {}'.format(inside_idx.shape))
         in_anchors = anchors[:, inside_idx]
         logging.debug('in_anchors: {}'.format(in_anchors.shape))
@@ -121,12 +122,12 @@ class RPNHead(nn.Module):
             reg_loss * self.bbox_loss_weight, \
             props
 
-    def forward_test(self, feat, img_size, test_cfg, scale):
+    def forward_test(self, feat, img_size, pad_size, test_cfg, scale):
         device = feat.device
         self.anchor_creator.to(device)
         feat_size = feat.shape[-2:]
         cls_out, reg_out = self(feat)
-        anchors = self.anchor_creator(img_size, feat_size)
+        anchors = self.anchor_creator(pad_size, feat.shape[-2:])
         anchors = anchors.view(4, -1)
         props_creator = ProposalCreator(**test_cfg.rpn)
         props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
@@ -205,20 +206,7 @@ class BBoxHead(nn.Module):
         cls_out = self.classifier(x)
         reg_out = self.regressor(x)
         return cls_out, reg_out
-        
-        """
-        device = feat.device
-        props_t = props.t()
-        batch_idx = torch.zeros(props_t.shape[0], 1, device=props_t.device)
-        props_t = torch.cat([batch_idx, props_t], dim=1)
-        roi_out = self.roi_extractor(feat, props_t)
-        num = roi_out.shape[0]
-        roi_out = roi_out.view(num, -1)
-        fc_out = self.shared_fcs(roi_out)
-        cls_out = self.classifier(fc_out)
-        reg_out = self.regressor(fc_out)
-        """
-        return cls_out, reg_out
+
 
     def loss(self, cls_out, reg_out, tar_label, tar_param):
         logging.debug('Calculating loss of BBoxHead...')
@@ -253,7 +241,7 @@ class BBoxHead(nn.Module):
 
     # use RCNN to refine proposals
     # needs to filter gt proposals
-    def refine_props(self, props, labels, reg_out, is_gt, img_size=None):
+    def refine_props(self, props, labels, reg_out, is_gt):
         assert props.shape[1] == reg_out.shape[0] == is_gt.numel()
         if not self.reg_class_agnostic:
             reg_out = reg_out.view(-1, 4, n_classes)
@@ -265,6 +253,7 @@ class BBoxHead(nn.Module):
         param_std  = reg_out.new(self.target_stds).view(4, -1)
         reg_out = reg_out * param_std + param_mean
         refined = utils.param2bbox(props, reg_out)
+        # TODO: do we restrict refined proposals by pad_size?
         return refined
 
     # roi_out: input tensor to BBoxHead

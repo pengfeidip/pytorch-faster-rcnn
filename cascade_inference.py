@@ -10,7 +10,7 @@ args = parser.parse_args()
 import os, sys, glob, random, logging, json
 import os.path as osp
 import mmcv, torch
-from lib import data, cascade_rcnn, data_
+from lib import data, cascade_rcnn, data_, datasets
 import torch
 
 
@@ -33,9 +33,13 @@ def main():
                         level=logging.DEBUG)
 
     config = args.config
-    data_opt = { 'voc_data_dir':config.data.test.voc_data_dir }
-    dataset = data_.TestDataset(data_opt)
-    dataloader = torch.utils.data.DataLoader(dataset, **config.data.test.loader)
+    dataset = datasets.VOCDataset(
+        ann_file=config.data.test.ann_file,
+        img_prefix=config.data.test.img_prefix,
+        pipeline=config.data.test.pipeline
+    )
+    dataloader = datasets.build_dataloader(dataset, 1, config.data.test.loader.num_workers,
+                                           1, dist=False, shuffle=config.data.test.loader.shuffle)
     device = torch.device('cpu')
     if args.gpu is not None:
         device = torch.device('cuda:{}'.format(args.gpu))

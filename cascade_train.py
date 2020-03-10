@@ -10,7 +10,7 @@ args = parser.parse_args()
 import os, sys, glob, random, logging
 import os.path as osp
 import mmcv, torch
-from lib import data, cascade_rcnn, data_
+from lib import data, cascade_rcnn, data_, datasets
 import torch
 
 
@@ -26,24 +26,28 @@ def set_seed(seed):
 
 def main():
     check_args()
+    config = args.config
+
+    device = torch.device('cpu')  # set default device
+    if args.gpu is not None:
+        device = torch.device('cuda:{}'.format(args.gpu))
+    config.device = device
+
     if args.seed is not None:
         set_seed(args.seed)
-    config = args.config
-    data_opt = {'voc_data_dir': config.data.train.voc_data_dir,
-                'min_size': config.data.train.min_size,
-                'max_size': config.data.train.max_size}
-    dataset = data_.Dataset(data_opt)
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        **config.data.train.loader)
+
+    dataset = datasets.VOCDataset(
+        ann_file=config.data.train.ann_file,
+        img_prefix=config.data.train.img_prefix,
+        pipeline=config.data.train.pipeline
+    )
+    dataloader = datasets.build_dataloader(dataset, 1, config.data.train.loader.num_workers,
+                                           1, dist=False,
+                                           shuffle=config.data.train.loader.shuffle)
     
     train_cfg = config['train_cfg']
     train_cfg['dataloader'] = dataloader
     train_cfg['work_dir'] = args.work_dir
-    device = torch.device('cpu')
-    if args.gpu is not None:
-        device = torch.device('cuda:{}'.format(args.gpu))
-    config.device = device
     
     trainer = cascade_rcnn.CascadeRCNNTrain(
         cascade_cfg=config.model,
@@ -67,6 +71,6 @@ def main():
     
     trainer.init_detector()    
     trainer.train()
-                                                                                                                                        
+    
 if __name__ == '__main__':
     main()

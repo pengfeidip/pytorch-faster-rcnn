@@ -65,13 +65,13 @@ class CascadeRCNN(nn.Module):
     # gt_bbox: (4, n) where n is number of gt bboxes
     # gt_label: (n,)
     # scale: ogiginal_image_size * scale = img_data image size
-    def forward_train(self, img_data, gt_bbox, gt_label, scale):
+    def forward_train(self, img_data, img_size, gt_bbox, gt_label, scale):
         logging.info('Start to forward in train mode')
-        img_size = img_data.shape[-2:]
         feat = self.backbone(img_data)
-        train_cfg = deepcopy(self.train_cfg)
+        train_cfg = self.train_cfg
+        pad_size = img_data.shape[-2:]
         rpn_cls_loss, rpn_reg_loss, props \
-            = self.rpn_head.forward_train(feat, gt_bbox, img_size, train_cfg, scale)
+            = self.rpn_head.forward_train(feat, gt_bbox, img_size, pad_size, train_cfg, scale)
         logging.debug('proposals from RPN: {}'.format(props.shape))
         rcnn_cls_losses = []
         rcnn_reg_losses = []
@@ -110,19 +110,20 @@ class CascadeRCNN(nn.Module):
             rcnn_reg_losses.append(rcnn_reg_loss)
             if i < self.num_stages-1:
                 with torch.no_grad():
+                    # TODO: do we supply img_size to restrict propsal sizes?
                     refined_props = cur_rcnn_head.refine_props(tar_props, tar_label, reg_out, tar_is_gt)
                     props = refined_props
                 
         return rpn_cls_loss, rpn_reg_loss, rcnn_cls_losses, rcnn_reg_losses
 
-    def forward_test(self, img_data, scale):
+    def forward_test(self, img_data, img_size, scale):
         logging.info('Star to forward in eval mode')
-        img_size=img_data.shape[-2:]
         logging.info('Image size: {}'.format(img_size))
         feat=self.backbone(img_data)
         logging.debug('Feature size: {}'.format(feat.shape))
-        test_cfg=deepcopy(self.test_cfg)
-        props, score = self.rpn_head.forward_test(feat, img_size, test_cfg, scale)
+        test_cfg=self.test_cfg
+        pad_size = img_data.shape[-2:]
+        props, score = self.rpn_head.forward_test(feat, img_size, pad_size, test_cfg, scale)
         logging.info('Proposals from RPN: {}'.format(props.shape))
         
         cls_scores = []
@@ -242,13 +243,20 @@ class CascadeRCNNTrain(object):
         return self.optimizer
 
     def train_one_iter(self, iter_i, epoch, train_data):
-        img_data, bboxes, labels, scale, _ = train_data
+        # get train data we need
+        img_meta = train_data['img_meta'].data[0][0]
+        img_data = train_data['img'].data[0]
+        bboxes = train_data['gt_bboxes'].data[0][0]
+        bboxes = bboxes.t()
+        labels = train_data['gt_labels'].data[0][0]
+        scale, img_size, pad_size = img_meta['scale_factor'], img_meta['img_shape'], img_meta['pad_shape']
+        # get train data we need
+        img_size = img_size[:2]
         img_data = img_data.to(self.device)
-        scale = scale.item()
-        labels = labels.squeeze(0) + 1
+
         labels = labels.to(self.device)
-        bboxes = bboxes.squeeze(0).t().to(self.device)
-        bboxes = torch.stack([bboxes[1], bboxes[0], bboxes[3], bboxes[2]])
+        bboxes = bboxes.to(self.device)
+
         logging.info('At epoch {}, iteration {}'.center(50, '*').format(epoch, iter_i))
         self.optimizer.zero_grad()
         logging.debug('Image Shape: {}'.format(img_data.shape))
@@ -257,7 +265,7 @@ class CascadeRCNNTrain(object):
         logging.debug('Scale: {}'.format(scale))
 
         rpn_cls_loss, rpn_reg_loss, rcnn_cls_losses, rcnn_reg_losses \
-            = self.cascade_rcnn.forward_train(img_data, bboxes, labels, scale)
+            = self.cascade_rcnn.forward_train(img_data, img_size, bboxes, labels, scale)
 
         rcnn_cls_loss_nums = [rcnn_cls_losses[i].item() * self.train_cfg.stage_loss_weight[i] \
                               for i in range(self.cascade_rcnn.num_stages)]
@@ -364,16 +372,23 @@ class CascadeRCNNTest(object):
         logging.info('Test config:')
         logging.info(str(self.test_cfg))
         with torch.no_grad():
-            for img_data, img_size, bbox, label, difficult, iid in dataloader:
-                tsr_size = img_data.shape[2:]
-                iid = int(iid[0])
+            for test_data in dataloader:
+                img_meta = test_data['img_meta'].data[0][0]
+                img_data = test_data['img'].data[0]
+                scale, img_size, pad_size = [img_meta[k] for k in ['scale_factor', 'img_shape', 'pad_shape']]
+                img_size = img_size[:2]
+                ori_size = img_meta['ori_shape'][:2]
+                # need to improve this
+                filename = img_meta['filename']
+                filename = osp.basename(filename)
+                iid = int(filename[:-4])
+
                 logging.info('Inference {}-th image with image id: {}'.format(ith, iid))
                 ith += 1
-                scale=tsr_size[0]/img_size[0].item()
                 scale=torch.tensor(scale, device=self.device)
-                img_w, img_h=img_size
+                img_w, img_h=ori_size
                 img_res={'width':img_w, 'height': img_h, 'image_id':iid}
-                bbox, score, category=self.inference_one(img_data, scale)
+                bbox, score, category=self.inference_one(img_data, img_size, scale)
                 if len(bbox)==0:
                     logging.warning('0 predictions for image {}'.format(iid))
                     continue
@@ -384,10 +399,9 @@ class CascadeRCNNTest(object):
                 inf_res.append(img_res)
         return inf_res
 
-    def inference_one(self, img_data, scale):
+    def inference_one(self, img_data, img_size, scale):
         img_data = img_data.to(device=self.device)
-        h, w = img_data.shape[-2:]
-        return self.cascade_rcnn.forward_test(img_data, scale)
+        return self.cascade_rcnn.forward_test(img_data, img_size, scale)
 
 
     
