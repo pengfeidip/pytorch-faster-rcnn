@@ -107,6 +107,7 @@ class RPNHead(nn.Module):
         logging.debug('START of RPNHead forward_train'.center(50, '='))
         from .registry import build_module
         assert len(feats) > 0
+        assert len(feats) == len(self.anchor_creators)
         device = feats[0].device
         feat_sizes = [feat.shape[-2:] for feat in feats]
         num_levels = len(self.anchor_creators)
@@ -154,11 +155,18 @@ class RPNHead(nn.Module):
                                                   self.bbox_loss_beta) / n_samples
         else:
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
-            
-        # next propose bboxes
-        anchors = torch.cat(anchors, dim=1)
+
         props_creator = ProposalCreator(**train_cfg.rpn_proposal)
-        props, score = props_creator(cls_out_comb, reg_out_comb, anchors, img_size, scale)
+        props, score = [], []
+        for i in range(num_levels):
+            cur_props, cur_score = props_creator(cls_outs[i],
+                                                 reg_outs[i],
+                                                 anchors[i],
+                                                 img_size,
+                                                 scale)
+            props.append(cur_props)
+            score.append(cur_score)
+        props = torch.cat(props, dim=1)
         logging.debug('Proposals by RPNHead: {}'.format(props.shape))
         logging.debug('End of RPNHead forward_train'.center(50, '='))
 
@@ -166,7 +174,7 @@ class RPNHead(nn.Module):
             cls_loss * self.cls_loss_weight, \
             reg_loss * self.bbox_loss_weight, \
             props
-
+    
     def forward_test(self, feats, img_size, pad_size, test_cfg, scale):
         assert len(feats) > 0
         device = feats[0].device
@@ -177,24 +185,22 @@ class RPNHead(nn.Module):
         cls_outs, reg_outs = self(feats)
         cls_outs = [cls_out.view(2, -1) for cls_out in cls_outs]
         reg_outs = [reg_out.view(4, -1) for reg_out in reg_outs]
-        cls_out_comb = torch.cat(cls_outs, dim=1)
-        reg_out_comb = torch.cat(reg_outs, dim=1)
         
-        anchors = [self.anchor_creator[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
+        anchors = [self.anchor_creators[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
         anchors = [ac.view(4, -1) for ac in anchors]
-        anchors = torch.cat(anchors, dim=1)
-        props_creator = ProposalCreator(**test_cfg.rpn)
-        props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
-        TODO
 
-        
-        feat_size = feat.shape[-2:]
-        cls_out, reg_out = self(feat)
-        anchors = self.anchor_creator(pad_size, feat.shape[-2:])
-        anchors = anchors.view(4, -1)
         props_creator = ProposalCreator(**test_cfg.rpn)
-        props, score = props_creator(cls_out, reg_out, anchors, img_size, scale)
-        return props, score
+        props, score = [], []
+        for i in range(num_levels):
+            cur_props, cur_score = props_creator(cls_outs[i],
+                                                 reg_outs[i],
+                                                 anchors[i],
+                                                 img_size,
+                                                 scale)
+            props.append(cur_props)
+            score.append(cur_score)
+        return torch.cat(props, dim=1), torch.cat(score, dim=0)
+            
 
 class BBoxHead(nn.Module):
     def __init__(self,

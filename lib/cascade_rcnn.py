@@ -145,7 +145,7 @@ class CascadeRCNN(nn.Module):
         logging.debug('Feature size: {}'.format([feat.shape for feat in feats]))
         test_cfg=self.test_cfg
         pad_size = img_data.shape[-2:]
-        props, score = self.rpn_head.forward_test(feat, img_size, pad_size, test_cfg, scale)
+        props, score = self.rpn_head.forward_test(feats, img_size, pad_size, test_cfg, scale)
         logging.info('Proposals from RPN: {}'.format(props.shape))
         
         cls_scores = []
@@ -157,7 +157,7 @@ class CascadeRCNN(nn.Module):
                 img_size_ = img_size
 
             cur_roi_extractor = self.roi_extractors[i]
-            roi_out = cur_roi_extractor(feat, props)
+            roi_out = cur_roi_extractor(feats, props)
             logging.debug('roi_out after current roi_extractor: {}'.format(roi_out.shape))
             if self.with_shared_head:
                 roi_out = self.shared_head(roi_out)
