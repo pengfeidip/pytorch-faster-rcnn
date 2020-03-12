@@ -1,4 +1,4 @@
-import torch
+import torch, logging
 import torch.nn.functional as F
 from torch import nn
 from mmcv.cnn import xavier_init
@@ -96,6 +96,7 @@ class FPN(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 xavier_init(m, distribution='uniform')
+        logging.info('Initialized weights for neck.')
 
     def forward(self, inputs):
         # assume use all the inputs

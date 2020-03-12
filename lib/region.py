@@ -238,6 +238,8 @@ class SingleRoIExtractor(nn.Module):
         self.output_size=output_size
         self.featmap_strides=featmap_strides
         self.finest_scale=finest_scale
+        logging.info('Initialized SingleRoIExtractor with roi_layer={}, output_size={}, featmap_strides={}'\
+                     .format(roi_layer, output_size, len(featmap_strides)))
 
 
     def map_props_to_levels(self, props, num_lvls):
@@ -270,13 +272,17 @@ class SingleRoIExtractor(nn.Module):
         num_lvls = len(self.featmap_strides)
         if num_lvls==1:
             return self.forward_one_level(feats[0], props, 1.0/self.featmap_strides[0])
-        
+
+        out_channels = feats[0].size(1)
+        roi_outs = feats[0].new_zeros(
+            props.size(1), out_channels, *self.output_size)
         tar_lvls = self.map_props_to_levels(props, num_lvls)
-        roi_outs = []
         for i in range(num_lvls):
             feat = feats[i]
             spatial_scale = 1.0/ self.featmap_strides[i]
-            cur_props = props[:, tar_lvls==i]
-            roi_outs.append(self.forward_one_level(feat, cur_props, spatial_scale))
-        return torch.cat(roi_outs, dim=0)
+            cur_props_mask = (tar_lvls==i)
+            cur_props = props[:, cur_props_mask]
+            cur_roi_out = self.forward_one_level(feat, cur_props, spatial_scale)
+            roi_outs[cur_props_mask] = cur_roi_out
+        return roi_outs
         

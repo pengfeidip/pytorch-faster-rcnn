@@ -61,9 +61,9 @@ class CascadeRCNN(nn.Module):
             
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+        self.init_weights()
         logging.info('Constructed CascadeRCNN')
         logging.info('Number of stages: {}'.format(self.num_stages))
-        logging.info(str(self))
 
     def extract_feat(self, x):
         x = self.backbone(x)
@@ -73,7 +73,11 @@ class CascadeRCNN(nn.Module):
 
 
     def init_weights(self):
+        # init rpn weights
         self.rpn_head.init_weights()
+        # init neck weights
+        if self.with_neck:
+            self.neck.init_weights()
         for i, bbox_head in enumerate(self.rcnn_head):
             bbox_head.init_weights()
             logging.info('(weights of bbox_head={})'.format(i))
