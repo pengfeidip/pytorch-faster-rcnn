@@ -273,7 +273,7 @@ class CascadeRCNNTrain(object):
         for param_group in self.optimizer.param_groups:
             cur_lr = param_group['lr'] * decay
             new_lr.append(cur_lr)
-            param_group['lr'] = group_lr
+            param_group['lr'] = cur_lr
         return new_lr
 
     def set_lr(self, lr):

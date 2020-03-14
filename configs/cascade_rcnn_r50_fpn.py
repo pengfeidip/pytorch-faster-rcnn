@@ -3,7 +3,7 @@
 # Faster RCNN is equivalent to CascadeRCNN with one stage?
 model=dict(
     type='CascadeRCNN',
-    num_stages=1,
+    num_stages=3,
     backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
     neck=dict(
         type='FPN',
@@ -23,7 +23,7 @@ model=dict(
         bbox_loss_beta=1.0/9.0),
     roi_extractor=dict(
         type='SingleRoIExtractor',
-        roi_layer='RoIPool',
+        roi_layer='RoIAlign',
         output_size=(7, 7),
         featmap_strides=[4, 8, 16, 32],
     ),
@@ -37,7 +37,31 @@ model=dict(
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
-            reg_class_agnostic=False,
+            reg_class_agnostic=True,
+            bbox_loss_beta=1.0
+        ),
+        dict(
+            type='BBoxHead',
+            in_channels=256,
+            roi_out_size=(7, 7),
+            fc_channels=[1024, 1024],
+            with_avg_pool=False,
+            num_classes=21,
+            target_means=[.0, .0, .0, .0],
+            target_stds=[0.05, 0.05, 0.1, 0.1],
+            reg_class_agnostic=True,
+            bbox_loss_beta=1.0
+        ),
+        dict(
+            type='BBoxHead',
+            in_channels=256,
+            roi_out_size=(7, 7),
+            fc_channels=[1024, 1024],
+            with_avg_pool=False,
+            num_classes=21,
+            target_means=[.0, .0, .0, .0],
+            target_stds=[0.033, 0.033, 0.067, 0.067],
+            reg_class_agnostic=True,
             bbox_loss_beta=1.0
         )
     ]
@@ -74,15 +98,41 @@ train_cfg = dict(
             sampler=dict(
                 type='RandomSampler',
                 max_num=512,
+                pos_num=128)),
+        dict(
+            assigner=dict(
+                type='MaxIoUAssigner',
+                pos_iou=0.6,
+                neg_iou=0.6,
+                min_pos_iou=0.6),
+            sampler=dict(
+                type='RandomSampler',
+                max_num=512,
+                pos_num=128)),
+        dict(
+            assigner=dict(
+                type='MaxIoUAssigner',
+                pos_iou=0.7,
+                neg_iou=0.7,
+                min_pos_iou=0.7),
+            sampler=dict(
+                type='RandomSampler',
+                max_num=512,
                 pos_num=128))
     ],
-    stage_loss_weight=[1.0],
+    stage_loss_weight=[1.0, 0.5, 0.25],
     
     total_epochs=14,
     optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001),
     log_file='train.log',
-    lr_decay={9:0.1, 12:0.1},
     save_interval=2
+)
+
+
+lr_config=dict(
+    warmup_iters=500,
+    warmup_ratio=1.0/3,
+    lr_decay={9:0.1, 12:0.1},
 )
 
 
