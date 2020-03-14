@@ -81,6 +81,12 @@ train_cfg = dict(
 )
 
 
+lr_config=dict(
+    warmup_iters=500,
+    warmup_ratio=1.0/3,
+    lr_decay={11: 0.1},
+)
+
 test_cfg = dict(
     rpn=dict(
         pre_nms=6000,

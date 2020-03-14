@@ -1,5 +1,5 @@
 from torch import nn
-from copy import deepcopy
+from copy import deepcopy, copy
 from . import utils
 import logging, time, random, traceback
 import os.path as osp
@@ -210,21 +210,21 @@ class CascadeRCNNTrain(object):
                  total_epochs,
                  optimizer,
                  log_file,
-                 lr_decay,
                  save_interval,
                  device,
+                 lr_cfg,
                  train_cfg,
                  test_cfg):
         self.cascade_cfg=cascade_cfg
         self.dataloader=dataloader
         self.work_dir=osp.realpath(work_dir)
         self.total_epochs=total_epochs
-        self.optimizer_cfg = optimizer
+        self.optimizer_cfg = copy(optimizer)
         self.log_file=log_file
-        self.lr_decay=lr_decay
         self.save_interval=save_interval
         self.train_cfg=train_cfg
         self.test_cfg=test_cfg
+        self.lr_cfg=lr_cfg
         
         # set logging
         self.log_file=log_file
@@ -239,6 +239,7 @@ class CascadeRCNNTrain(object):
             log_cfg['filename']=self.log_file
         logging.basicConfig(**log_cfg)
         self.current_epoch=1
+        self.current_iter=1
         self.device=torch.device(device)
 
     def init_detector(self):
@@ -248,8 +249,11 @@ class CascadeRCNNTrain(object):
         logging.info(self.cascade_rcnn)
 
     def create_optimizer(self):
-        optimizer_type = self.optimizer_cfg.type
+        optimizer_type = self.optimizer_cfg.pop('type')
         assert optimizer_type in ['SGD']
+        self.optimizer = torch.optim.SGD(self.cascade_rcnn.parameters(), **self.optimizer_cfg)
+        return self.optimizer
+    '''
         weight_decay = self.optimizer_cfg.weight_decay
         momentum = self.optimizer_cfg.momentum
         lr = self.optimizer_cfg.lr
@@ -262,13 +266,42 @@ class CascadeRCNNTrain(object):
                     params += [{'params': [value], 'lr': lr, 'weight_decay': weight_decay}]
         self.optimizer=torch.optim.SGD(params, momentum=momentum)
         return self.optimizer
+    '''
 
     def decay_lr(self, decay=0.1):
+        new_lr = []
         for param_group in self.optimizer.param_groups:
-            param_group['lr'] *= decay
-        return self.optimizer
+            cur_lr = param_group['lr'] * decay
+            new_lr.append(cur_lr)
+            param_group['lr'] = group_lr
+        return new_lr
+
+    def set_lr(self, lr):
+        if isinstance(lr, (float, int)):
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = lr
+        elif isinstance(lr, list):
+            for i, param_group in enumerate(self.optimizer.param_groups):
+                param_group['lr'] = lr[i]
+        else:
+            raise ValueError('lr must either be a list of numbers or a single number')
+
+    def warmup(self):
+        lr_cfg = self.lr_cfg
+        if self.current_iter > lr_cfg.warmup_iters:
+            pass
+        elif self.current_iter == lr_cfg.warmup_iters:
+            self.set_lr(self.initial_lr)
+        else:
+            k = (1-self.current_iter/lr_cfg.warmup_iters) * (1-lr_cfg.warmup_ratio)
+            self.set_lr(self.initial_lr * k)
+        return
+
+    def get_lr(self):
+        return [pg['lr'] for pg in self.optimizer.param_groups]
 
     def train_one_iter(self, iter_i, epoch, train_data):
+        self.warmup()
         # get train data we need
         img_meta = train_data['img_meta'].data[0][0]
         img_data = train_data['img'].data[0]
@@ -284,6 +317,7 @@ class CascadeRCNNTrain(object):
         bboxes = bboxes.to(self.device)
 
         logging.info('At epoch {}, iteration {}'.center(50, '*').format(epoch, iter_i))
+        logging.info('Current lr: {}'.format(self.get_lr()))
         self.optimizer.zero_grad()
         logging.debug('Image Shape: {}'.format(img_data.shape))
         logging.debug('GT bboxes: {}'.format(bboxes.t()))
@@ -314,6 +348,7 @@ class CascadeRCNNTrain(object):
         logging.debug('Combined loss: {}'.format(comb_loss.item()))
         comb_loss.backward()
         self.optimizer.step()
+        self.current_iter += 1
 
     def train(self):
         logging.info('Start a new round of training, start with epoch {}'.format(self.current_epoch))
@@ -324,11 +359,12 @@ class CascadeRCNNTrain(object):
         tot_iters = dataset_size * (self.total_epochs - self.current_epoch + 1)
         eta_iters, eta_ct, iter_ct = 200, 0, 0
         start = time.time()
-
         self.create_optimizer()
+        self.initial_lr = self.get_lr()[0]
+        logging.info('initial_lr: {}'.format(self.initial_lr))
         for epoch in range(self.current_epoch, self.total_epochs+1):
-            if epoch in self.lr_decay:
-                decay = self.lr_decay[epoch]
+            if epoch in self.lr_cfg.lr_decay:
+                decay = self.lr_cfg.lr_decay[epoch]
                 logging.info('Learning rate decay={} at epoch={}'.format(decay, epoch))
                 self.decay_lr(decay)
             logging.info('Start to train epoch={} with lr={}'.format(epoch, self.optimizer.param_groups[0]['lr']))

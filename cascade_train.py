@@ -56,9 +56,9 @@ def main():
         total_epochs=config.train_cfg.total_epochs,
         optimizer=config.train_cfg.optimizer,
         log_file=config.train_cfg.log_file,
-        lr_decay=config.train_cfg.lr_decay,
         save_interval=config.train_cfg.save_interval,
         device=device,
+        lr_cfg=config.lr_config,
         train_cfg=config.train_cfg,
         test_cfg=config.test_cfg)
 
