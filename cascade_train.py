@@ -10,7 +10,7 @@ args = parser.parse_args()
 import os, sys, glob, random, logging
 import os.path as osp
 import mmcv, torch
-from lib import data, cascade_rcnn, data_, datasets
+from lib import cascade_rcnn, datasets
 import torch
 
 

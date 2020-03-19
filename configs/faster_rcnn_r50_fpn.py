@@ -79,10 +79,16 @@ train_cfg = dict(
     stage_loss_weight=[1.0],
     
     total_epochs=14,
-    optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001),
+    optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001),
     log_file='train.log',
-    lr_decay={9:0.1, 12:0.1},
     save_interval=2
+)
+
+
+lr_config=dict(
+    warmup_iters=500,
+    warmup_ratio=1.0/3,
+    lr_decay={9:0.1, 12:0.1},
 )
 
 
