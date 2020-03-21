@@ -2,6 +2,15 @@ import torch.nn as nn
 import torch, logging
 from . import region
 
+def focal_loss(cls_score, label, alpha=0.25, gamma=2.0):
+    cls_sig = cls_score.sigmoid()
+    num_samp, num_cls = cls_score.shape
+    mask = cls_score.new_full((num_samp, num_cls), 0)
+    mask[torch.arange(num_samp), label] = 1.0
+    loss = -alpha * mask * ((1-cls_sig)**gamma) * torch.log(cls_sig) \
+           -alpha * (1-mask) * ((1-cls_sig)**gamma) * torch.log(1-cls_sig)
+    return loss / num_samp
+
 def zero_loss(device):
     return torch.tensor(0.0, device=device, requires_grad=True)
 
@@ -92,3 +101,5 @@ class RCNNLoss(object):
                                       self.sigma) / n_samples
         return cls_loss + self.lamb * reg_loss
 
+class FocalLoss(object):
+    pass
