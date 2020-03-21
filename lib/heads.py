@@ -7,7 +7,7 @@ from . import anchor
 import logging
 import torchvision, torch
 from copy import copy
-from mmcv.nn import normal_init
+from mmcv.cnn import normal_init
 import numpy as np
 
 class RPNHead(nn.Module):
@@ -56,6 +56,25 @@ class RPNHead(nn.Module):
         reg_outs = [self.regressor(x) for x in conv_outs]
         return cls_outs, reg_outs
 
+    def loss(self, tar_cls_out, tar_reg_out, tar_labels, tar_param):
+        device=tar_cls_out.device
+        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
+
+        # calculate losses
+        if tar_labels.numel() != 0:
+            ce = nn.CrossEntropyLoss()
+            cls_loss = ce(tar_cls_out.t(), tar_labels.long())
+            n_samples = len(tar_labels)
+            pos_args = (tar_labels==1)
+            if pos_args.sum() == 0:
+                logging.warning('RPN recieves no positive samples to train.')
+            else:
+                reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
+                                                  self.bbox_loss_beta) / n_samples
+        else:
+            logging.warning('RPN recieves no samples to train, return a dummy zero loss')
+        return cls_loss, reg_loss
+
     def forward_train(self, feats, gt_bbox, img_size, pad_size, train_cfg, scale):
         logging.debug('START of RPNHead forward_train'.center(50, '='))
         from .registry import build_module
@@ -93,21 +112,8 @@ class RPNHead(nn.Module):
         sampler = build_module(train_cfg.rpn.sampler)
         tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param \
             = anchor.anchor_target(cls_out_comb, reg_out_comb, in_anchors, in_mask, gt_bbox, assigner, sampler)
-        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
 
-        # calculate losses
-        if tar_labels.numel() != 0:
-            ce = nn.CrossEntropyLoss()
-            cls_loss = ce(tar_cls_out.t(), tar_labels.long())
-            n_samples = len(tar_labels)
-            pos_args = (tar_labels==1)
-            if pos_args.sum() == 0:
-                logging.warning('RPN recieves no positive samples to train.')
-            else:
-                reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
-                                                  self.bbox_loss_beta) / n_samples
-        else:
-            logging.warning('RPN recieves no samples to train, return a dummy zero loss')
+        cls_loss, reg_loss = self.loss(tar_cls_out, tar_reg_out, tar_labels, tar_param)
 
         props_creator = ProposalCreator(**train_cfg.rpn_proposal)
         props, score = [], []
@@ -328,6 +334,8 @@ class RetinaHead(nn.Module):
         super(RPNHead, self).__init__()
         self.in_channels = in_channels
         self.feat_channels = feat_channels
+        self.num_classes = num_classes
+        self.cls_channels = num_classes-1
 
         self.stacked_convs = stacked_convs
         self.octave_base_scale = octave_base_scale
@@ -366,7 +374,7 @@ class RetinaHead(nn.Module):
         self.cls_convs = nn.Sequential(cls_convs)
         self.reg_convs = nn.Sequential(reg_convs)
         self.retina_cls = nn.Conv2d(self.feat_channels,
-                                    self.num_anchors * (self.num_classes-1),
+                                    self.num_anchors * (self.cls_channels),
                                     3,
                                     padding=1)
         self.retina_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 3, padding=1)
@@ -389,6 +397,30 @@ class RetinaHead(nn.Module):
         cls_outs = [self.retina_cls(x) for x in cls_conv_outs]
         reg_outs = [self.retina_reg(x) for x in reg_conv_outs]
         return cls_outs, reg_outs
+
+    def loss(self, tar_cls_out, tar_reg_out, tar_labels, tar_param):
+        device = tar_cls_out.device
+        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
+        n_samples = len(tar_labels)
+        if tar_labels.numel() != 0:
+            loss.focal_loss(tar_cls_out, tar_labels, self.cls_loss_alpha, self.cls_loss_gamma)
+            # TODO
+            #################
+            ce = nn.CrossEntropyLoss()
+            cls_loss = ce(tar_cls_out.t(), tar_labels.long())
+
+
+            ##############
+
+            pos_args = (tar_labels==1)
+            if pos_args.sum() == 0:
+                logging.warning('RPN recieves no positive samples to train.')
+            else:
+                reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
+                                                  self.bbox_loss_beta) / n_samples
+        else:
+            logging.warning('RPN recieves no samples to train, return a dummy zero loss')
+        
         
     def forward_train(self, feats, gt_bbox, gt_label, img_size, pad_size, train_cfg, scale):
         logging.debug('START of RetinaHead forward_train'.center(50, '='))
@@ -401,10 +433,9 @@ class RetinaHead(nn.Module):
         _ = [ac.to(device=device) for ac in self.anchor_creators]
         
         cls_outs, reg_outs = self(feats)
-        num_classes = self.num_classes
         logging.debug('cls_out.shape: {}'.format([cls_out.shape for cls_out in cls_outs]))
         logging.debug('reg_out.shape: {}'.format([reg_out.shape for reg_out in reg_outs]))
-        cls_outs = [cls_out.view(num_classes, -1) for cls_out in cls_outs]
+        cls_outs = [cls_out.view(self.cls_channels, -1) for cls_out in cls_outs]
         reg_outs = [reg_out.view(4, -1) for reg_out in reg_outs]
         cls_out_comb = torch.cat(cls_outs, dim=1)
         reg_out_comb = torch.cat(reg_outs, dim=1)
@@ -426,24 +457,11 @@ class RetinaHead(nn.Module):
 
         assigner = build_module(train_cfg.rpn.assigner)
         sampler = None
-        tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param, tar_labels_detail \
-            = anchor.anchor_target(cls_out_comb, reg_out_comb, in_anchors, in_mask, gt_bbox, assigner, sampler)
-        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
+        tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param \
+            = anchor.anchor_target_v2(cls_out_comb, reg_out_comb, in_anchors, in_mask,
+                                      gt_bbox, gt_label, assigner, sampler)
 
-        # calculate losses
-        if tar_labels.numel() != 0:
-            ce = nn.CrossEntropyLoss()
-            cls_loss = ce(tar_cls_out.t(), tar_labels.long())
-            n_samples = len(tar_labels)
-            pos_args = (tar_labels==1)
-            if pos_args.sum() == 0:
-                logging.warning('RPN recieves no positive samples to train.')
-            else:
-                reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
-                                                  self.bbox_loss_beta) / n_samples
-        else:
-            logging.warning('RPN recieves no samples to train, return a dummy zero loss')
-
+        cls_loss, reg_loss = self.loss()
         props_creator = ProposalCreator(**train_cfg.rpn_proposal)
         props, score = [], []
         for i in range(num_levels):

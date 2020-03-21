@@ -2,14 +2,24 @@ import torch.nn as nn
 import torch, logging
 from . import region
 
-def focal_loss(cls_score, label, alpha=0.25, gamma=2.0):
-    cls_sig = cls_score.sigmoid()
-    num_samp, num_cls = cls_score.shape
-    mask = cls_score.new_full((num_samp, num_cls), 0)
-    mask[torch.arange(num_samp), label] = 1.0
-    loss = -alpha * mask * ((1-cls_sig)**gamma) * torch.log(cls_sig) \
-           -alpha * (1-mask) * ((1-cls_sig)**gamma) * torch.log(1-cls_sig)
-    return loss / num_samp
+def focal_loss(pred, target, alpha=0.25, gamma=2.0):
+    logging.info('in focal_loss, pred: {}, target: {}'.format(pred.shape, target.shape))
+    num_cls = pred.shape[0]
+    bg_places = (target==0)
+    target = target - 1
+    # TODO
+    
+    
+    pred_sigmoid = pred.sigmoid()
+    target = target.type_as(pred)
+    pt = (1 - pred_sigmoid) * target + pred_sigmoid * (1 - target)
+    focal_weight = (alpha * target + (1 - alpha) *
+                    (1 - target)) * pt.pow(gamma)
+    loss = F.binary_cross_entropy_with_logits(
+        pred, target, reduction='none') * focal_weight
+    # loss = weight_reduce_loss(loss, weight, reduction, avg_factor)
+    return loss
+
 
 def zero_loss(device):
     return torch.tensor(0.0, device=device, requires_grad=True)
