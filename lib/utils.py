@@ -110,14 +110,14 @@ def calc_iou(a, b):
     return area_i / (area_a.view(-1, 1) + area_b.view(1, -1) - area_i)
 
 def elem_iou(a, b):
-    assert a.shape[0]==4 and b.shape[0]==4
+    assert a.shape[0]==4 and b.shape[0]==4 and a.shape == b.shape
     tl = torch.max(a[:2], b[:2])
     br = torch.min(a[2:], b[2:])
     area_i = torch.prod(br-tl, dim=0)
-    area_i = area_i * (tl<br).all().float()
+    area_i = area_i * (tl<br).all(0).float()
     area_a = torch.prod(a[2:]-a[:2], dim=0)
     area_b = torch.prod(b[2:]-b[:2], dim=0)
-    raise ValueError('Not finished')
+    return area_i / (area_a + area_b - area_i)
     
 
 def init_module_normal(m, mean=0.0, std=1.0):
