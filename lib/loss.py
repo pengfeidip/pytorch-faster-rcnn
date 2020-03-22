@@ -25,7 +25,7 @@ def focal_loss(pred, target, alpha=0.25, gamma=2.0):
     pred_sigmoid = pred.sigmoid()
     target = target.type_as(pred)
     pt = pred_sigmoid * target + (1-pred_sigmoid)*(1-target)
-    focal_weight = alpha * (1-pt).pow(gamma)
+    focal_weight = (alpha*target + (1-alpha)*(1-target)) * (1-pt).pow(gamma)
     # pt = (1 - pred_sigmoid) * target + pred_sigmoid * (1 - target)
     # focal_weight = (alpha * target + (1 - alpha) * (1 - target)) * pt.pow(gamma)
     loss = F.binary_cross_entropy_with_logits(

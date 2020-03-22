@@ -62,7 +62,7 @@ def main():
                 'image_id': iid,
                 'bbox': [round(x.item(), 2) for x in cur_bbox],
                 'score': round(score[i].item(), 3),
-                'category_id': category[i].item()
+                'category_id': category[i].item()+1
             }
             out_json.append(cur_pred)
             anno_idx += 1

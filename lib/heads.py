@@ -498,6 +498,7 @@ class RetinaHead(nn.Module):
         for i in range(num_levels):
             logging.debug('predicting in level {}'.format(i))
             cls_out, reg_out = cls_outs[i], reg_outs[i]
+            cls_out = cls_out.sigmoid()
             cls_score, cls_label = cls_out.max(0)
             # select top pre_nms candidates based on cls scores
             anchor = anchors[i]
@@ -530,10 +531,10 @@ class RetinaHead(nn.Module):
 
         keep_bbox, keep_score, keep_label = utils.multiclass_nms(
             mlvl_pred_bbox, mlvl_cls_score, mlvl_cls_label,
-            range(1, self.cls_channels+1), test_cfg.nms_iou, test_cfg.min_score)
+            range(0, self.cls_channels), test_cfg.nms_iou, test_cfg.min_score)
 
         if len(keep_score) > test_cfg.max_per_img:
-            _, topk_inds = keep_score.topk(max_per_img)
+            _, topk_inds = keep_score.topk(test_cfg.max_per_img)
             return keep_bbox[:, topk_inds], keep_score[topk_inds], keep_label[topk_inds]
             
         return keep_bbox, keep_score, keep_label
