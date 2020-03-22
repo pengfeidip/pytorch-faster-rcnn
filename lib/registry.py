@@ -1,14 +1,15 @@
 from .backbones import ResNet50, VGG16, ResLayerC5
 from .region import MaxIoUAssigner, RandomSampler, SingleRoIExtractor
 from .cascade_rcnn import CascadeRCNN
-from .heads import RPNHead, BBoxHead
+from .retinanet import RetinaNet
+from .heads import RPNHead, BBoxHead, RetinaHead
 from .necks import FPN
 
 from copy import deepcopy
 from torch.optim import SGD
 
 _modules_ = [ResNet50, MaxIoUAssigner, RandomSampler, CascadeRCNN, RPNHead, BBoxHead,
-             SGD, VGG16, ResLayerC5, SingleRoIExtractor, FPN]
+             SGD, VGG16, ResLayerC5, SingleRoIExtractor, FPN, RetinaNet, RetinaHead]
 
 MODULES = { cls.__name__:cls for cls in _modules_ }
 

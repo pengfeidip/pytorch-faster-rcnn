@@ -331,7 +331,7 @@ class RetinaHead(nn.Module):
                  cls_loss_gamma=2.0,
                  bbox_loss_weight=1.0,
                  bbox_loss_beta=1.0/9.0):
-        super(RPNHead, self).__init__()
+        super(RetinaHead, self).__init__()
         self.in_channels = in_channels
         self.feat_channels = feat_channels
         self.num_classes = num_classes
@@ -340,13 +340,15 @@ class RetinaHead(nn.Module):
         self.stacked_convs = stacked_convs
         self.octave_base_scale = octave_base_scale
         self.scales_per_octave = scales_per_octave
-        ocvate_scales = [2**(i/scales_per_octave) for i in range(scales_per_octave)]
+        octave_scales = [2**(i/scales_per_octave) for i in range(scales_per_octave)]
         anchor_scales = [octave_base_scale*octave_scale for octave_scale in octave_scales]
 
         self.anchor_scales = anchor_scales
         self.anchor_ratios = anchor_ratios
         self.anchor_strides = anchor_strides
         self.cls_loss_weight = cls_loss_weight
+        self.cls_loss_alpha = cls_loss_alpha
+        self.cls_loss_gamma = cls_loss_gamma
         self.bbox_loss_weight = bbox_loss_weight
         self.bbox_loss_beta = bbox_loss_beta
         self.base_sizes = tuple(anchor_strides)
@@ -363,21 +365,22 @@ class RetinaHead(nn.Module):
 
     def init_layers(self):
         self.relu = nn.ReLU(inplace=True)
-        cls_convs = nn.ModuleList()
-        reg_convs = nn.ModlueList()
+        cls_convs = []
+        reg_convs = []
         for i in range(self.stacked_convs):
             chn = self.in_channels if i == 0 else self.feat_channels
             cls_convs.append(
                 nn.Conv2d(chn, self.feat_channels, 3, padding=1))
             reg_convs.append(
                 nn.Conv2d(chn, self.feat_channels, 3, padding=1))
-        self.cls_convs = nn.Sequential(cls_convs)
-        self.reg_convs = nn.Sequential(reg_convs)
+        self.cls_convs = nn.Sequential(*cls_convs)
+        self.reg_convs = nn.Sequential(*reg_convs)
         self.retina_cls = nn.Conv2d(self.feat_channels,
                                     self.num_anchors * (self.cls_channels),
                                     3,
                                     padding=1)
         self.retina_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 3, padding=1)
+        print(self)
         # here the classifier and regressor use filter size=3
 
     def init_weights(self):
@@ -401,108 +404,136 @@ class RetinaHead(nn.Module):
     def loss(self, tar_cls_out, tar_reg_out, tar_labels, tar_param):
         device = tar_cls_out.device
         cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
-        n_samples = len(tar_labels)
+        n_pos_samples = (tar_labels>0).sum()
         if tar_labels.numel() != 0:
-            loss.focal_loss(tar_cls_out, tar_labels, self.cls_loss_alpha, self.cls_loss_gamma)
-            # TODO
-            #################
-            ce = nn.CrossEntropyLoss()
-            cls_loss = ce(tar_cls_out.t(), tar_labels.long())
-
-
-            ##############
-
+            cls_loss = loss.focal_loss(tar_cls_out.t(), tar_labels, self.cls_loss_alpha, self.cls_loss_gamma)
+            cls_loss = cls_loss / n_pos_samples
+            # next calculate regression loss
+            tar_labels[tar_labels>0]=1
             pos_args = (tar_labels==1)
             if pos_args.sum() == 0:
                 logging.warning('RPN recieves no positive samples to train.')
             else:
                 reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
-                                                  self.bbox_loss_beta) / n_samples
+                                                  self.bbox_loss_beta) / n_pos_samples
         else:
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
+        return cls_loss, reg_loss
         
         
     def forward_train(self, feats, gt_bbox, gt_label, img_size, pad_size, train_cfg, scale):
         logging.debug('START of RetinaHead forward_train'.center(50, '='))
+        logging.debug('img_size={}, pad_size={}'.format(img_size, pad_size))
         from .registry import build_module
         assert len(feats) > 0
         assert len(feats) == len(self.anchor_creators)
+        logging.info('features: \n{}'.format('\n'.join([str(x.shape) for x in feats])))
         device = feats[0].device
         feat_sizes = [feat.shape[-2:] for feat in feats]
         num_levels = len(self.anchor_creators)
         _ = [ac.to(device=device) for ac in self.anchor_creators]
         
         cls_outs, reg_outs = self(feats)
-        logging.debug('cls_out.shape: {}'.format([cls_out.shape for cls_out in cls_outs]))
-        logging.debug('reg_out.shape: {}'.format([reg_out.shape for reg_out in reg_outs]))
+        logging.debug('cls_out.shape: \n{}'.format('\n'.join([str(cls_out.shape) for cls_out in cls_outs])))
+        logging.debug('reg_out.shape: \n{}'.format('\n'.join([str(reg_out.shape) for reg_out in reg_outs])))
         cls_outs = [cls_out.view(self.cls_channels, -1) for cls_out in cls_outs]
         reg_outs = [reg_out.view(4, -1) for reg_out in reg_outs]
         cls_out_comb = torch.cat(cls_outs, dim=1)
         reg_out_comb = torch.cat(reg_outs, dim=1)
         
         anchors = [self.anchor_creators[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
-        logging.debug('anchors: {}'.format([ac.shape for ac in anchors]))
+        logging.debug('anchors: \n{}'.format('\n'.join([str(ac.shape) for ac in anchors])))
         anchors = [ac.view(4, -1) for ac in anchors]
-        inside_masks = [inside_anchor_mask(ac, pad_size) for ac in anchors]
-        logging.debug('inside_masks: {}'.format([iidx.shape for iidx in inside_masks]))
-        #in_anchors = [ac[:, iidx] for iidx in inside_idxs ]
+        inside_masks = [inside_anchor_mask(ac, img_size) for ac in anchors]
+        logging.debug('inside_masks: \n{}'.format('\n'.join([str(iidx.shape) for iidx in inside_masks])))
         in_anchors = [anchors[i][:, inside_masks[i]] for i in range(num_levels)]
-        logging.debug('in_anchors: {}'.format([in_ac.shape for in_ac in in_anchors]))
-        # combine anchors from all levels
+        logging.debug('in_anchors: \n{}'.format('\n'.join([str(in_ac.shape) for in_ac in in_anchors])))
         in_anchors = torch.cat(in_anchors, dim=1)
         in_mask = torch.cat(inside_masks, dim=0)
         
         logging.debug('inside anchors after cat all levels: {}'.format(in_anchors.shape))
         logging.debug('inside masks after cat all levels: {}'.format(in_mask.shape))
 
-        assigner = build_module(train_cfg.rpn.assigner)
+        assigner = build_module(train_cfg.assigner)
         sampler = None
         tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param \
-            = anchor.anchor_target_v2(cls_out_comb, reg_out_comb, in_anchors, in_mask,
+            = anchor.anchor_target_v2(cls_out_comb, reg_out_comb, self.cls_channels, in_anchors, in_mask,
                                       gt_bbox, gt_label, assigner, sampler)
-
-        cls_loss, reg_loss = self.loss()
-        props_creator = ProposalCreator(**train_cfg.rpn_proposal)
-        props, score = [], []
-        for i in range(num_levels):
-            cur_props, cur_score = props_creator(cls_outs[i],
-                                                 reg_outs[i],
-                                                 anchors[i],
-                                                 img_size,
-                                                 scale)
-            props.append(cur_props)
-            score.append(cur_score)
-        props = torch.cat(props, dim=1)
-        logging.debug('Proposals by RPNHead: {}'.format(props.shape))
-        logging.debug('End of RPNHead forward_train'.center(50, '='))
-
+        logging.debug('after anchor_target, tar_cls_out: {}'.format(tar_cls_out.size()))
+        logging.debug('after anchor_target, reg_cls_out: {}'.format(tar_reg_out.size()))
+        cls_loss, reg_loss = self.loss(tar_cls_out, tar_reg_out, tar_labels, tar_param)
         return \
             cls_loss * self.cls_loss_weight, \
-            reg_loss * self.bbox_loss_weight, \
-            props
+            reg_loss * self.bbox_loss_weight
+
     
     def forward_test(self, feats, img_size, pad_size, test_cfg, scale):
+        logging.debug('In forward_test of RetinaNet, img_size={}, pad_size={}, scale={}'\
+                      .format(img_size, pad_size, scale))
+        logging.debug('test_cfg: {}'.format(test_cfg))
         assert len(feats) > 0
         device = feats[0].device
         feat_sizes = [feat.shape[-2:] for feat in feats]
         num_levels = len(feats)
+        logging.debug('features({}): \n{}'.format(num_levels, '\n'.join([str(feat.shape) for feat in feats])))
         
         _ = [ac.to(device) for ac in self.anchor_creators]
         cls_outs, reg_outs = self(feats)
-        cls_outs = [cls_out.view(2, -1) for cls_out in cls_outs]
+        cls_outs = [cls_out.view(self.cls_channels, -1) for cls_out in cls_outs]
         reg_outs = [reg_out.view(4, -1) for reg_out in reg_outs]
-        
+        logging.debug('cls_outs: \n{}'.format(
+            '\n'.join([str(co.shape) for co in cls_outs])))
+        logging.debug('reg_outs: \n{}'.format(
+            '\n'.join([str(ro.shape) for ro in reg_outs])))
+
         anchors = [self.anchor_creators[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
         anchors = [ac.view(4, -1) for ac in anchors]
-
-        props_creator = ProposalCreator(**test_cfg.rpn)
-        props, score = [], []
+        logging.debug('anchors: \n{}'.format(
+            '\n'.join([str(ac.shape) for ac in anchors])))
+        
+        H, W = img_size
+        min_size = scale * test_cfg.min_bbox_size
+        logging.info('min_size: {}'.format(min_size))
+        cls_scores, cls_labels, pred_bboxes = [], [], []
         for i in range(num_levels):
-            cur_props, cur_score = props_creator(cls_outs[i],
-                                                 reg_outs[i],
-                                                 anchors[i],
-                                                 img_size,
-                                                 scale)
-            props.append(cur_props)
-            score.append(cur_score)
-        return torch.cat(props, dim=1), torch.cat(score, dim=0)
+            logging.debug('predicting in level {}'.format(i))
+            cls_out, reg_out = cls_outs[i], reg_outs[i]
+            cls_score, cls_label = cls_out.max(0)
+            # select top pre_nms candidates based on cls scores
+            anchor = anchors[i]
+            if test_cfg.pre_nms < len(cls_score):
+                _, topk_inds = cls_score.topk(test_cfg.pre_nms)
+                cls_score = cls_score[topk_inds]
+                cls_label = cls_label[topk_inds]
+                reg_out = reg_out[:, topk_inds]
+                anchor = anchor[:, topk_inds]
+            pred_bbox = utils.param2bbox(anchor, reg_out)
+            # filter small bboxes
+            pred_bbox = torch.stack([
+                torch.clamp(pred_bbox[0], 0.0, W),
+                torch.clamp(pred_bbox[1], 0.0, H),
+                torch.clamp(pred_bbox[2], 0.0, W),
+                torch.clamp(pred_bbox[3], 0.0, H)
+            ])
+            non_small_bbox = (pred_bbox[2]-pred_bbox[0] >= min_size) \
+                             & (pred_bbox[3]-pred_bbox[1] >= min_size)
+            cls_score = cls_score[non_small_bbox]
+            cls_label = cls_label[non_small_bbox]
+            pred_bbox = pred_bbox[:, non_small_bbox]
+            cls_scores.append(cls_score)
+            cls_labels.append(cls_label)
+            pred_bboxes.append(pred_bbox)
+
+        mlvl_cls_score = torch.cat(cls_scores)
+        mlvl_cls_label = torch.cat(cls_labels)
+        mlvl_pred_bbox = torch.cat(pred_bboxes, dim=1)
+
+        keep_bbox, keep_score, keep_label = utils.multiclass_nms(
+            mlvl_pred_bbox, mlvl_cls_score, mlvl_cls_label,
+            range(1, self.cls_channels+1), test_cfg.nms_iou, test_cfg.min_score)
+
+        if len(keep_score) > test_cfg.max_per_img:
+            _, topk_inds = keep_score.topk(max_per_img)
+            return keep_bbox[:, topk_inds], keep_score[topk_inds], keep_label[topk_inds]
+            
+        return keep_bbox, keep_score, keep_label

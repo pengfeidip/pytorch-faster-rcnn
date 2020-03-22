@@ -1,24 +1,37 @@
 import torch.nn as nn
 import torch, logging
 from . import region
+import torch.nn.functional as F
 
 def focal_loss(pred, target, alpha=0.25, gamma=2.0):
-    logging.info('in focal_loss, pred: {}, target: {}'.format(pred.shape, target.shape))
-    num_cls = pred.shape[0]
+    logging.debug('IN Focal Loss'.center(50, '#'))
+    logging.info('pred: {}, target: {}'\
+                 .format(pred.shape, target.shape))
+    logging.info('target 0:{}, >0:{}'.format((target==0).sum(), (target>0).sum()))
+    num_samp, num_cls = pred.shape
     bg_places = (target==0)
     target = target - 1
-    # TODO
-    
+    target[target==-1]=0
+    tgt_tsr = pred.new_full(pred.size(), 0)
+    tgt_tsr[torch.arange(num_samp), target] = 1
+    tgt_tsr[bg_places,:]=0
+    target = tgt_tsr
+
+    # debug target
+    any_true = target.to(dtype=bool).any(1)
+    logging.info('target tensor pos:{}, neg:{}, values:{}'\
+                 .format((any_true==True).sum(), (any_true==False).sum(), target.unique()))
     
     pred_sigmoid = pred.sigmoid()
     target = target.type_as(pred)
-    pt = (1 - pred_sigmoid) * target + pred_sigmoid * (1 - target)
-    focal_weight = (alpha * target + (1 - alpha) *
-                    (1 - target)) * pt.pow(gamma)
+    pt = pred_sigmoid * target + (1-pred_sigmoid)*(1-target)
+    focal_weight = alpha * (1-pt).pow(gamma)
+    # pt = (1 - pred_sigmoid) * target + pred_sigmoid * (1 - target)
+    # focal_weight = (alpha * target + (1 - alpha) * (1 - target)) * pt.pow(gamma)
     loss = F.binary_cross_entropy_with_logits(
         pred, target, reduction='none') * focal_weight
     # loss = weight_reduce_loss(loss, weight, reduction, avg_factor)
-    return loss
+    return loss.sum()
 
 
 def zero_loss(device):

@@ -142,3 +142,27 @@ def to_pair(val):
         assert len(val) == 2
         pair = tuple(val)
     return pair
+
+def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
+    label_set = list(label_set)
+
+    nms_bbox, nms_score, nms_label = [], [], []
+    for cur_label in label_set:
+        chosen = (label==cur_label)
+        if chosen.sum()==0:
+            continue
+        cur_bbox = bbox[:, chosen]
+        cur_score = score[chosen]
+        non_small = cur_score > min_score
+        cur_score = cur_score[non_small]
+        cur_bbox = cur_bbox[:, non_small]
+        keep = tv.ops.nms(cur_bbox.t(), cur_score, nms_iou)
+        nms_score.append(cur_score[keep])
+        nms_bbox.append(cur_bbox[:, keep])
+        nms_label.append(
+            label.new_full((len(keep), ), cur_label)
+        )
+
+    if len(nms_bbox) != 0:
+        return torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
+    return nms_bbox, nms_score, nms_label
