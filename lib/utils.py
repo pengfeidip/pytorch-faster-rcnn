@@ -103,10 +103,10 @@ def calc_iou(a, b):
     assert a.shape[0] == 4 and b.shape[0] == 4
     tl = torch.max(a[:2].view(2, -1, 1), b[:2].view(2, 1, -1))
     br = torch.min(a[2:].view(2, -1, 1), b[2:].view(2, 1, -1))
-    area_i = torch.prod(br - tl, dim=0)
+    area_i = torch.prod(br - tl + 1, dim=0)
     area_i = area_i * (tl < br).all(dim=0).float()
-    area_a = torch.prod(a[2:]-a[:2], dim=0)
-    area_b = torch.prod(b[2:]-b[:2], dim=0)
+    area_a = torch.prod(a[2:]-a[:2] + 1, dim=0)
+    area_b = torch.prod(b[2:]-b[:2] + 1, dim=0)
     return area_i / (area_a.view(-1, 1) + area_b.view(1, -1) - area_i)
 
 def elem_iou(a, b):
@@ -166,3 +166,10 @@ def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
     if len(nms_bbox) != 0:
         return torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
     return nms_bbox, nms_score, nms_label
+
+
+def one_hot_embedding(label, n_cls):
+    n = len(label)
+    one_hot = label.new_full((n, n_cls), 0)
+    one_hot[torch.arange(n), label] = 1
+    return one_hot

@@ -362,6 +362,8 @@ class RetinaHead(nn.Module):
         self.init_layers()
         logging.info('Constructed RetinaHead with in_channels={}, feat_channels={}, num_levels={}, num_anchors={}'\
                      .format(in_channels, feat_channels, len(self.anchor_creators), self.num_anchors))
+        logging.info('RetinaHead anchor_scales: {}, anchor_ratios: {}, base_sizes: {}'\
+                     .format(self.anchor_scales, self.anchor_ratios, self.base_sizes))
 
     def init_layers(self):
         self.relu = nn.ReLU(inplace=True)
@@ -406,11 +408,10 @@ class RetinaHead(nn.Module):
         cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
         n_pos_samples = (tar_labels>0).sum()
         if tar_labels.numel() != 0:
-            cls_loss = loss.focal_loss(tar_cls_out.t(), tar_labels, self.cls_loss_alpha, self.cls_loss_gamma)
+            cls_loss = loss.sigmoid_focal_loss(tar_cls_out.t(), tar_labels, self.cls_loss_alpha, self.cls_loss_gamma)
             cls_loss = cls_loss / n_pos_samples
             # next calculate regression loss
-            tar_labels[tar_labels>0]=1
-            pos_args = (tar_labels==1)
+            pos_args = (tar_labels>0)
             if pos_args.sum() == 0:
                 logging.warning('RPN recieves no positive samples to train.')
             else:
@@ -422,6 +423,10 @@ class RetinaHead(nn.Module):
         
         
     def forward_train(self, feats, gt_bbox, gt_label, img_size, pad_size, train_cfg, scale):
+        logging.debug('BEFORE forward train, check self.retina_cls.weight, min={}, max={}, mean={}'\
+                      .format(self.retina_cls.weight.min(), self.retina_cls.weight.max(), self.retina_cls.weight.mean()))
+        logging.debug('BEFORE forward train, check self.retina_cls.bias, min={}, max={}, mean={}'\
+                      .format(self.retina_cls.bias.min(), self.retina_cls.bias.max(), self.retina_cls.bias.mean()))
         logging.debug('START of RetinaHead forward_train'.center(50, '='))
         logging.debug('img_size={}, pad_size={}'.format(img_size, pad_size))
         from .registry import build_module
@@ -444,7 +449,7 @@ class RetinaHead(nn.Module):
         anchors = [self.anchor_creators[i](pad_size, feat_sizes[i]) for i in range(num_levels)]
         logging.debug('anchors: \n{}'.format('\n'.join([str(ac.shape) for ac in anchors])))
         anchors = [ac.view(4, -1) for ac in anchors]
-        inside_masks = [inside_anchor_mask(ac, img_size) for ac in anchors]
+        inside_masks = [inside_anchor_mask(ac, img_size, train_cfg.allowed_border) for ac in anchors]
         logging.debug('inside_masks: \n{}'.format('\n'.join([str(iidx.shape) for iidx in inside_masks])))
         in_anchors = [anchors[i][:, inside_masks[i]] for i in range(num_levels)]
         logging.debug('in_anchors: \n{}'.format('\n'.join([str(in_ac.shape) for in_ac in in_anchors])))

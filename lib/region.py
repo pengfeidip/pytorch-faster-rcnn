@@ -95,13 +95,19 @@ class AnchorCreator(object):
             anchors = torch.stack([x_min, y_min, x_max, y_max])
         return anchors
 
-def inside_anchor_mask(anchors, img_size):
+def inside_anchor_mask(anchors, img_size, allowed_border=0):
     with torch.no_grad():
         H, W = img_size
-        inside = (anchors[0,:]>=0) & (anchors[1,:]>=0) & \
-                 (anchors[2,:]<=W) & (anchors[3,:]<=H)
-    return inside
+        if allowed_border < 0:
+            return anchors.new_full((anchors.shape[1], ), True, dtype=torch.bool)
+        else:
+            return \
+                (anchors[0,:] >= -allowed_border) & \
+                (anchors[1,:] >= -allowed_border) & \
+                (anchors[2,:] <  W + allowed_border) & \
+                (anchors[3,:] <  H + allowed_border)
 
+        
 def random_sample_label(labels, pos_num, tot_num):
     assert pos_num <= tot_num
     pos_args = utils.index_of(labels==1)

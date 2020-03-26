@@ -184,6 +184,8 @@ class RetinaNetTrain(object):
 
         comb_loss.backward()
         self.optimizer.step()
+        logging.debug('AFTER step, check grad self.retinanet.bbox_head.retina_cls.weight.grad.mean:{}'\
+                      .format(self.retinanet.bbox_head.retina_cls.weight.grad.mean()))
         self.current_iter += 1
 
     def train(self):

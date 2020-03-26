@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch, logging
 from . import region
 import torch.nn.functional as F
+from . import utils
 
 def focal_loss(pred, target, alpha=0.25, gamma=2.0):
     logging.debug('IN Focal Loss'.center(50, '#'))
@@ -32,6 +33,67 @@ def focal_loss(pred, target, alpha=0.25, gamma=2.0):
         pred, target, reduction='none') * focal_weight
     # loss = weight_reduce_loss(loss, weight, reduction, avg_factor)
     return loss.sum()
+
+def cut_n(n, l=9):
+    n = str(n)
+    if n == '1':
+        n = '1'.center(5,'*')
+    if 'e' in n:
+        return n
+    if len(n) >= l:
+        return n[:l]
+    else:
+        return n+' '*(l-len(n))
+
+def debug_positive_targets(target, p, t):
+    logging.debug('checking sigmoid probability of positive targets')
+    pos_places = (target>0)
+    pos_sig = p[pos_places]
+    pos_target = t[pos_places]
+    for x, y in zip(pos_sig, pos_target):
+        _, max_sig = x.max(0)
+        max_vec = torch.zeros(20)
+        max_vec[max_sig]= 1
+        max_vec = max_vec.tolist()
+        x = x.tolist()
+        y = y.tolist()
+        x = '   '.join([cut_n(xx) for xx in x])
+        y = '   '.join([cut_n(int(xx)) for xx in y])
+        max_vec = '   '.join([cut_n(int(xx)) for xx in max_vec])
+        logging.debug('\n'+'\n'.join([x,y,max_vec]))
+    
+
+def sigmoid_focal_loss(pred, target, alpha=0.25, gamma=2.0, fix_alpha=False):
+    '''
+    Args:
+        pred: [n, num_cls]
+        target: [n], where 0 means background
+    '''
+    logging.debug('sigmoid_focal_loss'.center(50, '#'))
+    logging.debug('alpha={}, gamma={}'.format(alpha, gamma))
+    n_samp, n_cls = pred.size()
+    logging.debug('pred: {}, target: {}, unique vals of target: {}'\
+                  .format(pred.shape, target.shape, target.unique()))
+    logging.debug('check pred logits, max={}, min={}, mean={}'.format(pred.max(), pred.min(), pred.mean()))
+    tar_one_hot  = utils.one_hot_embedding(target, n_cls+1) # [n, num_cls+1]
+    tar_one_hot  = tar_one_hot[:, 1:]  # [n, num_cls]
+    logging.debug('target 1:{}, 0:{}(/20)'.format((tar_one_hot==1).sum(), (tar_one_hot==0).sum()/20))
+    pred_sigmoid  = pred.sigmoid()
+    tar_one_hot = tar_one_hot.to(dtype=pred_sigmoid.dtype)
+    pt = pred_sigmoid * tar_one_hot + (1-pred_sigmoid) * (1-tar_one_hot)
+    logging.debug('checking pt, pt.numel()={}, pt==0:{}'.format(pt.numel(), (pt==0).sum()))
+    if fix_alpha:
+        focal_weight = alpha
+    else:
+        focal_weight  = alpha*tar_one_hot + (1-alpha)*(1-tar_one_hot)
+    focal_weight  = focal_weight * (1-pt).pow(gamma)
+    # debug_positive_target(target, p, t)
+    if focal_weight.max() == 0.75:
+        print('hahahahah')
+    logging.debug('focal weight max={}, min={}, mean={}'.format(
+        focal_weight.max(), focal_weight.min(), focal_weight.mean()))
+    focal_loss = F.binary_cross_entropy_with_logits(pred, tar_one_hot, reduction='none') * focal_weight
+    return focal_loss.sum()
 
 
 def zero_loss(device):
