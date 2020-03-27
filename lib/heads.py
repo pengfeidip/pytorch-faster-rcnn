@@ -111,7 +111,8 @@ class RPNHead(nn.Module):
         assigner = build_module(train_cfg.rpn.assigner)
         sampler = build_module(train_cfg.rpn.sampler)
         tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param \
-            = anchor.anchor_target(cls_out_comb, reg_out_comb, in_anchors, in_mask, gt_bbox, assigner, sampler)
+            = anchor.anchor_target_v2(cls_out_comb, reg_out_comb, 2, in_anchors, in_mask,
+                                      gt_bbox, None, assigner, sampler)
 
         cls_loss, reg_loss = self.loss(tar_cls_out, tar_reg_out, tar_labels, tar_param)
 

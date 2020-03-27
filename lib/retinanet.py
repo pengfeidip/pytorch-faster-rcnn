@@ -166,7 +166,7 @@ class RetinaNetTrain(object):
         labels = labels.to(self.device)
         bboxes = bboxes.to(self.device)
 
-        logging.info('At epoch {}, iteration {}'.center(50, '*').format(epoch, iter_i))
+        logging.info('\n' + 'At epoch {}, iteration {}'.center(50, '#').format(epoch, iter_i))
         logging.info('Current lr: {}'.format(self.get_lr()))
         self.optimizer.zero_grad()
         logging.debug('Image size: {}'.format(img_size))

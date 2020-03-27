@@ -69,7 +69,7 @@ def sigmoid_focal_loss(pred, target, alpha=0.25, gamma=2.0, fix_alpha=False):
         pred: [n, num_cls]
         target: [n], where 0 means background
     '''
-    logging.debug('sigmoid_focal_loss'.center(50, '#'))
+    logging.debug('sigmoid_focal_loss'.center(50, '='))
     logging.debug('alpha={}, gamma={}'.format(alpha, gamma))
     n_samp, n_cls = pred.size()
     logging.debug('pred: {}, target: {}, unique vals of target: {}'\
