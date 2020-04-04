@@ -30,6 +30,10 @@ class RetinaNet(nn.Module):
         
         self.init_weights()
         logging.info('Constructed RetinaNet')
+        print('neck:')
+        print(self.neck)
+        print('bbox_head:')
+        print(self.bbox_head)
 
     def init_weights(self):
         if self.with_neck:

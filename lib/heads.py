@@ -1,7 +1,7 @@
 from torch import nn
 from .region import AnchorCreator, inside_anchor_mask, ProposalCreator
 from .utils import init_module_normal
-from . import loss
+from . import losses
 from . import utils
 from . import anchor
 import logging
@@ -58,7 +58,7 @@ class RPNHead(nn.Module):
 
     def loss(self, tar_cls_out, tar_reg_out, tar_labels, tar_param):
         device=tar_cls_out.device
-        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
+        cls_loss, reg_loss = losses.zero_loss(device), losses.zero_loss(device)
 
         # calculate losses
         if tar_labels.numel() != 0:
@@ -69,8 +69,8 @@ class RPNHead(nn.Module):
             if pos_args.sum() == 0:
                 logging.warning('RPN recieves no positive samples to train.')
             else:
-                reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
-                                                  self.bbox_loss_beta) / n_samples
+                reg_loss = losses.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
+                                                    self.bbox_loss_beta) / n_samples
         else:
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
         return cls_loss, reg_loss
@@ -241,7 +241,7 @@ class BBoxHead(nn.Module):
     def loss(self, cls_out, reg_out, tar_label, tar_param):
         logging.debug('Calculating loss of BBoxHead...')
         device=cls_out.device
-        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
+        cls_loss, reg_loss = losses.zero_loss(device), losses.zero_loss(device)
         if tar_label.numel() != 0:
             tar_label = tar_label.long()
             n_classes = cls_out.shape[1]
@@ -258,7 +258,7 @@ class BBoxHead(nn.Module):
                 logging.warning('BBoxHead recieves no positive samples to train.')
             else:
                 pos_reg = reg_out[pos_arg, :]
-                reg_loss = loss.smooth_l1_loss_v2(pos_reg, tar_param[:, pos_arg].t(), self.bbox_loss_beta) / n_samples
+                reg_loss = losses.smooth_l1_loss_v2(pos_reg, tar_param[:, pos_arg].t(), self.bbox_loss_beta) / n_samples
         else:
             logging.warning('BBoxHead recieves no samples to train, return dummpy losses')
 
@@ -324,14 +324,11 @@ class RetinaHead(nn.Module):
                  stacked_convs,
                  feat_channels,
                  octave_base_scale=4,
-                 scales_per_octave=4,
+                 scales_per_octave=3,
                  anchor_ratios=[0.5, 1.0, 2.0],
                  anchor_strides=[8, 16, 32, 64, 128],
-                 cls_loss_weight=1.0,
-                 cls_loss_alpha=0.25,
-                 cls_loss_gamma=2.0,
-                 bbox_loss_weight=1.0,
-                 bbox_loss_beta=1.0/9.0):
+                 cls_loss=None,
+                 bbox_loss=None):
         super(RetinaHead, self).__init__()
         self.in_channels = in_channels
         self.feat_channels = feat_channels
@@ -344,14 +341,12 @@ class RetinaHead(nn.Module):
         octave_scales = [2**(i/scales_per_octave) for i in range(scales_per_octave)]
         anchor_scales = [octave_base_scale*octave_scale for octave_scale in octave_scales]
 
+        from .registry import build_module
         self.anchor_scales = anchor_scales
         self.anchor_ratios = anchor_ratios
         self.anchor_strides = anchor_strides
-        self.cls_loss_weight = cls_loss_weight
-        self.cls_loss_alpha = cls_loss_alpha
-        self.cls_loss_gamma = cls_loss_gamma
-        self.bbox_loss_weight = bbox_loss_weight
-        self.bbox_loss_beta = bbox_loss_beta
+        self.cls_loss=build_module(cls_loss)
+        self.bbox_loss=build_module(bbox_loss)
         self.base_sizes = tuple(anchor_strides)
         self.anchor_creators = [AnchorCreator(base=base_size,
                                               scales=anchor_scales,
@@ -367,15 +362,16 @@ class RetinaHead(nn.Module):
                      .format(self.anchor_scales, self.anchor_ratios, self.base_sizes))
 
     def init_layers(self):
-        self.relu = nn.ReLU(inplace=True)
         cls_convs = []
         reg_convs = []
         for i in range(self.stacked_convs):
             chn = self.in_channels if i == 0 else self.feat_channels
             cls_convs.append(
                 nn.Conv2d(chn, self.feat_channels, 3, padding=1))
+            cls_convs.append(nn.ReLU(inplace=True))
             reg_convs.append(
                 nn.Conv2d(chn, self.feat_channels, 3, padding=1))
+            reg_convs.append(nn.ReLU(inplace=True))
         self.cls_convs = nn.Sequential(*cls_convs)
         self.reg_convs = nn.Sequential(*reg_convs)
         self.retina_cls = nn.Conv2d(self.feat_channels,
@@ -383,14 +379,15 @@ class RetinaHead(nn.Module):
                                     3,
                                     padding=1)
         self.retina_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 3, padding=1)
-        print(self)
         # here the classifier and regressor use filter size=3
 
     def init_weights(self):
         for m in self.cls_convs:
-            normal_init(m, std=0.01)
+            if isinstance(m, nn.Conv2d):
+                normal_init(m, std=0.01)
         for m in self.reg_convs:
-            normal_init(m, std=0.01)
+            if isinstance(m, nn.Conv2d):
+                normal_init(m, std=0.01)
         prior_prob = 0.01
         bias_init = float(-np.log((1-prior_prob)/ prior_prob))
         normal_init(self.retina_cls, std=0.01, bias=bias_init)
@@ -406,18 +403,17 @@ class RetinaHead(nn.Module):
 
     def loss(self, tar_cls_out, tar_reg_out, tar_labels, tar_param):
         device = tar_cls_out.device
-        cls_loss, reg_loss = loss.zero_loss(device), loss.zero_loss(device)
+        cls_loss, reg_loss = losses.zero_loss(device), losses.zero_loss(device)
         n_pos_samples = (tar_labels>0).sum()
         if tar_labels.numel() != 0:
-            cls_loss = loss.sigmoid_focal_loss(tar_cls_out.t(), tar_labels, self.cls_loss_alpha, self.cls_loss_gamma)
+            cls_loss = self.cls_loss(tar_cls_out.t(), tar_labels)
             cls_loss = cls_loss / n_pos_samples
             # next calculate regression loss
             pos_args = (tar_labels>0)
             if pos_args.sum() == 0:
                 logging.warning('RPN recieves no positive samples to train.')
             else:
-                reg_loss = loss.smooth_l1_loss_v2(tar_reg_out[:, pos_args], tar_param[:, pos_args],
-                                                  self.bbox_loss_beta) / n_pos_samples
+                reg_loss = self.bbox_loss(tar_reg_out[:, pos_args], tar_param[:, pos_args]) / n_pos_samples
         else:
             logging.warning('RPN recieves no samples to train, return a dummy zero loss')
         return cls_loss, reg_loss
@@ -468,9 +464,7 @@ class RetinaHead(nn.Module):
         logging.debug('after anchor_target, tar_cls_out: {}'.format(tar_cls_out.size()))
         logging.debug('after anchor_target, reg_cls_out: {}'.format(tar_reg_out.size()))
         cls_loss, reg_loss = self.loss(tar_cls_out, tar_reg_out, tar_labels, tar_param)
-        return \
-            cls_loss * self.cls_loss_weight, \
-            reg_loss * self.bbox_loss_weight
+        return cls_loss, reg_loss
 
     
     def forward_test(self, feats, img_size, pad_size, test_cfg, scale):
