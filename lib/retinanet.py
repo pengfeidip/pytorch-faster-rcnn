@@ -47,23 +47,26 @@ class RetinaNet(nn.Module):
             x = self.neck(x)
         return x
 
-    def forward_train(self, img_data, img_size, gt_bbox, gt_label, scale):
+    def forward_train(self, img_data, gt_bboxes, gt_labels, img_meta):
         logging.info('Start to forward in train mode')
         feats = self.extract_feat(img_data)
         train_cfg = self.train_cfg
-        pad_size = img_data.shape[-2:]
-        cls_loss, reg_loss = self.bbox_head.forward_train(feats, gt_bbox, gt_label,
+        pad_size = img_meta['pad_shape'][:2]
+        img_size = img_meta['img_shape'][:2]
+        scale = img_meta['scale_factor']
+        cls_loss, reg_loss = self.bbox_head.forward_train(feats, gt_bboxes, gt_labels,
                                                           img_size, pad_size, train_cfg, scale)
-        return cls_loss, reg_loss
+        return {'cls_loss':cls_loss, 'reg_loss':reg_loss}
 
-    def forward_test(self, img_data, img_size, scale):
+    def forward_test(self, img_data, img_meta):
         logging.info('Star to forward in eval mode')
-        logging.info('Image size: {}'.format(img_size))
-        feats=self.extract_feat(img_data)
+        img_size = img_meta['img_shape'][:2]
+        pad_size = img_meta['pad_shape'][:2]
+        scale = img_meta['scale_factor']
+        feats = self.extract_feat(img_data)
         logging.debug('Feature size: \n{}'.format(
             '\n'.join([str(feat.shape) for feat in feats])))
-        test_cfg=self.test_cfg
-        pad_size = img_data.shape[-2:]
+        test_cfg = self.test_cfg
         bbox, score, label = self.bbox_head.forward_test(
             feats, img_size, pad_size, self.test_cfg, scale
         )

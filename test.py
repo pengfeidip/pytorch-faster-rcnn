@@ -10,7 +10,8 @@ args = parser.parse_args()
 import os, sys, glob, random, logging, json
 import os.path as osp
 import mmcv, torch
-from lib import retinanet, datasets
+from lib import datasets
+from lib.tester import BasicTester
 import torch
 
 
@@ -43,12 +44,17 @@ def main():
     device = torch.device('cpu')
     if args.gpu is not None:
         device = torch.device('cuda:{}'.format(args.gpu))
-    tester = retinanet.RetinaNetTest(
-        config.model,
+
+    from lib.registry import build_module
+    model = build_module(config.model, train_cfg=config.train_cfg, test_cfg=config.test_cfg)
+    model.to(device)
+
+    tester = BasicTester(
+        model,
         config.train_cfg,
         config.test_cfg,
         device)
-    tester.init_detector()
+
     tester.load_ckpt(args.ckpt)
     infer_res = tester.inference(dataloader)
 

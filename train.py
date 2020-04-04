@@ -11,6 +11,7 @@ import os, sys, glob, random, logging
 import os.path as osp
 import mmcv, torch
 from lib import retinanet, datasets
+from lib.trainer import BasicTrainer
 import torch
 
 
@@ -23,6 +24,17 @@ def check_args():
 def set_seed(seed):
     random.seed(seed)
     torch.manual_seed(seed)
+
+def set_logging(log_file=None):
+    log_cfg = {
+        'format':'%(asctime)s: %(message)s\t[%(levelname)s]',
+        'datefmt':'%y%m%d_%H%M%S_%a',
+        'level': logging.DEBUG
+    }
+    if log_file is not None:
+        log_cfg['filename']=log_file
+    logging.basicConfig(**log_cfg)
+
 
 def main():
     check_args()
@@ -45,23 +57,32 @@ def main():
                                            1, dist=False,
                                            shuffle=config.data.train.loader.shuffle)
     
-    train_cfg = config['train_cfg']
-    train_cfg['dataloader'] = dataloader
-    train_cfg['work_dir'] = args.work_dir
-    
-    trainer = retinanet.RetinaNetTrain(
-        retinanet_cfg=config.model,
-        dataloader=dataloader,
-        work_dir=args.work_dir,
-        total_epochs=config.train_cfg.total_epochs,
-        optimizer=config.train_cfg.optimizer,
-        log_file=config.train_cfg.log_file,
-        save_interval=config.train_cfg.save_interval,
-        device=device,
-        lr_cfg=config.lr_config,
-        train_cfg=config.train_cfg,
-        test_cfg=config.test_cfg)
+    train_cfg = config.train_cfg
+    train_cfg.dataloader = dataloader
+    train_cfg.work_dir = args.work_dir
+    test_cfg = config.test_cfg
 
+    log_file = train_cfg.log_file
+    if log_file is not None:
+        log_file = osp.join(args.work_dir, log_file)
+    set_logging(log_file)
+
+    from lib.registry import build_module
+    model = build_module(config.model, train_cfg=train_cfg, test_cfg=test_cfg)
+
+    trainer = BasicTrainer(
+        dataloader,
+        args.work_dir,
+        model,
+        train_cfg,
+        config.optimizer,
+        config.optimizer_config,
+        config.lr_config,
+        config.ckpt_config,
+        None,
+        device=device
+    )
+    
     # do not start to log until logging.basicConfig is set
     logging.info('Work dir: {}'.format(args.work_dir))
     logging.info('Config: {}'.format(args.config_file))

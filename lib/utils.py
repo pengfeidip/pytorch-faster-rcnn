@@ -173,3 +173,23 @@ def one_hot_embedding(label, n_cls):
     one_hot = label.new_full((n, n_cls), 0)
     one_hot[torch.arange(n), label] = 1
     return one_hot
+
+def multi_apply(*args, func):
+    list_args = [arg for arg in args if isinstance(arg, list)]
+    if len(list_args) == 0:
+        return func(*args)
+    mult_arg_len = len(list_args[0])
+    for arg in list_args:
+        if len(arg) != mult_arg_len:
+            raise ValueError('Arg: {} does not have the same length as others'.format(arg))
+    result = []
+    for i in range(mult_arg_len):
+        cur_args = []
+        for arg in args:
+            if isinstance(arg, list):
+                cur_args.append(arg[i])
+            else:
+                cur_args.append(arg)
+        result.append(func(*cur_args))
+    return result
+    
