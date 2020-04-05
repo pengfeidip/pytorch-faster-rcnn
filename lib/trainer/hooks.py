@@ -81,7 +81,7 @@ class LrHook(Hook):
         epoch = self.trainer.cur_epoch
         if epoch in self.lr_decay:
             decay = self.lr_decay[epoch]
-            lr = self.traienr.get_lr()
+            lr = self.trainer.get_lr()
             lr = [x*decay for x in lr]
             self.trainer.set_lr(lr)
 
