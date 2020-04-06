@@ -1,12 +1,10 @@
 from torch import nn
-from .region import AnchorCreator, inside_anchor_mask, ProposalCreator
-from .utils import init_module_normal
-from . import losses
-from . import utils
-from . import anchor
-import logging
-import torchvision, torch
-from copy import copy
+from ..utils import init_module_normal
+from ...bbox import bbox_target
+from .. import losses
+from .. import utils
+
+import logging, torch
 from mmcv.cnn import normal_init
 
 
@@ -44,22 +42,26 @@ class BBoxHead_v2(nn.Module):
     def forward(self):
         raise NotImplementedError('forward is not implemented')
 
-    # targets ought to be calculated separately
-    def single_image_targets(self):
-        # TODO
-        pass
+    def bbox_targets(self, img_props, gt_bboxes, gt_labels, assigner, sampler, target_means, target_stds):
+        return utils.multi_apply(bbox_target, img_props, gt_bboxes, gt_labels,
+                                 assigner, sampler, target_means, target_stds)
 
     # simple calc loss from targets and avg_factor
-    def calc_loss(self):
-        pass
+    def calc_loss(self, cls_out, reg_out, tar_label, tar_param):
+        device=cls_out.device
+        cls_loss, reg_loss = losses.zero_loss(device), losses.zero_loss(device)
+        if tar_label.numel() != 0:
+            n_samples = len(tar_labels)
+            cls_loss = self.loss_cls(cls_out, tar_label) / n_samples
+            if self.reg_class_agnostic:
+                
+            pass
+        else:
+            logging.warning('BBoxHead received no samples to train, return dummy losses')
 
-    # forward data, calc targets, and then calc_loss
-    def loss(self):
-        pass
+        
 
-    # a conveinient chain of things need to do forward train mode
-    def forward_train(self):
-        pass
+
 
     # only refine bbox and ignore gt
     def refine_bbox(self):

@@ -91,3 +91,15 @@ class SmoothL1Loss(nn.Module):
 
     def forward(self, x, y):
         return self.loss_weight * smooth_l1_loss_v2(x, y, self.beta)
+
+
+class CrossEntropy(nn.Module):
+    def __init__(self,
+                 use_sigmoid=False,
+                 loss_weight=1.0):
+        self.use_sigmoid=False
+        self.loss_weight=loss_weight
+
+    def forward(self, pred, label):
+        # TODO
+        pass

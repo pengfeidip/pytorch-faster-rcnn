@@ -178,7 +178,7 @@ def one_hot_embedding(label, n_cls):
     one_hot[torch.arange(n), label] = 1
     return one_hot
 
-def multi_apply(*args, func):
+def multi_apply(func, *args):
     list_args = [arg for arg in args if isinstance(arg, list)]
     if len(list_args) == 0:
         return func(*args)
