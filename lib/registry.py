@@ -5,12 +5,14 @@ from .retinanet import RetinaNet
 from .heads import RPNHead, BBoxHead, RetinaHead
 from .necks import FPN
 from .losses import FocalLoss, SmoothL1Loss
+from .detectors import RetinaNet_v2
+from .heads_ import RetinaHead_v2
 
 from copy import deepcopy
 from torch.optim import SGD
 
 _modules_ = [ResNet50, MaxIoUAssigner, RandomSampler, CascadeRCNN, RPNHead, BBoxHead,
-             SGD, VGG16, ResLayerC5, SingleRoIExtractor, FPN, RetinaNet, RetinaHead,
+             SGD, VGG16, ResLayerC5, SingleRoIExtractor, FPN, RetinaNet, RetinaHead, RetinaNet_v2, RetinaHead_v2,
              FocalLoss, SmoothL1Loss]
 
 MODULES = { cls.__name__:cls for cls in _modules_ }

@@ -53,7 +53,7 @@ def main():
         img_prefix=config.data.train.img_prefix,
         pipeline=config.data.train.pipeline
     )
-    dataloader = datasets.build_dataloader(dataset, 1, config.data.train.loader.num_workers,
+    dataloader = datasets.build_dataloader(dataset, config.data.train.imgs_per_gpu, config.data.train.loader.num_workers,
                                            1, dist=False,
                                            shuffle=config.data.train.loader.shuffle)
     

@@ -72,7 +72,8 @@ class FPN(nn.Module):
         lateral_outs = [self.lateral_convs[i-start](inputs[i]) \
                         for i in range(start, end)]
         for i in range(self.used_ins-2, -1, -1):
-            lateral_outs[i] += F.interpolate(lateral_outs[i+1], scale_factor=2, mode='nearest')
+            prev_shape = lateral_outs[i].shape[2:]
+            lateral_outs[i] += F.interpolate(lateral_outs[i+1], size=prev_shape, mode='nearest')
         outs = [self.fpn_convs[i](lateral_outs[i]) for i in range(self.used_ins)]
         if self.num_outs > self.used_ins:
             for i in range(self.used_ins, self.num_outs):

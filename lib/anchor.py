@@ -111,8 +111,8 @@ def anchor_target_v2(cls_out, reg_out, cls_channels, in_anchors, in_mask, gt_bbo
     tar_bbox = label_bboxes[:, non_neg_places] #128 target bbox where anchors should regress to(only those pos anchors)
     tar_param = utils.bbox2param(tar_anchors, tar_bbox) # deltas where tar_reg_out should regress to(only pos)
     if target_means is not None and target_stds is not None:
-        param_mean = tar_param.new(target_means).new(4, 1)
-        param_std  = tar_param.new(target_stds).new(4, 1)
+        param_mean = tar_param.new(target_means).view(4, 1)
+        param_std  = tar_param.new(target_stds).view(4, 1)
         tar_param = (tar_param - param_mean) / param_std
     logging.debug('labels chosen to train network neg={}, pos={}'\
                   .format((tar_labels==0).sum(), (tar_labels>0).sum()))

@@ -12,7 +12,7 @@ import os.path as osp
 import mmcv, torch
 from lib import datasets
 from lib.tester import BasicTester
-import torch
+import torch, time
 
 
 def check_args():
@@ -39,7 +39,7 @@ def main():
         img_prefix=config.data.test.img_prefix,
         pipeline=config.data.test.pipeline
     )
-    dataloader = datasets.build_dataloader(dataset, 1, config.data.test.loader.num_workers,
+    dataloader = datasets.build_dataloader(dataset, config.data.test.imgs_per_gpu, config.data.test.loader.num_workers,
                                            1, dist=False, shuffle=config.data.test.loader.shuffle)
     device = torch.device('cpu')
     if args.gpu is not None:
@@ -56,6 +56,7 @@ def main():
         device)
 
     tester.load_ckpt(args.ckpt)
+    start = time.time()
     infer_res = tester.inference(dataloader)
 
     anno_idx, out_json = 0, []
@@ -68,11 +69,13 @@ def main():
                 'image_id': iid,
                 'bbox': [round(x.item(), 2) for x in cur_bbox],
                 'score': round(score[i].item(), 3),
-                'category_id': category[i].item()+1
+                'category_id': category[i].item()
             }
             out_json.append(cur_pred)
             anno_idx += 1
     json.dump(out_json, open(args.out, 'w'))
+    time_used = time.time() - start
+    print('Finished inference, time used: {} secs or {} mins'.format(time_used, time_used/60))
     
 if __name__ == '__main__':
     main()

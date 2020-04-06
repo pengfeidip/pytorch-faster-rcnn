@@ -64,6 +64,7 @@ class BasicTrainer(Hookable):
         self.model.to(self.device)
         self.model.train()
         dataset_size = len(self.dataloader)
+        logging.info('Dataset size: {}'.format(dataset_size))
         tot_iters = dataset_size * (self.total_epochs - self.cur_epoch + 1)
         eta_iters, eta_ct = 200, 0
         start = time.time()
@@ -95,15 +96,19 @@ class BasicTrainer(Hookable):
 
     def train_one_iter(self, iter_i, epoch, train_data):
         self.call_hooks('before_iter')
-        img_meta = train_data['img_meta'].data[0][0]
+        img_metas = train_data['img_meta'].data[0]
         img_data = train_data['img'].data[0].to(self.device)
-        gt_bboxes = train_data['gt_bboxes'].data[0][0].t().to(self.device)
-        gt_labels = train_data['gt_labels'].data[0][0].to(self.device)
+
+        gt_bboxes = train_data['gt_bboxes'].data[0]
+        gt_bboxes = [gt_bbox.to(self.device).t() for gt_bbox in gt_bboxes]
+        gt_labels = train_data['gt_labels'].data[0]
+        gt_labels = [gt_label.to(self.device) for gt_label in gt_labels]
 
         logging.info('\n'+'At epoch {}, iteration {}'.center(50, '#').format(epoch, iter_i))
-        logging.info('Image meta: {}'.format(img_meta))
+        logging.info('Image data: {}'.format(img_data.shape))
+        logging.info('Image metas: {}'.format('\n'.join([str(img_meta) for img_meta in img_metas])))
         self.optimizer.zero_grad()
-        losses = self.model.forward_train(img_data, gt_bboxes, gt_labels, img_meta)
+        losses = self.model.forward_train(img_data, gt_bboxes, gt_labels, img_metas)
 
         for loss_name, loss_val in losses.items():
             logging.info('{}: {}'.format(loss_name, loss_val.item()))

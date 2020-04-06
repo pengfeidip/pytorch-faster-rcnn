@@ -29,6 +29,7 @@ class AnchorCreator(object):
         self.base = base
         self.scales = scales
         self.aspect_ratios = aspect_ratios
+        self.num_anchors = len(scales)*len(aspect_ratios)
         self.cached = {}
         self.count = 0
         anchor_ws, anchor_hs = [], []
@@ -95,6 +96,18 @@ class AnchorCreator(object):
             anchors = torch.stack([x_min, y_min, x_max, y_max])
         return anchors
 
+# inside grid mask, using img_size, not pad_size
+def inside_grid_mask(num_anchors, input_size, img_size, grid_size, device=torch.device('cpu')):
+    assert img_size[0] <= input_size[0] and img_size[1] <= input_size[1]
+    h_ratio, w_ratio = [grid_size[i]/input_size[i] for i in range(2)]
+    assert h_ratio <= 1 and w_ratio <= 1
+    in_h = min(grid_size[0], int(img_size[0]*h_ratio)+1)
+    in_w = min(grid_size[1], int(img_size[1]*w_ratio)+1)
+    flags = torch.zeros((num_anchors, grid_size[0], grid_size[1]), device=device)
+    flags[:, :in_h, :in_w] = 1
+    return flags.view(-1)
+
+    
 def inside_anchor_mask(anchors, img_size, allowed_border=0):
     with torch.no_grad():
         H, W = img_size

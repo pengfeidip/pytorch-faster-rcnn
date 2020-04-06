@@ -11,6 +11,10 @@ IMG_PIL2TENSOR = tv.transforms.Compose(
     [tv.transforms.ToTensor(),
      tv.transforms.Normalize(mean=IMGNET_MEAN, std=IMGNET_STD)])
 
+def input_size(img_metas):
+    pad_sizes = [img_meta['pad_shape'][:2] for img_meta in img_metas]
+    return [max([pad_size[i] for pad_size in pad_sizes]) for i in range(2)]
+
 # from image file to batched input to a network
 def imread(file_path):
     img = Image.open(file_path)
