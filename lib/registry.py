@@ -1,19 +1,19 @@
 from .backbones import ResNet50, VGG16, ResLayerC5
-from .region import MaxIoUAssigner, RandomSampler, SingleRoIExtractor
+from .region import MaxIoUAssigner, RandomSampler, SingleRoIExtractor, SingleRoIExtractor_v2
 from .cascade_rcnn import CascadeRCNN
 from .retinanet import RetinaNet
 from .heads import RPNHead, BBoxHead, RetinaHead
 from .necks import FPN
-from .losses import FocalLoss, SmoothL1Loss
-from .detectors import RetinaNet_v2
-from .heads_ import RetinaHead_v2
+from .losses import FocalLoss, SmoothL1Loss, CrossEntropy
+from .detectors import RetinaNet_v2, CascadeRCNN_v2
+from .heads_ import RetinaHead_v2, RPNHead_v2, RCNNHead
 
 from copy import deepcopy
 from torch.optim import SGD
 
 _modules_ = [ResNet50, MaxIoUAssigner, RandomSampler, CascadeRCNN, RPNHead, BBoxHead,
              SGD, VGG16, ResLayerC5, SingleRoIExtractor, FPN, RetinaNet, RetinaHead, RetinaNet_v2, RetinaHead_v2,
-             FocalLoss, SmoothL1Loss]
+             FocalLoss, SmoothL1Loss, CascadeRCNN_v2, RPNHead_v2, CrossEntropy, SingleRoIExtractor_v2, RCNNHead]
 
 MODULES = { cls.__name__:cls for cls in _modules_ }
 

@@ -167,6 +167,7 @@ class AnchorHead(nn.Module):
         cls_scores, cls_labels, pred_bboxes = [], [], []
         for i in range(num_levels):
             cls_out, reg_out = cls_outs[i], reg_outs[i]
+            anchor = anchors[i]
             fg_places = torch.full((cls_out.shape[1], ), True, dtype=torch.bool, device=device)
             if self.use_sigmoid:
                 cls_sig = cls_out.sigmoid()
@@ -176,10 +177,11 @@ class AnchorHead(nn.Module):
                 cls_soft = cls_out.softmax(dim=0)
                 cls_score, cls_label = cls_soft.max(0)
                 fg_places = cls_label>0
-                cls_score = cls_score[fg_palces]
+                cls_score = cls_score[fg_places]
                 cls_label = cls_label[fg_places]
             reg_out = reg_out[:, fg_places]
-            anchor = anchors[i]
+            anchor = anchor[:, fg_places]
+
             if test_cfg.pre_nms < len(cls_score):
                 _, topk_inds = cls_score.topk(test_cfg.pre_nms)
                 cls_score = cls_score[topk_inds]
@@ -205,31 +207,35 @@ class AnchorHead(nn.Module):
         mlvl_cls_score = torch.cat(cls_scores)
         mlvl_cls_label = torch.cat(cls_labels)
         mlvl_pred_bbox = torch.cat(pred_bboxes, dim=1)
+        if 'min_score' not in test_cfg:
+            test_cfg.min_score = -1
         keep_bbox, keep_score, keep_label = utils.multiclass_nms(
             mlvl_pred_bbox, mlvl_cls_score, mlvl_cls_label,
             range(1, self.cls_channels + 1), test_cfg.nms_iou, test_cfg.min_score)
-        if len(keep_score) > test_cfg.max_per_img:
+        if 'max_per_img' in test_cfg and len(keep_score) > test_cfg.max_per_img:
             _, topk_inds = keep_score.topk(test_cfg.max_per_img)
             return keep_bbox[:, topk_inds], keep_score[topk_inds], keep_label[topk_inds]
         return keep_bbox, keep_score, keep_label
-            
+
     def predict_bboxes(self, feats, img_metas, test_cfg):
         cls_outs, reg_outs = self.forward(feats)
-        num_levels = len(feats)
+        return self.predict_bboxes_from_output(cls_outs, reg_outs, img_metas, test_cfg)
+            
+    def predict_bboxes_from_output(self, cls_outs, reg_outs, img_metas, test_cfg):
+        num_levels = len(cls_outs)
         num_imgs = len(img_metas)
-        device=feats[0].device
-
+        device=cls_outs[0].device
         _ = [ac.to(device) for ac in self.anchor_creators]
         input_size = utils.input_size(img_metas)
         grid_sizes = [cls_out.shape[-2:] for cls_out in cls_outs]
         level_anchors = self.create_anchors(input_size, grid_sizes)
-
         preds = []
+        
         for i, img_meta in enumerate(img_metas):
             level_cls_outs = [cls_out[i] for cls_out in cls_outs]
             level_reg_outs = [reg_out[i] for reg_out in reg_outs]
             bbox, score, label = self.predict_single_image(
                 level_cls_outs, level_reg_outs, level_anchors, img_meta, test_cfg)
             preds.append([bbox, score, label, img_meta])
+            print('bbox.shape', bbox.shape)
         return preds
-        

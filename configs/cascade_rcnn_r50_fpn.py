@@ -2,7 +2,7 @@
 
 # Faster RCNN is equivalent to CascadeRCNN with one stage?
 model=dict(
-    type='CascadeRCNN',
+    type='CascadeRCNN_v2',
     num_stages=3,
     backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
     neck=dict(
@@ -12,24 +12,23 @@ model=dict(
         num_outs=5
     ),
     rpn_head=dict(
-        type='RPNHead',
+        type='RPNHead_v2',
         in_channels=256,
         feat_channels=256,
         anchor_scales=[8],
         anchor_ratios=[0.5, 1.0, 2.0],
         anchor_strides=[4, 8, 16, 32, 64],
-        cls_loss_weight=1.0,
-        bbox_loss_weight=1.0,
-        bbox_loss_beta=1.0/9.0),
+        loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+        loss_bbox=dict(type='SmoothL1Loss', beta=1.0/9.0, loss_weight=1.0)),
     roi_extractor=dict(
-        type='SingleRoIExtractor',
+        type='SingleRoIExtractor_v2',
         roi_layer='RoIAlign',
         output_size=(7, 7),
         featmap_strides=[4, 8, 16, 32],
     ),
     rcnn_head=[
         dict(
-            type='BBoxHead',
+            type='RCNNHead',
             in_channels=256,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
@@ -38,10 +37,11 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
             reg_class_agnostic=True,
-            bbox_loss_beta=1.0
+            loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
         ),
         dict(
-            type='BBoxHead',
+            type='RCNNHead',
             in_channels=256,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
@@ -50,10 +50,11 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.05, 0.05, 0.1, 0.1],
             reg_class_agnostic=True,
-            bbox_loss_beta=1.0
+            loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
         ),
         dict(
-            type='BBoxHead',
+            type='RCNNHead',
             in_channels=256,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
@@ -62,7 +63,8 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.033, 0.033, 0.067, 0.067],
             reg_class_agnostic=True,
-            bbox_loss_beta=1.0
+            loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
         )
     ]
 )
@@ -80,13 +82,14 @@ train_cfg = dict(
             type='RandomSampler',
             max_num=256,
             pos_num=128
-        )
+        ),
+        allowed_border=-1
     ),
     rpn_proposal=dict(
         pre_nms=2000,
         post_nms=2000,
         nms_iou=0.7,
-        min_size=0,
+        min_bbox_size=0,
     ),
     rcnn=[
         dict(
@@ -123,8 +126,7 @@ train_cfg = dict(
     stage_loss_weight=[1.0, 0.5, 0.25],
     
     total_epochs=14,
-    optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001),
-    log_file='train.log',
+    log_file=None,
     save_interval=2
 )
 
@@ -135,17 +137,19 @@ lr_config=dict(
     lr_decay={9:0.1, 12:0.1},
 )
 
+optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
+optimizer_config=dict(grad_clip=dict(max_norm=35, norm_type=2))
+ckpt_config=dict(interval=2)
 
 test_cfg = dict(
     rpn=dict(
         pre_nms=1000,
-        post_nms=1000,
+        max_per_img=1000, # same as post_nms
         nms_iou=0.7,
         min_size=0.0,
     ),
     rcnn=dict(min_score=0.05, nms_iou=0.5)
 ) 
-
 
 
 img_norm = dict(
@@ -158,7 +162,7 @@ train_pipeline=[
     dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm),
-    dict(type='Pad', size_divisor=32),
+    #dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
 ]
@@ -168,23 +172,25 @@ test_pipeline=[
     dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm),
-    dict(type='Pad', size_divisor=32),
+    #dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img']),
 ]
 
 data = dict(
     train=dict(
+        imgs_per_gpu=2,
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
         img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
         pipeline=train_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
+        imgs_per_gpu=2,
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
         img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
         pipeline=test_pipeline,
-        loader=dict(batch_size=1, num_workers=4, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=False),
     )
 )
 

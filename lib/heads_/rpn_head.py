@@ -15,7 +15,6 @@ class RPNHead_v2(AnchorHead):
                  target_stds=[1.0, 1.0, 1.0, 1.0],
                  loss_cls=None,
                  loss_bbox=None):
-        super(RPNHead, self).__init__()
         self.in_channels=in_channels
         self.feat_channels=feat_channels
         
@@ -29,7 +28,7 @@ class RPNHead_v2(AnchorHead):
         super(RPNHead_v2, self).__init__(
             num_classes=2,
             anchor_scales=anchor_scales,
-            anchor_ratios=anchor_ratios
+            anchor_ratios=anchor_ratios,
             anchor_strides=anchor_strides,
             target_means=target_means,
             target_stds=target_stds,
@@ -56,8 +55,10 @@ class RPNHead_v2(AnchorHead):
         logging.info('Initialized weights for RPNHead.')
         
     def forward(self, xs):
+        print('in RPNHead forward, input:')
+        for tmp in xs:
+            print(tmp.shape)
         conv_outs = [self.relu(self.conv(x)) for x in xs]
         cls_outs = [self.classifier(x) for x in conv_outs]
         reg_outs = [self.regressor(x) for x in conv_outs]
         return cls_outs, reg_outs
-

@@ -181,8 +181,9 @@ def one_hot_embedding(label, n_cls):
 def multi_apply(func, *args):
     list_args = [arg for arg in args if isinstance(arg, list)]
     if len(list_args) == 0:
-        return func(*args)
-    mult_arg_len = len(list_args[0])
+        mult_arg_len = 1
+    else:
+        mult_arg_len = len(list_args[0])
     for arg in list_args:
         if len(arg) != mult_arg_len:
             raise ValueError('Arg: {} does not have the same length as others'.format(arg))
@@ -196,4 +197,9 @@ def multi_apply(func, *args):
                 cur_args.append(arg)
         result.append(func(*cur_args))
     return result
-    
+# WARNING: assume the return of one call has multi values to avoid ambiguity 
+def unpack_multi_result(multi_res):
+    assert len(multi_res) != 0
+    num_ret = len(multi_res[0])
+    return [[res[i] for res in multi_res] for i in range(num_ret)]
+        
