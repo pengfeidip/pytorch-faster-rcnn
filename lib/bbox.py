@@ -9,6 +9,7 @@ def _bbox_target(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means=
     if isinstance(sampler, dict):
         sampler = build_module(sampler)
     gt_bbox = gt_bbox.to(props_bbox.dtype)
+    logging.debug('props_bbox before adding GT: {}'.format(props_bbox.shape))
     props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
     logging.debug('props_bbox after adding GT: {}'.format(props_bbox.shape))
     

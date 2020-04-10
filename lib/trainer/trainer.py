@@ -104,9 +104,10 @@ class BasicTrainer(Hookable):
         gt_labels = train_data['gt_labels'].data[0]
         gt_labels = [gt_label.to(self.device) for gt_label in gt_labels]
 
-        logging.info('\n'+'At epoch {}, iteration {}'.center(50, '#').format(epoch, iter_i))
+        logging.info('\n'+' At epoch {}, iteration {} '.center(100, '#').format(epoch, iter_i))
         logging.info('Image data: {}'.format(img_data.shape))
         logging.info('Image metas: {}'.format('\n'.join([str(img_meta) for img_meta in img_metas])))
+        logging.info('GT Bbox: {}'.format(', '.join([str(gt_bbox.shape) for gt_bbox in gt_bboxes])))
         self.optimizer.zero_grad()
         losses = self.model.forward_train(img_data, gt_bboxes, gt_labels, img_metas)
 

@@ -31,8 +31,9 @@ class BasicTester(object):
                 img_data  = test_data['img'].data[0].to(self.device)
                 
 
-                preds = self.inference_one(img_data, img_metas)
-                for bbox, score, category, img_meta in preds:
+                bboxes, scores, categories = self.inference_one(img_data, img_metas)
+                for i in range(len(img_metas)):
+                    bbox, score, category, img_meta = bboxes[i], scores[i], categories[i], img_metas[i]
                     scale = img_meta['scale_factor']
                     filename = img_meta['filename']
                     filename = osp.basename(filename)

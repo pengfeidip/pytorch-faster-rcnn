@@ -83,11 +83,12 @@ train_cfg = dict(
             max_num=256,
             pos_num=128
         ),
-        allowed_border=-1
+        allowed_border=0
     ),
     rpn_proposal=dict(
         pre_nms=2000,
-        post_nms=2000,
+        post_nms=2000, # used to be post_nms
+        max_num=2000,
         nms_iou=0.7,
         min_bbox_size=0,
     ),
@@ -126,10 +127,20 @@ train_cfg = dict(
     stage_loss_weight=[1.0, 0.5, 0.25],
     
     total_epochs=14,
-    log_file=None,
+    log_file='train.log',
     save_interval=2
 )
 
+test_cfg = dict(
+    rpn=dict(
+        pre_nms=1000,
+        post_nms=1000, # same as post_nms
+        max_num=1000,
+        nms_iou=0.7,
+        min_bbox_size=0.0,
+    ),
+    rcnn=dict(min_score=0.05, nms_iou=0.5)
+) 
 
 lr_config=dict(
     warmup_iters=500,
@@ -137,19 +148,9 @@ lr_config=dict(
     lr_decay={9:0.1, 12:0.1},
 )
 
-optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
+optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=dict(max_norm=35, norm_type=2))
 ckpt_config=dict(interval=2)
-
-test_cfg = dict(
-    rpn=dict(
-        pre_nms=1000,
-        max_per_img=1000, # same as post_nms
-        nms_iou=0.7,
-        min_size=0.0,
-    ),
-    rcnn=dict(min_score=0.05, nms_iou=0.5)
-) 
 
 
 img_norm = dict(

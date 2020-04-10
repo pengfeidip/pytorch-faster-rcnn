@@ -1,5 +1,6 @@
 from torch import nn
 from .. import utils
+from ..utils import class_name
 import logging, torch
 
 
@@ -81,8 +82,9 @@ class CascadeRCNN_v2(nn.Module):
     def forward_train(self, img_data, gt_bboxes, gt_labels, img_metas):
         losses = {}
         feats = self.extract_feat(img_data)
-
         train_cfg = self.train_cfg
+
+        logging.debug('{}: forward train'.format(class_name(self)))
 
         rpn_gt_labels = [torch.full_like(gt_label, 1) for gt_label in gt_labels]
         rpn_cls_outs, rpn_reg_outs = self.rpn_head(feats)
@@ -92,14 +94,14 @@ class CascadeRCNN_v2(nn.Module):
         losses['rpn_reg_loss'] = rpn_reg_loss
         rpn_props = self.rpn_head.predict_bboxes_from_output(
             rpn_cls_outs, rpn_reg_outs, img_metas, train_cfg.rpn_proposal)
-        print('type rpn_props', type(rpn_props))
-        for tmp in rpn_props:
-            print(type(tmp))
-        rpn_props = [pr[0] for pr in rpn_props]
+        rpn_props = rpn_props[0]
+        
+        logging.debug('{}:  proposals from rpn: {}'.format(
+            class_name(self), '\n' + '\n'.join([str(pr.shape) for pr in rpn_props])))
         
         props = rpn_props
         for i in range(self.num_stages):
-            
+            logging.info('{}: in stage {}'.format(class_name(self), i).center(70, '*').format(i))
             cur_rcnn_head = self.rcnn_head[i]
             cur_roi_extractor = self.roi_extractors[i]
             cur_rcnn_train_cfg = train_cfg.rcnn[i]
@@ -107,30 +109,73 @@ class CascadeRCNN_v2(nn.Module):
             tar_props, tar_bboxes, tar_labels, tar_params, tar_is_gts \
                 = cur_rcnn_head.bbox_targets(props, gt_bboxes, gt_labels, cur_rcnn_train_cfg)
             
+            logging.info('{}: target props: {}'.format(
+                class_name(self), ', '.join([str(tp.shape) for tp in tar_props])))
+            
             roi_outs = cur_roi_extractor(feats, tar_props)
+            logging.debug('{}: rois from extractor: {}'.format(
+                class_name(self), '\n'+'\n'.join([str(roi.shape) for roi in roi_outs])))
             
             if self.with_shared_head:
                 raise NotImplementedError('multi-image shared head is not implemented for CascadeRCNN')
             
             cls_outs, reg_outs = cur_rcnn_head(roi_outs)
-            cls_out = torch.cat(cls_outs, dim=0)
-            reg_out = torch.cat(reg_outs, dim=0)
-            tar_label = torch.cat(tar_labels)
-            tar_param = torch.cat(tar_params, dim=1)
+            logging.debug('cls_outs by current head: {}'.format([co.shape for co in cls_outs]))
+            logging.debug('reg_outs by current head: {}'.format([ro.shape for ro in reg_outs]))
             cur_cls_loss, cur_reg_loss = cur_rcnn_head.calc_loss(
-                cls_out, reg_out, tar_label, tar_param, cur_rcnn_train_cfg)
+                cls_outs, reg_outs, tar_labels, tar_params, cur_rcnn_train_cfg)
             losses['rcnn_{}_cls_loss'.format(i)] = cur_cls_loss * train_cfg.stage_loss_weight[i]
             losses['rcnn_{}_reg_loss'.format(i)] = cur_reg_loss * train_cfg.stage_loss_weight[i]
             
             if i < self.num_stages - 1:
                 with torch.no_grad():
-                    refined_props = utils.multi_apply(
-                        cur_rcnn_head.refine_bboxes, tar_props, tar_labels, reg_outs, tar_is_gts)
-                    print('type refined_props', type(refined_props))
+                    refined_props = cur_rcnn_head.refine_bboxes(tar_props, tar_labels, reg_outs, tar_is_gts)
+                    logging.debug('{}: refinded props: {}'.format(
+                        class_name(self), ', '.join([str(rps.shape) for rps in refined_props])))
                     props = refined_props
-
         return losses
-        
-    
 
+
+    def forward_test(self, img_data, img_metas):
+        logging.info('start to predict for detector')
+        test_cfg = self.test_cfg
+        feats = self.extract_feat(img_data)
+        logging.debug('Feature size: {}'.format([feat.shape for feat in feats]))
+
+        rpn_props = self.rpn_head.predict_bboxes(feats, img_metas, test_cfg.rpn)
+        
+        props = rpn_props[0]
+        logging.debug('{}: proposals from rpn: {}'.format(class_name(self), [pr.shape for pr in props]))
+
+        img_sizes = [img_meta['img_shape'][:2] for img_meta in img_metas]
+        print('img_sizes', img_sizes)
+
+        ms_cls_outs = []
+        for i in range(self.num_stages):
+            logging.info('test in stage: {}'.format(i))
+
+            cur_rcnn_head = self.rcnn_head[i]
+            cur_roi_extractor = self.roi_extractors[i]
+
+            roi_outs = cur_roi_extractor(feats, props)
+
+            cls_outs, reg_outs = cur_rcnn_head(roi_outs)
+            ms_cls_outs.append(cls_outs)
+            if i < self.num_stages - 1:
+                bbox_labels = [cls_out.argmax(1) for cls_out in cls_outs]
+                props = cur_rcnn_head.refine_bboxes(props, bbox_labels, reg_outs, None, img_metas)
+
+        mi_cls_outs = utils.unpack_multi_result(ms_cls_outs)
+        mi_cls_outs = [sum(img_cls_out)/self.num_stages for img_cls_out in mi_cls_outs]
+        
+        return utils.unpack_multi_result(
+            utils.multi_apply(self.rcnn_head[-1].predict_bboxes_single_image,
+                              props,
+                              mi_cls_outs,
+                              reg_outs,
+                              img_sizes,
+                              test_cfg.rcnn))
+
+        
+        
 

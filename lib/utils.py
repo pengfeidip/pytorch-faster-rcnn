@@ -168,7 +168,7 @@ def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
         )
 
     if len(nms_bbox) != 0:
-        return torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
+        nms_bbox, nms_score, nms_label = torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
     return nms_bbox, nms_score, nms_label
 
 
@@ -203,3 +203,5 @@ def unpack_multi_result(multi_res):
     num_ret = len(multi_res[0])
     return [[res[i] for res in multi_res] for i in range(num_ret)]
         
+def class_name(slf):
+    return slf.__class__.__name__
