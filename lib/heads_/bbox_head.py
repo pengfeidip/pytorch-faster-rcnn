@@ -72,7 +72,7 @@ class BBoxHead_v2(nn.Module):
             cls_loss = self.loss_cls(cls_out, tar_label) / avg_factor
             if not self.reg_class_agnostic:
                 reg_out = reg_out.view(-1, 4, self.num_classes)
-                reg_out = reg_out[torch.arange(n_samp), :, tar_label]
+                reg_out = reg_out[torch.arange(n_samps), :, tar_label]
             if pos_tars.sum() == 0:
                 logging.warning('BBoxHead recieves no positive samples to train')
             else:

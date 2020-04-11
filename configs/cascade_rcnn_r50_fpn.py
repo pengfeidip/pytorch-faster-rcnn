@@ -9,8 +9,7 @@ model=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
-        num_outs=5
-    ),
+        num_outs=5),
     rpn_head=dict(
         type='RPNHead_v2',
         in_channels=256,
@@ -18,7 +17,9 @@ model=dict(
         anchor_scales=[8],
         anchor_ratios=[0.5, 1.0, 2.0],
         anchor_strides=[4, 8, 16, 32, 64],
-        loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+        target_means=[0.0, 0.0, 0.0, 0.0],
+        target_stds=[1.0, 1.0, 1.0, 1.0],
+        loss_cls=dict(type='CrossEntropy', use_sigmoid=True, loss_weight=1.0),
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0/9.0, loss_weight=1.0)),
     roi_extractor=dict(
         type='SingleRoIExtractor_v2',
@@ -148,7 +149,7 @@ lr_config=dict(
     lr_decay={9:0.1, 12:0.1},
 )
 
-optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001)
+optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=dict(max_norm=35, norm_type=2))
 ckpt_config=dict(interval=2)
 

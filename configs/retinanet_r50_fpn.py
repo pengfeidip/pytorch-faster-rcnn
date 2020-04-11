@@ -58,7 +58,7 @@ optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=dict(max_norm=35, norm_type=2))
 #optimizer_config=dict(grad_clip=None)
 
-ckpt_config=dict(interval=1)
+ckpt_config=dict(interval=2)
 
 img_norm = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -87,7 +87,7 @@ test_pipeline=[
 
 data = dict(
     train=dict(
-        imgs_per_gpu=3,
+        imgs_per_gpu=2,
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
         img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
         pipeline=train_pipeline,
