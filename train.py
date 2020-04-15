@@ -14,6 +14,7 @@ from lib import retinanet, datasets
 from lib.trainer import BasicTrainer
 import torch
 
+LOG_LEVEL = {'DEBUG': logging.DEBUG, 'INFO': logging.INFO, 'WARNING': logging.WARNING}
 
 def check_args():
     assert osp.exists(args.work_dir) and osp.isdir(args.work_dir), 'work-dir does not exists'
@@ -25,11 +26,12 @@ def set_seed(seed):
     random.seed(seed)
     torch.manual_seed(seed)
 
-def set_logging(log_file=None):
+def set_logging(log_file=None, level='DEBUG'):
+    assert level in LOG_LEVEL
     log_cfg = {
         'format':'%(asctime)s: %(message)s\t[%(levelname)s]',
         'datefmt':'%y%m%d_%H%M%S_%a',
-        'level': logging.DEBUG
+        'level': LOG_LEVEL[level]
     }
     if log_file is not None:
         log_cfg['filename']=log_file
@@ -63,9 +65,10 @@ def main():
     test_cfg = config.test_cfg
 
     log_file = train_cfg.log_file
+    log_level = train_cfg.log_level
     if log_file is not None:
         log_file = osp.join(args.work_dir, log_file)
-    set_logging(log_file)
+    set_logging(log_file, log_level)
 
     from lib.registry import build_module
     model = build_module(config.model, train_cfg=train_cfg, test_cfg=test_cfg)

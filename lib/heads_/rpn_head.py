@@ -35,7 +35,6 @@ class RPNHead_v2(AnchorHead):
             anchor_strides=anchor_strides,
             target_means=target_means,
             target_stds=target_stds,
-            use_sigmoid=False,
             loss_cls=loss_cls,
             loss_bbox=loss_bbox)
         
@@ -46,7 +45,7 @@ class RPNHead_v2(AnchorHead):
             self.in_channels, self.feat_channels, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.classifier = nn.Conv2d(
-            self.feat_channels, self.num_anchors*self.num_classes, kernel_size=1)
+            self.feat_channels, self.num_anchors*self.cls_channels, kernel_size=1)
         self.regressor = nn.Conv2d(self.feat_channels, self.num_anchors*4, kernel_size=1)
         logging.info('Constructed RPNHead with in_channels={}, feat_channels={}, num_levels={}, num_anchors={}'\
                      .format(self.in_channels, self.feat_channels, len(self.anchor_creators), self.num_anchors))

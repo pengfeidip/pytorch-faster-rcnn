@@ -11,7 +11,6 @@ from mmcv.cnn import normal_init
 class BBoxHead_v2(nn.Module):
     def __init__(self,
                  num_classes,
-                 use_sigmoid=False,
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[0.1, 0.1, 0.2, 0.2],
                  reg_class_agnostic=False,
@@ -19,11 +18,6 @@ class BBoxHead_v2(nn.Module):
                  loss_bbox=None):
         super(BBoxHead_v2, self).__init__()
         self.num_classes=num_classes
-        self.use_sigmoid=use_sigmoid
-        if use_sigmoid:
-            self.cls_channels=num_classes-1
-        else:
-            self.cls_channels=num_classes
         self.target_means=target_means
         self.target_stds=target_stds
         self.reg_class_agnostic=reg_class_agnostic
@@ -34,6 +28,9 @@ class BBoxHead_v2(nn.Module):
         self.loss_bbox=loss_bbox
         if isinstance(loss_bbox, dict):
             self.loss_bbox=build_module(loss_bbox)
+            
+        self.use_sigmoid=loss_cls.get('use_sigmoid', False)
+        self.cls_channels=num_classes-1 if self.use_sigmoid else num_classes
         
     def init_layers(self):
         raise NotImplementedError('init_layers is not implemented')
@@ -157,7 +154,7 @@ class BBoxHead_v2(nn.Module):
     # data of multi-images
     def predict_bboxes(self, roi_outs, props, img_metas=None, cfg=None):
         if img_metas is None:
-            img_sizes = [None, None]
+            img_sizes = None
         else:
             img_sizes = [img_meta['img_shape'][:2] for img_meta in img_metas]
         cls_outs, reg_outs = self.forward(roi_outs)

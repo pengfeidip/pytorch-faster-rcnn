@@ -88,7 +88,7 @@ train_cfg = dict(
     ),
     rpn_proposal=dict(
         pre_nms=2000,
-        post_nms=2000, # used to be post_nms
+        post_nms=2000, 
         max_num=2000,
         nms_iou=0.7,
         min_bbox_size=0,
@@ -129,6 +129,7 @@ train_cfg = dict(
     
     total_epochs=14,
     log_file='train.log',
+    log_level='DEBUG',
     save_interval=2
 )
 

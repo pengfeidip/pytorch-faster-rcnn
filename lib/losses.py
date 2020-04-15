@@ -74,8 +74,10 @@ def normalize_weight(filt_weight, bias):
     return sum(wloss), sum(bloss)
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2.0, loss_weight=1.0):
+    def __init__(self, alpha=0.25, gamma=2.0, use_sigmoid=True, loss_weight=1.0):
+        assert use_sigmoid == True, 'FocalLoss for non sigmoid is not implemented'
         super(FocalLoss, self).__init__()
+        self.use_sigmoid=True
         self.alpha=0.25
         self.gamma=2.0
         self.loss_weight=1.0
@@ -98,7 +100,7 @@ class CrossEntropy(nn.Module):
                  use_sigmoid=False,
                  loss_weight=1.0):
         super(CrossEntropy, self).__init__()
-        self.use_sigmoid=False
+        self.use_sigmoid=use_sigmoid
         self.loss_weight=loss_weight
 
     def forward(self, pred, label):
@@ -106,6 +108,7 @@ class CrossEntropy(nn.Module):
         if self.use_sigmoid:
             tar_one_hot = utils.one_hot_embedding(label, n_classes+1)
             tar_one_hot = tar_one_hot[:, 1:]
+            tar_one_hot = tar_one_hot.to(dtype=pred.dtype)
             loss = F.binary_cross_entropy_with_logits(pred, tar_one_hot, reduction='none')
             return loss.sum() * self.loss_weight
         else:

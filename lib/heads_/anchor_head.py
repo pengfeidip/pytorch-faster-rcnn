@@ -20,13 +20,10 @@ class AnchorHead(nn.Module):
                  anchor_strides=[4, 8, 16, 32, 64],
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[1.0, 1.0, 1.0, 1.0],
-                 use_sigmoid=False,
                  loss_cls=None,
                  loss_bbox=None):
         super(AnchorHead, self).__init__()
         self.num_classes=num_classes
-        self.cls_channels=num_classes-1 if use_sigmoid else num_classes
-        self.use_sigmoid=use_sigmoid
         self.anchor_scales=anchor_scales
         self.anchor_ratios=anchor_ratios
         self.anchor_strides=anchor_strides
@@ -44,6 +41,9 @@ class AnchorHead(nn.Module):
         self.loss_bbox=loss_bbox
         if isinstance(loss_bbox, dict):
             self.loss_bbox=build_module(loss_bbox)
+
+        self.use_sigmoid=self.loss_cls.use_sigmoid
+        self.cls_channels=num_classes-1 if self.use_sigmoid else num_classes
 
     def to(self, device):
         super(AnchorHead, self).to(device)
@@ -208,6 +208,9 @@ class AnchorHead(nn.Module):
                 cls_label = cls_label[topk_inds]
                 reg_out = reg_out[:, topk_inds]
                 anchor = anchor[:, topk_inds]
+            param_mean = reg_out.new(self.target_means).view(4, -1)
+            param_std = reg_out.new(self.target_stds).view(4, -1)
+            reg_out = reg_out * param_std + param_mean
             pred_bbox = utils.param2bbox(anchor, reg_out)
             # filter out of boundary bboxes
             pred_bbox = torch.stack([

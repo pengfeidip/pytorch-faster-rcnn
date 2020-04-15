@@ -39,7 +39,6 @@ class RetinaHead_v2(AnchorHead):
                                             anchor_strides,
                                             target_means,
                                             target_stds,
-                                            True,
                                             loss_cls,
                                             loss_bbox)
         

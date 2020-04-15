@@ -15,12 +15,10 @@ class RCNNHead(BBoxHead_v2):
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[0.1, 0.1, 0.2, 0.2],
                  reg_class_agnostic=False,
-                 use_sigmoid=False,
                  loss_cls=None,
                  loss_bbox=None):
         super(RCNNHead, self).__init__(
             num_classes,
-            use_sigmoid,
             target_means,
             target_stds,
             reg_class_agnostic,
