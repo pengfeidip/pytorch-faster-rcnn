@@ -138,6 +138,8 @@ class CascadeRCNN_v2(nn.Module):
 
     def forward_test(self, img_data, img_metas):
         logging.info('start to predict for detector')
+        logging.debug('img_data: {}'.format(img_data.shape))
+        logging.debug('img_metas: {}'.format(img_metas))
         test_cfg = self.test_cfg
         feats = self.extract_feat(img_data)
         logging.debug('Feature size: {}'.format([feat.shape for feat in feats]))
@@ -148,11 +150,10 @@ class CascadeRCNN_v2(nn.Module):
         logging.debug('{}: proposals from rpn: {}'.format(class_name(self), [pr.shape for pr in props]))
 
         img_sizes = [img_meta['img_shape'][:2] for img_meta in img_metas]
-        print('img_sizes', img_sizes)
 
         ms_cls_outs = []
         for i in range(self.num_stages):
-            logging.info('test in stage: {}'.format(i))
+            logging.info('test in stage: {}'.format(i).center(80, '+'))
 
             cur_rcnn_head = self.rcnn_head[i]
             cur_roi_extractor = self.roi_extractors[i]
@@ -160,15 +161,18 @@ class CascadeRCNN_v2(nn.Module):
             roi_outs = cur_roi_extractor(feats, props)
 
             cls_outs, reg_outs = cur_rcnn_head(roi_outs)
+
             ms_cls_outs.append(cls_outs)
             if i < self.num_stages - 1:
-                bbox_labels = [cls_out.argmax(1) for cls_out in cls_outs]
+                bbox_labels = [cls_out.argmax(1) for cls_out in cls_outs] # TODO: what about use_sigmoid?
+                if cur_rcnn_head.use_sigmoid:
+                    bbox_labels += 1
                 props = cur_rcnn_head.refine_bboxes(props, bbox_labels, reg_outs, None, img_metas)
 
         mi_cls_outs = utils.unpack_multi_result(ms_cls_outs)
         mi_cls_outs = [sum(img_cls_out)/self.num_stages for img_cls_out in mi_cls_outs]
-        
-        return utils.unpack_multi_result(
+
+        test_res = utils.unpack_multi_result(
             utils.multi_apply(self.rcnn_head[-1].predict_bboxes_single_image,
                               props,
                               mi_cls_outs,
@@ -176,6 +180,7 @@ class CascadeRCNN_v2(nn.Module):
                               img_sizes,
                               test_cfg.rcnn))
 
+        return test_res
         
         
 

@@ -64,6 +64,7 @@ class RPNHead_v2(AnchorHead):
 
     def predict_single_image(self, level_cls_outs, level_reg_outs, level_anchors, img_meta, test_cfg):
         logging.info(' {}: predict one image '.format(class_name(self)).center(50, '*'))
+        logging.info('img_meta: {}'.format(img_meta))
         cls_outs = [lvl_cls_out.view(self.cls_channels, -1) for lvl_cls_out in level_cls_outs]
         reg_outs = [lvl_reg_out.view(4, -1) for lvl_reg_out in level_reg_outs]
         anchors = [anchor.view(4, -1) for anchor in level_anchors]
@@ -89,6 +90,9 @@ class RPNHead_v2(AnchorHead):
                 cls_score = cls_score[topk_inds]
                 reg_out = reg_out[:, topk_inds]
                 anchor  = anchor[:, topk_inds]
+            param_means = reg_out.new(self.target_means).view(4, -1)
+            param_stds = reg_out.new(self.target_stds).view(4, -1)
+            reg_out = reg_out * param_stds + param_means
             pred_bbox = utils.param2bbox(anchor, reg_out)
             pred_bbox = torch.stack([
                 torch.clamp(pred_bbox[0], 0.0, W),
@@ -101,13 +105,14 @@ class RPNHead_v2(AnchorHead):
                             & (pred_bbox[3]-pred_bbox[1] + 1 >= min_size)
                 cls_score = cls_score[non_small]
                 pred_bbox = pred_bbox[:, non_small]
-                
+
             keep = tvops.nms(pred_bbox.t(), cls_score, test_cfg.nms_iou)
             cls_score = cls_score[keep]
             pred_bbox = pred_bbox[:, keep]
             if test_cfg.post_nms > 0 and test_cfg.post_nms < len(cls_score):
                 cls_score = cls_score[:test_cfg.post_nms]
                 pred_bbox = pred_bbox[:, :test_cfg.post_nms]
+                
             cls_scores.append(cls_score)
             pred_bboxes.append(pred_bbox)
         mlvl_cls_score = torch.cat(cls_scores)

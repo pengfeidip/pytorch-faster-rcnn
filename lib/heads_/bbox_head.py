@@ -97,7 +97,10 @@ class BBoxHead_v2(nn.Module):
     # only refine bboxes, will ignore gt
     # input is concated results from diff imgs
     def refine_bboxes_single_image(self, props, label, reg_out, is_gt=None, img_meta=None):
-        logging.info(' {}: refine bboxes '.format(class_name(self)).center(50, '*'))
+        logging.info(' {}: refine bboxes in 1 image '.format(class_name(self)).center(50, '*'))
+        logging.debug('props: {}'.format(props.shape))
+        logging.debug('reg_out: {}'.format(reg_out.shape))
+        logging.debug('label: {}'.format(label.shape))
         if is_gt is None:
             is_gt = torch.full_like(label, 0)
         assert props.shape[1] == reg_out.shape[0] == is_gt.numel()
@@ -122,15 +125,21 @@ class BBoxHead_v2(nn.Module):
         return refined
 
     def predict_bboxes_single_image(self, props, cls_out, reg_out, img_size=None, cfg=None):
+        logging.info('{}: predict_bboxes_single_image'.format(class_name(self)))
+        logging.debug('props: {}'.format(props.shape))
+        logging.debug('cls_out: {}'.format(cls_out.shape))
+        logging.debug('reg_out: {}'.format(reg_out.shape))
+        logging.debug('img_size: {}'.format(img_size))
+        logging.debug('self.reg_class_agnostic: {}'.format(self.reg_class_agnostic))
         with torch.no_grad():
             n_props = cls_out.shape[0]
             if self.use_sigmoid:
+                raise NotImplementedError('Need to be implemented')
                 sig = cls_out.sigmoid()
                 score, label = sig.max(dim=1)
                 label += 1
             else:
-                soft = torch.softmax(cls_out, dim=1)
-                score, label = soft.max(dim=1)
+                score = cls_out.softmax(dim=1)
             if self.reg_class_agnostic:
                 reg_out = reg_out.view(-1, 4)
             else:
@@ -145,8 +154,9 @@ class BBoxHead_v2(nn.Module):
                 preds[[0, 2], :].clamp_(0.0, W-1)
                 preds[[1, 3], :].clamp_(0.0, H-1)
             if cfg is not None:
-                preds, score, label = utils.multiclass_nms(
-                    preds, score, label, range(1, self.num_classes), cfg.nms_iou, cfg.min_score)
+                preds, score, label = utils.multiclass_nms_mmdet(
+                    preds.t(), score, range(1, self.num_classes), cfg.nms_iou, cfg.min_score, cfg.max_per_img)
+                preds = preds.t()
         return preds, score, label
             
         

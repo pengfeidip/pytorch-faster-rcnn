@@ -149,7 +149,6 @@ def to_pair(val):
 
 def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
     label_set = list(label_set)
-
     nms_bbox, nms_score, nms_label = [], [], []
     for cur_label in label_set:
         chosen = (label==cur_label)
@@ -170,6 +169,46 @@ def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
     if len(nms_bbox) != 0:
         nms_bbox, nms_score, nms_label = torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
     return nms_bbox, nms_score, nms_label
+
+'''
+Args:
+    bbox:  [1000, 4]
+    score: [1000, 21], it is score not logits
+    label_set: iterable
+    nms_iou: 0.5
+    min_score: 0.05
+'''
+def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score, max_num=None):
+    assert bbox.shape[0] == score.shape[0]
+    label_set = list(label_set)
+
+    bboxes, scores, labels = [], [], []
+    for label in label_set:
+        inds = score[:, label] > min_score
+        if not inds.any():
+            continue
+        cur_bbox = bbox[inds, :]
+        cur_score = score[inds, label]
+        keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
+        keep_bbox = cur_bbox[keep, :]
+        keep_score = cur_score[keep]
+        keep_label = torch.full_like(keep_score, label).long()
+        bboxes.append(keep_bbox)
+        scores.append(keep_score)
+        labels.append(keep_label)
+
+    if bboxes:
+        bboxes = torch.cat(bboxes)
+        scores = torch.cat(scores)
+        labels = torch.cat(labels)
+        if max_num is not None and bboxes.shape[0] > max_num:
+            return bboxes[:max_num], scores[:max_num], labels[:max_num]
+    else:
+        bboxes = bbox.new_zeros((0, 4))
+        scores = bbox.new_zeros((0, ), dtype=torch.long)
+        labels = bbox.new_zeros((0, ), dtype=torch.float)
+
+    return bboxes, scores, labels
 
 
 def one_hot_embedding(label, n_cls):
