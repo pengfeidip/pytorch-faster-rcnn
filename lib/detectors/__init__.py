@@ -1,2 +1,2 @@
-from .retinanet import RetinaNet_v2
-from .cascade_rcnn import CascadeRCNN_v2
+from .retinanet import RetinaNet
+from .cascade_rcnn import CascadeRCNN

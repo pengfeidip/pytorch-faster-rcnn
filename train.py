@@ -10,7 +10,7 @@ args = parser.parse_args()
 import os, sys, glob, random, logging
 import os.path as osp
 import mmcv, torch
-from lib import retinanet, datasets
+from lib import datasets
 from lib.trainer import BasicTrainer
 import torch
 
@@ -70,7 +70,7 @@ def main():
         log_file = osp.join(args.work_dir, log_file)
     set_logging(log_file, log_level)
 
-    from lib.registry import build_module
+    from lib.builder import build_module
     model = build_module(config.model, train_cfg=train_cfg, test_cfg=test_cfg)
 
     trainer = BasicTrainer(

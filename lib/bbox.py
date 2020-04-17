@@ -2,7 +2,7 @@ import torch, logging
 from . import utils
 
 def _bbox_target(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means=None, target_stds=None):
-    from .registry import build_module
+    from .builder import build_module
     device = props_bbox.device
     if isinstance(assigner, dict):
         assigner = build_module(assigner)

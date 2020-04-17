@@ -5,7 +5,7 @@ import torch
 
 def anchor_target(cls_out, reg_out, in_anchors, in_mask, gt_bbox,
                   assigner, sampler=None, target_means=None, target_stds=None):
-    from .registry import build_module
+    from .builder import build_module
     # assign and sample anchors to gt bboxes
     if isinstance(assigner, dict):
         assigner = build_module(assigner)
@@ -61,7 +61,7 @@ def anchor_target(cls_out, reg_out, in_anchors, in_mask, gt_bbox,
 def anchor_target_v2(cls_out, reg_out, cls_channels, in_anchors, in_mask, gt_bbox, gt_label=None,
                      assigner=None, sampler=None, target_means=None, target_stds=None):
     assert assigner is not None
-    from .registry import build_module
+    from .builder import build_module
     # assign and sample anchors to gt bboxes
     if isinstance(assigner, dict):
         assigner = build_module(assigner)

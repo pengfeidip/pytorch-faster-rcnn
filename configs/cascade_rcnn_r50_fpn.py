@@ -2,7 +2,7 @@
 
 # Faster RCNN is equivalent to CascadeRCNN with one stage?
 model=dict(
-    type='CascadeRCNN_v2',
+    type='CascadeRCNN',
     num_stages=3,
     backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
     neck=dict(
@@ -11,7 +11,7 @@ model=dict(
         out_channels=256,
         num_outs=5),
     rpn_head=dict(
-        type='RPNHead_v2',
+        type='RPNHead',
         in_channels=256,
         feat_channels=256,
         anchor_scales=[8],
@@ -19,10 +19,10 @@ model=dict(
         anchor_strides=[4, 8, 16, 32, 64],
         target_means=[0.0, 0.0, 0.0, 0.0],
         target_stds=[1.0, 1.0, 1.0, 1.0],
-        loss_cls=dict(type='CrossEntropy', use_sigmoid=True, loss_weight=1.0),
+        loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0/9.0, loss_weight=1.0)),
     roi_extractor=dict(
-        type='SingleRoIExtractor_v2',
+        type='SingleRoIExtractor',
         roi_layer='RoIAlign',
         output_size=(7, 7),
         featmap_strides=[4, 8, 16, 32],
@@ -38,7 +38,7 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
             reg_class_agnostic=True,
-            loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+            loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
             loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
         ),
         dict(
@@ -51,7 +51,7 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.05, 0.05, 0.1, 0.1],
             reg_class_agnostic=True,
-            loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+            loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
             loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
         ),
         dict(
@@ -64,7 +64,7 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.033, 0.033, 0.067, 0.067],
             reg_class_agnostic=True,
-            loss_cls=dict(type='CrossEntropy', use_sigmoid=False, loss_weight=1.0),
+            loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
             loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
         )
     ]

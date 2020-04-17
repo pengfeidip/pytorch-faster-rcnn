@@ -38,7 +38,7 @@ class BasicTrainer(Hookable):
         self.add_hook(CkptHook(self))
 
     def init_optimizer(self):
-        from ..registry import build_module
+        from ..builder import build_module
         optimizer_cfg = copy.deepcopy(self.optimizer_cfg)
         self.optimizer = build_module(optimizer_cfg, params=self.model.parameters())
         logging.info('Created optimizer with cfg: {}'.format(self.optimizer_cfg))

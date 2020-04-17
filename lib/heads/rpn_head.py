@@ -7,7 +7,7 @@ import torchvision.ops as tvops
 from ..utils import class_name
 from .. import utils
 
-class RPNHead_v2(AnchorHead):
+class RPNHead(AnchorHead):
     def __init__(self,
                  in_channels,
                  feat_channels,
@@ -28,7 +28,7 @@ class RPNHead_v2(AnchorHead):
         self.loss_bbox=loss_bbox
         
         
-        super(RPNHead_v2, self).__init__(
+        super(RPNHead, self).__init__(
             num_classes=2,
             anchor_scales=anchor_scales,
             anchor_ratios=anchor_ratios,

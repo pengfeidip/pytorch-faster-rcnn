@@ -95,11 +95,11 @@ class SmoothL1Loss(nn.Module):
         return self.loss_weight * smooth_l1_loss_v2(x, y, self.beta)
 
 
-class CrossEntropy(nn.Module):
+class CrossEntropyLoss(nn.Module):
     def __init__(self,
                  use_sigmoid=False,
                  loss_weight=1.0):
-        super(CrossEntropy, self).__init__()
+        super(CrossEntropyLoss, self).__init__()
         self.use_sigmoid=use_sigmoid
         self.loss_weight=loss_weight
 

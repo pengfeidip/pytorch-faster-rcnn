@@ -4,7 +4,7 @@ from ..utils import class_name
 import logging, torch
 
 
-class CascadeRCNN_v2(nn.Module):
+class CascadeRCNN(nn.Module):
     def __init__(self,
                  num_stages=3,
                  backbone=None,
@@ -15,8 +15,8 @@ class CascadeRCNN_v2(nn.Module):
                  rcnn_head=None,
                  train_cfg=None,
                  test_cfg=None):
-        super(CascadeRCNN_v2, self).__init__()
-        from ..registry import build_module
+        super(CascadeRCNN, self).__init__()
+        from ..builder import build_module
         assert num_stages > 0
         self.num_stages=num_stages
 

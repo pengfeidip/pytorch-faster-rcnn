@@ -34,7 +34,7 @@ class AnchorHead(nn.Module):
         
         self.target_means=target_means
         self.target_stds=target_stds
-        from ..registry import build_module
+        from ..builder import build_module
         self.loss_cls=loss_cls
         if isinstance(loss_cls, dict):
             self.loss_cls=build_module(loss_cls)

@@ -1,6 +1,6 @@
 
 model=dict(
-    type='RetinaNet_v2',
+    type='RetinaNet',
     backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
     neck=dict(
         type='FPN',
@@ -11,7 +11,7 @@ model=dict(
         num_outs=5
     ),
     bbox_head=dict(
-        type='RetinaHead_v2',
+        type='RetinaHead',
         num_classes=21,
         in_channels=256,
         stacked_convs=4,
@@ -37,7 +37,8 @@ train_cfg = dict(
 
     allowed_border=-1,
     total_epochs=14,
-    log_file='train.log'
+    log_file='train.log',
+    log_level='DEBUG'
 )
 
 test_cfg = dict(

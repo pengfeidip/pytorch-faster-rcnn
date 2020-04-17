@@ -1,15 +1,15 @@
 from torch import nn
 import logging
 
-class RetinaNet_v2(nn.Module):
+class RetinaNet(nn.Module):
     def __init__(self,
                  backbone=None,
                  neck=None,
                  bbox_head=None,
                  train_cfg=None,
                  test_cfg=None):
-        super(RetinaNet_v2, self).__init__()
-        from ..registry import build_module
+        super(RetinaNet, self).__init__()
+        from ..builder import build_module
         self.backbone = build_module(backbone)
         if neck is not None:
             self.neck = build_module(neck)

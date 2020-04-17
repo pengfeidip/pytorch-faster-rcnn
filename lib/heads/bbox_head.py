@@ -21,7 +21,7 @@ class BBoxHead_v2(nn.Module):
         self.target_means=target_means
         self.target_stds=target_stds
         self.reg_class_agnostic=reg_class_agnostic
-        from ..registry import build_module
+        from ..builder import build_module
         self.loss_cls=loss_cls
         if isinstance(loss_cls, dict):
             self.loss_cls=build_module(loss_cls)

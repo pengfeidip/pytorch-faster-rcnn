@@ -4,7 +4,7 @@ from mmcv.cnn import normal_init
 import numpy as np
 import logging
 
-class RetinaHead_v2(AnchorHead):
+class RetinaHead(AnchorHead):
     def __init__(self,
                  num_classes,
                  in_channels,
@@ -33,7 +33,7 @@ class RetinaHead_v2(AnchorHead):
         self.anchor_ratios = anchor_ratios
         self.anchor_strides = anchor_strides
         self.base_sizes = anchor_strides
-        super(RetinaHead_v2, self).__init__(num_classes,
+        super(RetinaHead, self).__init__(num_classes,
                                             anchor_scales,
                                             anchor_ratios,
                                             anchor_strides,
