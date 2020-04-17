@@ -90,16 +90,7 @@ class RPNHead(AnchorHead):
                 cls_score = cls_score[topk_inds]
                 reg_out = reg_out[:, topk_inds]
                 anchor  = anchor[:, topk_inds]
-            param_means = reg_out.new(self.target_means).view(4, -1)
-            param_stds = reg_out.new(self.target_stds).view(4, -1)
-            reg_out = reg_out * param_stds + param_means
-            pred_bbox = utils.param2bbox(anchor, reg_out)
-            pred_bbox = torch.stack([
-                torch.clamp(pred_bbox[0], 0.0, W),
-                torch.clamp(pred_bbox[1], 0.0, H),
-                torch.clamp(pred_bbox[2], 0.0, W),
-                torch.clamp(pred_bbox[3], 0.0, H)
-            ])
+            pred_bbox = utils.param2bbox(anchor, reg_out, self.target_means, self.target_stds, img_size)
             if min_size > 0:
                 non_small = (pred_bbox[2]-pred_bbox[0] + 1 >= min_size) \
                             & (pred_bbox[3]-pred_bbox[1] + 1 >= min_size)

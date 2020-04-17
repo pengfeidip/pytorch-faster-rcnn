@@ -114,14 +114,8 @@ class BBoxHead_v2(nn.Module):
         is_gt = is_gt.bool()
         props = props[:, ~is_gt]
         reg_out = reg_out.t()[:, ~is_gt]
-        param_mean = reg_out.new(self.target_means).view(4, -1)
-        param_std  = reg_out.new(self.target_stds).view(4, -1)
-        reg_out = reg_out * param_std + param_mean
-        refined = utils.param2bbox(props, reg_out)
-        if img_meta is not None:
-            H, W = img_meta['img_shape'][:2]
-            refined[[0, 2], :].clamp_(0.0, W-1)
-            refined[[1, 3], :].clamp_(0.0, H-1)
+        refined = utils.param2bbox(props, reg_out, self.target_means, self.target_stds,
+                                   img_meta['img_shape'] if img_meta is not None else None)
         return refined
 
     def predict_bboxes_single_image(self, props, cls_out, reg_out, img_size=None, cfg=None):
@@ -145,14 +139,7 @@ class BBoxHead_v2(nn.Module):
             else:
                 reg_out = reg_out.view(-1, 4, self.num_classes)
                 reg_out = reg_out[torch.arange(n_props), :, label]
-            param_mean = reg_out.new(self.target_means).view(-1, 4)
-            param_std  = reg_out.new(self.target_stds).view(-1, 4)
-            reg_out = reg_out * param_std + param_mean
-            preds = utils.param2bbox(props, reg_out.t())
-            if img_size is not None:
-                H, W = img_size
-                preds[[0, 2], :].clamp_(0.0, W-1)
-                preds[[1, 3], :].clamp_(0.0, H-1)
+            preds = utils.param2bbox(props, reg_out.t(), self.target_means, self.target_stds, img_size)
             if cfg is not None:
                 preds, score, label = utils.multiclass_nms_mmdet(
                     preds.t(), score, range(1, self.num_classes), cfg.nms_iou, cfg.min_score, cfg.max_per_img)

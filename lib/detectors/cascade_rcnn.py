@@ -129,7 +129,7 @@ class CascadeRCNN(nn.Module):
             
             if i < self.num_stages - 1:
                 with torch.no_grad():
-                    refined_props = cur_rcnn_head.refine_bboxes(tar_props, tar_labels, reg_outs, tar_is_gts)
+                    refined_props = cur_rcnn_head.refine_bboxes(tar_props, tar_labels, reg_outs, tar_is_gts, img_metas)
                     logging.debug('{}: refinded props: {}'.format(
                         class_name(self), ', '.join([str(rps.shape) for rps in refined_props])))
                     props = refined_props

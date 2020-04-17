@@ -63,17 +63,42 @@ def bbox2param(base, bbox):
     tw, th = torch.log(bbox_w/base_w), torch.log(bbox_h/base_h)
     return torch.stack([tx, ty, tw, th])
 
-def param2bbox(base, param):
-    """
-    It calculates the bbox coordinates according to base bbox and parameters
+"""
+It applies delta to base bboxes.
 
-    Args:
-        base (tensor): the base bbox, of size (n, 4) where n is number of base bboxes
-              and 4 is (x_min, y_min, x_max, y_max) or (left, top, right, bottom)
-        param (tensor): parameters/distances (tx, ty, tw, th)
-    Returns:
-        the original bbox
-    """
+Args:
+    base [4, n]: the base bbox
+    param [4, n]: delta 
+    means and stds: this means params are normalized
+    img_size: if this is present, need to clamp size of bboxes
+Returns:
+    the original bbox
+"""
+def param2bbox(base, param, means=[0.0, 0.0, 0.0, 0.0], stds=[1.0, 1.0, 1.0, 1.0], img_size=None):
+    assert base.shape == param.shape
+    assert base.shape[0] == 4
+    means= base.new(means).view(4, -1)
+    stds = base.new(stds).view(4, -1)
+    param = param * stds + means
+    bbox = _param2bbox_(base, param)
+    if img_size is not None:
+        bbox = clamp_bbox(bbox, img_size)
+    return bbox
+
+def clamp_bbox(bbox, img_size):
+    '''
+    Args: 
+        bbox: [4, n], bboxes in xyxy order
+        img_size: [h, w], image size
+    '''
+    H, W = img_size[:2]
+    return torch.stack([
+        bbox[0].clamp(0.0, W-1),
+        bbox[1].clamp(0.0, H-1),
+        bbox[2].clamp(0.0, W-1),
+        bbox[3].clamp(0.0, H-1)])
+
+def _param2bbox_(base, param):
     assert base.shape == param.shape
     base_w, base_h = wh_from_xyxy(base)
     base_center_x, base_center_y = center_of(base)

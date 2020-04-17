@@ -225,13 +225,7 @@ class ProposalCreator(object):
             cls_out = rpn_cls_out.view(2, -1)
             reg_out = rpn_reg_out.view(4, -1)
             scores = torch.softmax(cls_out, 0)[1]
-            props_bbox = utils.param2bbox(anchors, reg_out)
-            props_bbox = torch.stack([
-                torch.clamp(props_bbox[0], 0.0, W),
-                torch.clamp(props_bbox[1], 0.0, H),
-                torch.clamp(props_bbox[2], 0.0, W),
-                torch.clamp(props_bbox[3], 0.0, H)
-            ])
+            props_bbox = utils.param2bbox(anchors, reg_out, img_size=img_size)
             small_area_mask = (props_bbox[2] - props_bbox[0] < min_size) \
                               | (props_bbox[3] - props_bbox[1] < min_size)
             num_small_area = small_area_mask.sum()
