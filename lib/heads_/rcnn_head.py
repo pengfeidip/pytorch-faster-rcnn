@@ -62,7 +62,10 @@ class RCNNHead(BBoxHead_v2):
         if self.with_shared_fcs:
             for fc in self.shared_fcs:
                 if isinstance(fc, nn.Linear):
-                    init_module_normal(fc, mean=0.0, std=0.01)
+                    #init_module_normal(fc, mean=0.0, std=0.01)
+                    nn.init.xavier_uniform_(fc.weight)
+                    nn.init.constant_(fc.bias, 0)
+                    logging.info('Init nn.Linear with xavier and constant')
         init_module_normal(self.classifier, mean=0.0, std=0.01)
         init_module_normal(self.regressor, mean=0.0, std=0.001)
         logging.info('Initialized weights for RCNNHead')
