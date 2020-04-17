@@ -147,6 +147,7 @@ def to_pair(val):
         pair = tuple(val)
     return pair
 
+
 def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
     label_set = list(label_set)
     nms_bbox, nms_score, nms_label = [], [], []
@@ -169,6 +170,41 @@ def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
     if len(nms_bbox) != 0:
         nms_bbox, nms_score, nms_label = torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
     return nms_bbox, nms_score, nms_label
+
+def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score, max_num=None):
+    label_set = list(label_set)
+    
+    score, label = score.max(1)
+    bboxes, scores, labels = [], [], []
+    for cur_label in label_set:
+        chosen = (label == cur_label) & (score > min_score)
+        if not chosen.any():
+            continue
+        cur_bbox = bbox[chosen, :]
+        cur_score = score[chosen]
+        keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
+        keep_bbox = cur_bbox[keep, :]
+        keep_score = cur_score[keep]
+        keep_label = torch.full_like(keep_score, cur_label).long()
+        bboxes.append(keep_bbox)
+        scores.append(keep_score)
+        labels.append(keep_label)
+
+    if bboxes:
+        bboxes = torch.cat(bboxes)
+        scores = torch.cat(scores)
+        labels = torch.cat(labels)
+        if max_num is not None and bboxes.shape[0] > max_num:
+            _, topk = scores.topk(max_num)
+            return bboxes[topk], scores[topk], labels[topk]
+
+    else:
+        bboxes = bbox.new_zeros((0, 4))
+        scores = bbox.new_zeros((0, ), dtype=torch.long)
+        labels = bbox.new_zeros((0, ), dtype=torch.float)
+                
+    return bboxes, scores, labels
+
 
 '''
 Args:
@@ -202,7 +238,8 @@ def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score, max_num=Non
         scores = torch.cat(scores)
         labels = torch.cat(labels)
         if max_num is not None and bboxes.shape[0] > max_num:
-            return bboxes[:max_num], scores[:max_num], labels[:max_num]
+            _, topk = scores.topk(max_num)
+            return bboxes[topk], scores[topk], labels[topk]
     else:
         bboxes = bbox.new_zeros((0, 4))
         scores = bbox.new_zeros((0, ), dtype=torch.long)

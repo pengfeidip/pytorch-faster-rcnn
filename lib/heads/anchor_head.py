@@ -186,26 +186,22 @@ class AnchorHead(nn.Module):
         img_size = img_meta['img_shape'][:2]
         H, W = img_size
         min_size = img_meta['scale_factor'] * test_cfg.min_bbox_size
-        cls_scores, cls_labels, pred_bboxes = [], [], []
+        cls_scores, pred_bboxes = [], []
         for i in range(num_levels):
             cls_out, reg_out = cls_outs[i], reg_outs[i]
             anchor = anchors[i]
+            
             if self.use_sigmoid:
-                cls_sig = cls_out.sigmoid()
-                cls_score, cls_label = cls_sig.max(0)
-                cls_label += 1
+                cls_score = cls_out.sigmoid()
             else:
-                cls_soft = cls_out.softmax(dim=0)
-                cls_score, cls_label = cls_soft.max(0)
-
-            if test_cfg.pre_nms > 0 and test_cfg.pre_nms < len(cls_score):
+                cls_score = cls_out.softmax(dim=0)
+            if test_cfg.pre_nms > 0 and test_cfg.pre_nms < cls_score.shape[1]:
                 if self.use_sigmoid:
-                    pre_nms_score = cls_score
+                    max_score, _ = cls_score.max(0)
                 else:
-                    pre_nms_score = cls_soft[1:, :].max(0)
-                _, topk_inds = pre_nms_score.topk(test_cfg.pre_nms)
-                cls_score = cls_score[topk_inds]
-                cls_label = cls_label[topk_inds]
+                    max_score, _ = cls_score[1:, :].max(0)
+                _, topk_inds = max_score.topk(test_cfg.pre_nms)
+                cls_score = cls_score[:, topk_inds]
                 reg_out = reg_out[:, topk_inds]
                 anchor = anchor[:, topk_inds]
             param_mean = reg_out.new(self.target_means).view(4, -1)
@@ -214,34 +210,31 @@ class AnchorHead(nn.Module):
             pred_bbox = utils.param2bbox(anchor, reg_out)
             # filter out of boundary bboxes
             pred_bbox = torch.stack([
-                torch.clamp(pred_bbox[0], 0.0, W),
-                torch.clamp(pred_bbox[1], 0.0, H),
-                torch.clamp(pred_bbox[2], 0.0, W),
-                torch.clamp(pred_bbox[3], 0.0, H)
+                torch.clamp(pred_bbox[0], 0.0, W-1),
+                torch.clamp(pred_bbox[1], 0.0, H-1),
+                torch.clamp(pred_bbox[2], 0.0, W-1),
+                torch.clamp(pred_bbox[3], 0.0, H-1)
             ])
             if min_size > 0:
                 non_small = (pred_bbox[2]-pred_bbox[0] + 1 >= min_size) \
                             & (pred_bbox[3]-pred_bbox[1] + 1 >= min_size)
-                cls_score = cls_score[non_small]
-                cls_label = cls_label[non_small]
+                cls_score = cls_score[:, non_small]
                 pred_bbox = pred_bbox[:, non_small]
             cls_scores.append(cls_score)
-            cls_labels.append(cls_label)
             pred_bboxes.append(pred_bbox)
-        mlvl_cls_score = torch.cat(cls_scores)
-        mlvl_cls_label = torch.cat(cls_labels)
+        mlvl_cls_score = torch.cat(cls_scores, dim=1)
         mlvl_pred_bbox = torch.cat(pred_bboxes, dim=1)
-        if 'min_score' not in test_cfg:
-            min_score = -1
+        if self.use_sigmoid:
+            nms_label_set = list(range(0, self.num_classes-1))
+            label_adjust = 1
         else:
-            min_score = test_cfg.min_score
-        keep_bbox, keep_score, keep_label = utils.multiclass_nms(
-            mlvl_pred_bbox, mlvl_cls_score, mlvl_cls_label,
-            range(1, self.num_classes), test_cfg.nms_iou, min_score)
-        if 'max_per_img' in test_cfg and len(keep_score) > test_cfg.max_per_img:
-            _, topk_inds = keep_score.topk(test_cfg.max_per_img)
-            return keep_bbox[:, topk_inds], keep_score[topk_inds], keep_label[topk_inds]
-        return keep_bbox, keep_score, keep_label
+            nms_label_set = list(range(1, self.num_classes))
+            label_adjust = 0
+        keep_bbox, keep_score, keep_label = utils.multiclass_nms_v2(
+            mlvl_pred_bbox.t(), mlvl_cls_score.t(), nms_label_set,
+            test_cfg.nms_iou, test_cfg.min_score, test_cfg.max_per_img)
+        keep_label += label_adjust
+        return keep_bbox.t(), keep_score, keep_label
 
     def predict_bboxes(self, feats, img_metas, test_cfg):
         cls_outs, reg_outs = self.forward(feats)
