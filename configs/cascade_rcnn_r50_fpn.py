@@ -141,7 +141,7 @@ test_cfg = dict(
         nms_iou=0.7,
         min_bbox_size=0.0,
     ),
-    rcnn=dict(min_score=0.05, nms_iou=0.5)
+    rcnn=dict(min_score=0.05, nms_iou=0.5, max_per_img=100)
 ) 
 
 lr_config=dict(
