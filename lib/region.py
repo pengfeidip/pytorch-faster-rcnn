@@ -6,7 +6,6 @@ import time, sys, os
 import os.path as osp
 from . import utils
 
-
 #####################################################
 ### new implementation using vertorized computing ###
 #####################################################
@@ -242,6 +241,75 @@ class ProposalCreator(object):
         return props_bbox[:, keep], top_scores[keep]
 
 
+'''
+provide more flexible roi extractor where users can choose different roi layer for different feature levels
+'''
+class BasicRoIExtractor(nn.Module):
+    '''
+    Args:
+        feats: list([N, C, H, W]): features of different levels
+        rois:  Tensor([4, K]): K rois
+    '''
+
+    def __init__(self, roi_layers, output_size=(7, 7), finest_scale=56):
+        assert isinstance(roi_layers, list)
+        self.output_size = utils.to_pair(output_size)
+        self.finest_scale=finest_scale
+        for roi_layer in roi_layers:
+            roi_layer['output_size'] = output_size
+        from .builder import build_module
+        self.roi_layers = [build_module(roi_layer) for roi_layer in roi_layers]
+        super(BasicRoIExtractor, self).__init__()
+        
+    def map_rois_to_levels(self, rois, num_lvls):
+        # borrow from mmdet
+        with torch.no_grad():
+            scale = torch.sqrt(
+                (rois[2]-rois[0]+1) * (rois[3]-rois[1]+1)
+            )
+            tar_lvls = torch.floor(torch.log2(scale/self.finest_scale+1e-6))
+            tar_lvls = tar_lvls.clamp(0, num_lvls-1).long()
+        return tar_lvls
+
+    def _attach_idx_to_rois_(self, rois, idx):
+        n_rois = rois.shape[1]
+        idx = rois.new_full((1, n_rois), idx)
+        return torch.cat([idx, rois], dim=0)
+
+    def forward_single_level(self, feat, rois, i):
+        assert feat.dim() in (3, 4)
+        if feat.dim() == 3:
+            feat = feat.unsqueeze(0)
+        rois = self._attach_idx_to_rois_(rois, 0)
+        return self.roi_layers[i](feat, rois.t())
+
+    # feats: [1, C, H, W]
+    # rois:  [4, K]
+    def forward_single_image(self, feats, rois):
+        n_lvls = len(self.roi_layers)
+        n_rois = rois.shape[1]
+        assert n_lvls <= len(feats)
+        if n_lvls == 1:
+            return self.forward_one_level(feats[0], rois, 0)
+
+        out_channels = feats[0].shape[-3]
+        roi_outs = feats[0].new_full((n_rois, out_channels, *self.output_size), 0)
+        tar_lvls = self.map_rois_to_levels(rois, n_lvls)
+        for i in range(n_lvls):
+            feat = feats[i]
+            cur_rois_places = (tar_lvls == i)
+            cur_rois = rois[:, cur_rois_places]
+            cur_roi_out = self.forward_single_level(feat, cur_rois, i)
+            roi_outs[cur_rois_places] = cur_roi_out
+        return roi_outs
+
+    def forward(self, level_feats, rois_list):
+        n_lvls = len(self.roi_layers)
+        assert n_lvls > 0 and n_lvls <= len(level_feats)
+        n_imgs = len(rois_list)
+        feats_list = [[lvl_feat[i] for lvl_feat in level_feats] for i in range(n_imgs)]
+        return utils.multi_apply(self.forward_single_image, feats_list, rois_list)
+        
 
 class SingleRoIExtractor(nn.Module):
     def __init__(self, roi_layer='RoIPool', output_size=7, featmap_strides=[16], finest_scale=56):

@@ -22,10 +22,13 @@ model=dict(
         loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0/9.0, loss_weight=1.0)),
     roi_extractor=dict(
-        type='SingleRoIExtractor',
-        roi_layer='RoIAlign',
+        type='BasicRoIExtractor',
+        roi_layers=[
+            dict(type='RoIAlign', spatial_scale=1.0/4.0,  sampling_ratio=2),
+            dict(type='RoIAlign', spatial_scale=1.0/8.0,  sampling_ratio=2),
+            dict(type='RoIAlign', spatial_scale=1.0/16.0, sampling_ratio=2),
+            dict(type='RoIAlign', spatial_scale=1.0/32.0, sampling_ratio=2)],
         output_size=(7, 7),
-        featmap_strides=[4, 8, 16, 32],
     ),
     rcnn_head=[
         dict(

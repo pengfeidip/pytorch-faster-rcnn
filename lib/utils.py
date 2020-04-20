@@ -11,6 +11,14 @@ IMG_PIL2TENSOR = tv.transforms.Compose(
     [tv.transforms.ToTensor(),
      tv.transforms.Normalize(mean=IMGNET_MEAN, std=IMGNET_STD)])
 
+def sum_list(lst):
+    assert len(lst) > 0
+    res = lst[0]
+    for i in range(1, len(lst)):
+        res += lst[i]
+    return res
+
+
 def input_size(img_metas):
     pad_sizes = [img_meta['pad_shape'][:2] for img_meta in img_metas]
     return [max([pad_size[i] for pad_size in pad_sizes]) for i in range(2)]
@@ -36,7 +44,7 @@ def index_of(bool_tsr):
     return tuple(torch.nonzero(bool_tsr).t())
 
 def wh_from_xyxy(bbox):
-    w,h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+    w,h = bbox[2] - bbox[0] + 1, bbox[3] - bbox[1] + 1
     return w,h
 
 def center_of(bbox):
@@ -97,6 +105,18 @@ def clamp_bbox(bbox, img_size):
         bbox[1].clamp(0.0, H-1),
         bbox[2].clamp(0.0, W-1),
         bbox[3].clamp(0.0, H-1)])
+
+def scale_wrt_center(bbox, scale):
+    assert scale > 0
+    ctr_x, ctr_y = center_of(bbox)
+    w, h = wh_from_xyxy(bbox)
+    w, h = w * scale, h * scale
+    dist_w, dist_h = w/2, h/2
+    return torch.stack([
+        ctr_x - dist_w,
+        ctr_y - dist_h,
+        ctr_x + dist_w,
+        ctr_y + dist_h])
 
 def _param2bbox_(base, param):
     assert base.shape == param.shape
