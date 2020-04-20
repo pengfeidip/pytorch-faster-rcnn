@@ -1,6 +1,6 @@
 from torch import nn
 from ..region import AnchorCreator, inside_grid_mask, inside_anchor_mask
-from ..anchor import anchor_target_v2
+from ..anchor import anchor_target
 from ..utils import class_name
 from .. import losses
 from .. import utils
@@ -64,6 +64,15 @@ class AnchorHead(nn.Module):
 
     def single_image_targets(self, level_cls_outs, level_reg_outs, gt_bbox, gt_label,
                              level_anchors, input_size, grid_sizes, img_meta, train_cfg):
+        '''
+        Args:
+            level_cls_outs: class predict on all levels
+            [180, 100, 136], [180, 50, 68], [180, 25, 34], [180, 13, 17], [180, 7, 9]
+            level_reg_outs: bbox predict on all levels
+            [36, 100, 136],  [36, 50, 68],  [36, 25, 34],  [36, 13, 17],  [36, 7, 9]
+            level_anchors:
+            [4, 9, 100, 136],  [4, 9, 50, 68],  [4, 9, 25, 34],  [4, 9, 13, 17],  [4, 9, 7, 9]
+        '''
         logging.debug(' {}: find targets for one image '.format(class_name(self)).center(50, '*'))
         device=level_cls_outs[0].device
         cls_outs = [lvl_cls_out.view(self.cls_channels, -1) for lvl_cls_out in level_cls_outs]
@@ -89,7 +98,7 @@ class AnchorHead(nn.Module):
         logging.debug('in_mask: {}'.format(in_mask.sum().item()))
         logging.debug('in_anchors: {}'.format(in_anchors.shape))
         tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param \
-            = anchor_target_v2(cls_out, reg_out, self.cls_channels,
+            = anchor_target(cls_out, reg_out, self.cls_channels,
                                in_anchors, in_mask, gt_bbox, gt_label,
                                train_cfg.assigner, train_cfg.get('sampler', None),
                                self.target_means, self.target_stds)
@@ -98,6 +107,14 @@ class AnchorHead(nn.Module):
         return tar_cls_out, tar_reg_out, tar_labels, tar_param
 
     def calc_loss(self, tar_cls_out, tar_reg_out, tar_labels, tar_param, train_cfg):
+        '''
+        Loss is usally calculate on one place, i.e. combined targets
+        Args:
+            tar_cls_out: [20, n], class predict on targets
+            tar_reg_out: [4,  n], bbox predict on targets
+            tar_labels:  [n], labels on targets
+            tar_param: [4, n], delta values on targets
+        '''
         logging.debug(' {}: calculate loss of combined images '.format(class_name(self)).center(50, '*'))
         logging.debug('tar_labels: 0:{}, >0:{}'.format(
             (tar_labels==0).sum().item(), (tar_labels>0).sum().item()))
@@ -129,6 +146,13 @@ class AnchorHead(nn.Module):
     4, calculate loss at once
     '''
     def loss(self, cls_outs, reg_outs, gt_bboxes, gt_labels, img_metas, train_cfg):
+        '''
+        Args:
+            cls_outs: class prediction on all levels, on each level it contains multi-image results
+            [2, 180, 100, 152], 2 is number of images, 180 is num_anchors*num_cls, 100*152 is size of feature map
+            reg_outs: bbox prediction on all levels, on each level it contains multi-image results
+            [2, 36, 100, 152], 2 is number of images, 36 is num_anchors*4, 100*152 is size of feature map
+        '''
         logging.info(' {}: find targets and calculate loss '.format(class_name(self)).center(50, '='))
         logging.info('cls_out: {}'.format('\n' + '\n'.join([str(cls_out.shape) for cls_out in cls_outs])))
         logging.info('reg_out: {}'.format('\n' + '\n'.join([str(reg_out.shape) for reg_out in reg_outs])))
@@ -177,6 +201,12 @@ class AnchorHead(nn.Module):
     
     # this method combines proposals created in all levels and then does one nms on the result
     def predict_single_image(self, level_cls_outs, level_reg_outs, level_anchors, img_meta, test_cfg):
+        '''
+        Args:
+            level_cls_outs: [180, 152, 100], [180, 76, 50], ...
+            level_reg_outs: [36, 152, 100], [26, 76, 50], ...
+            level_anchors: [4, 9, 152, 100], [4, 9, 76, 50], ...
+        '''
         logging.info(' {}: predict one image '.format(class_name(self)).center(50, '*'))
         cls_outs = [lvl_cls_out.view(self.cls_channels, -1) for lvl_cls_out in level_cls_outs]
         reg_outs = [lvl_reg_out.view(4, -1) for lvl_reg_out in level_reg_outs]
@@ -231,6 +261,11 @@ class AnchorHead(nn.Module):
         return self.predict_bboxes_from_output(cls_outs, reg_outs, img_metas, test_cfg)
             
     def predict_bboxes_from_output(self, cls_outs, reg_outs, img_metas, test_cfg):
+        '''
+        Args:
+            cls_outs: list(Tensor) [2, 180, 100, 152], ...
+            reg_outs: list(Tensor) [2, 36, 100, 152], ...
+        '''
         num_levels = len(cls_outs)
         num_imgs = len(img_metas)
         device=cls_outs[0].device

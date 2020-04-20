@@ -83,6 +83,11 @@ class FocalLoss(nn.Module):
         self.loss_weight=1.0
 
     def forward(self, pred, target):
+        '''
+        Args:
+            pred: [n, 20] where 20 is number of class channels
+            target: [n] it contains n labels
+        '''
         return self.loss_weight * sigmoid_focal_loss(pred, target, self.alpha, self.gamma)
 
 class SmoothL1Loss(nn.Module):
@@ -104,6 +109,11 @@ class CrossEntropyLoss(nn.Module):
         self.loss_weight=loss_weight
 
     def forward(self, pred, label):
+        '''
+        Args:
+            pred: [n, 21] where 21 is number of class channels, it usually contain backgroud channel
+            target: [n] it contains n labels
+        '''
         n_classes = pred.shape[1]
         if self.use_sigmoid:
             tar_one_hot = utils.one_hot_embedding(label, n_classes+1)

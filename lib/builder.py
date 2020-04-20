@@ -25,8 +25,6 @@ _modules_ = sum_list([_detectors_, _backbones_, _necks_, _heads_, _losses_, _roi
 
 MODULES = { cls.__name__:cls for cls in _modules_ }
 
-print(MODULES)
-
 
 def build_module(cfg, *args, **kwargs):
     cfg = copy.copy(cfg)

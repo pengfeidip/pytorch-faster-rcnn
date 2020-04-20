@@ -1,7 +1,13 @@
 import torch, logging
 from . import utils
 
-def _bbox_target(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means=None, target_stds=None):
+# it choose targets from proposals, so it does not involve any grad tracking
+
+def _bbox_target_(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means=None, target_stds=None):
+    '''
+    Args:
+        props_bbox: [4, n]
+    '''
     from .builder import build_module
     device = props_bbox.device
     if isinstance(assigner, dict):
@@ -65,6 +71,6 @@ def _bbox_target(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means=
     
 def bbox_target(props, gt_bbox, gt_label, assigner, sampler, target_means=None, target_stds=None):
     with torch.no_grad():
-        return _bbox_target(props, gt_bbox, gt_label, assigner, sampler, target_means, target_stds)
+        return _bbox_target_(props, gt_bbox, gt_label, assigner, sampler, target_means, target_stds)
 
 

@@ -12,13 +12,13 @@ from . import utils
 
 class AnchorCreator(object):
     '''
-    It creates anchors based on image size(H, W) and feature size(h, w).
+    It creates anchors based on image size(H, W) and feature size(h, w), which is different than normal implementation.
     
     Args:
         img_size: tuple of (H, W)
         grid: feature size, tupe of (h, w)
     Returns:
-        anchors: a tensor of shapw (4, num_anchors, h, w)
+        anchors: a tensor of shape (4, num_anchors, h, w)
     '''
     MAX_CACHE_ANCHOR = 2000
     CACHE_REPORT_PERIOD = 200
@@ -241,9 +241,8 @@ class ProposalCreator(object):
         return props_bbox[:, keep], top_scores[keep]
 
 
-'''
-provide more flexible roi extractor where users can choose different roi layer for different feature levels
-'''
+
+# provide more flexible roi extractor where users can choose different roi layer for different feature levels
 class BasicRoIExtractor(nn.Module):
     '''
     Args:

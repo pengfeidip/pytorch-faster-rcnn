@@ -1,11 +1,11 @@
-from .bbox_head import BBoxHead_v2
+from .bbox_head import BBoxHead
 from .. import utils
 from ..utils import init_module_normal
 from torch import nn
 import logging, torch
 
 
-class RCNNHead(BBoxHead_v2):
+class RCNNHead(BBoxHead):
     def __init__(self,
                  in_channels,
                  roi_out_size=7,

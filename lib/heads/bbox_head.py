@@ -8,7 +8,7 @@ import logging, torch
 from mmcv.cnn import normal_init
 
 # The input of a BBoxHead is proposals and rois of feature maps. It classifies proposals and regresses bbox adjustment.
-class BBoxHead_v2(nn.Module):
+class BBoxHead(nn.Module):
     def __init__(self,
                  num_classes,
                  target_means=[0.0, 0.0, 0.0, 0.0],
@@ -16,7 +16,7 @@ class BBoxHead_v2(nn.Module):
                  reg_class_agnostic=False,
                  loss_cls=None,
                  loss_bbox=None):
-        super(BBoxHead_v2, self).__init__()
+        super(BBoxHead, self).__init__()
         self.num_classes=num_classes
         self.target_means=target_means
         self.target_stds=target_stds
