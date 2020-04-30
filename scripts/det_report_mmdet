@@ -1,0 +1,202 @@
+#! /usr/bin/env python
+
+import argparse
+import os.path as osp
+from det_utils import mmdet
+
+'''
+it looks at a mmdetection result/work dir and summarize the result
+'''
+
+parser = argparse.ArgumentParser()
+parser.add_argument('res_dir', metavar='res-dir', nargs='+',
+                    help='Result/work dir of mmdetection')
+
+args = parser.parse_args()
+
+header = [
+    'epoch', 'mAP', 'mAP..5', 'mAP..75', 'mAP.S', 'mAP.M', 'mAP.L',
+    'mAR', 'mAR.1', 'mAR.10', 'mAR.S', 'mAR.M', 'mAR.L'
+]
+report = []
+FILL_CHAR = '-'
+FILL_CHAR_LEN = 0
+COMPARE_HEADER = 'profile\\epoch({})'
+PLOT_KW = 'PLT'
+
+def check_args():
+    args.res_dir = [osp.realpath(x) for x in args.res_dir]
+
+def get_mAP(log):
+    try:
+        info = open(log).read().strip().split('\n')[-12:]
+        assert len(info) == 12
+        return [float(line[line.rfind('=')+2:]) for line in info]
+    except:
+        return None
+
+def mAP_of(tab, name):
+    ret = {}
+    for row in tab:
+        ret[row[0]] = row[header.index(name)]
+    return ret
+
+def guess_epoch(log):
+    try:
+        cont = open(log).read()
+        if 'Command' in cont:
+            cmd = open(log).read().strip().split('\n')[1]
+        else:
+            cmd = open(log).read().strip().split('\n')[3]
+        pth = cmd.strip().split(' ')[3]
+        name = osp.basename(pth)
+        return int(name[6:name.find('.')])
+    except:
+        return None
+
+# add records to report and return mAP table for later use
+def report_one(res_dir):
+    mres = mmdet.MmdetResult(res_dir)
+    ckpts = mres.get_ckpts()
+    report.append('Total ckpts({}):\t'.format(len(ckpts)) \
+                  + ','.join([str(x) for x in sorted(ckpts.keys())]))
+    bbox_res = mres.get_bbox_res()
+    report.append('Total evaled epochs({}):\t'.format(len(bbox_res)) \
+                  + ','.join([str(x) for x in sorted(bbox_res.keys())]))
+    gpu_jobs = mres.get_gpu_jobs()
+    report.append('GPU jobs ids({}):\t'.format(len(gpu_jobs)) + \
+                  ','.join([str(x) for x in sorted(gpu_jobs.keys())]))
+    report.append('\t'.join(header))
+    mAP_tab = []
+    for jid, job in gpu_jobs.items():
+        if 'stdout' not in job or 'log' not in job:
+            continue
+        stdout = job['stdout']
+        log    = job['log']
+        mAPs   = get_mAP(stdout)
+        e      = guess_epoch(log)
+        if mAPs is None or e is None:
+            continue
+        mAP_tab.append([e] + mAPs)
+
+    mAP_tab = sorted(mAP_tab, key=lambda x : x[0])
+    [report.append('\t'.join([str(x) for x in row])) for row in mAP_tab]
+    return mAP_tab
+
+def tab2rows(tab):
+    return ['\t'.join([str(x) for x in row]) for row in tab]
+
+def rows2str(rows):
+    return '\n'.join(rows)
+
+def tab2str(tab):
+    return rows2str(tab2rows(tab))
+
+# it looks only one data(mAP, mAR or mAP.S etc) from all profiles
+# and return a table
+def make_mAP_compare_table(data_name, prof_names, mAP_info):
+    hdr_name = COMPARE_HEADER.format(data_name)
+    all_epochs = set()
+    for prof_name, mAP in mAP_info.items():
+        all_epochs.update(mAP['x'])
+    all_epochs = sorted(all_epochs)
+    tab = []
+    max_prof_name_len = max([len(hdr_name)]+[len(x) for x in prof_names])
+    for prof_name in prof_names:
+        line = [prof_name.center(max_prof_name_len+FILL_CHAR_LEN, FILL_CHAR)]
+        mAP = mAP_info[prof_name]
+        [line.append(mAP['y'][mAP['x'].index(e)]) \
+         if e in mAP['x'] else line.append(None) for e in all_epochs]
+        tab.append(line)
+    hdr = [hdr_name.center(max_prof_name_len+FILL_CHAR_LEN, FILL_CHAR)] + all_epochs
+    tab = [hdr] + tab
+    return tab
+
+# it looks at mAP table of all profiles and
+# extract data only for mAP = mAP_name(e.g. mAP, mAP..5, mAR etc)
+def report_mAP_compare(mAP_name, all_mAP, all_prof):
+    comp_dict = {}
+    for i, prof_name in enumerate(all_prof):
+        mAP_ = mAP_of(all_mAP[i], mAP_name)
+        comp_dict[prof_name] = mAP_
+    comp_xy = {}
+    for prof_name, mAP_val in comp_dict.items():
+        sorted_epochs = sorted(mAP_val.keys())
+        comp_xy[prof_name] = {
+            'x': sorted_epochs,
+            'y': [mAP_val[e] for e in sorted_epochs]
+        }
+    comp_tab = make_mAP_compare_table(mAP_name, all_prof, comp_xy)
+    return comp_tab, comp_xy
+
+def get_col(tab, col):
+    return [row[col] for row in tab]
+
+# for each row of the returned table it is:
+# key_word_for_grep, x1, x2, ...
+# key_word_for_grep, y1, y2, ...
+# key_word_for_grep normally is composed of 'prof'/'comp', prof_name, data_name, 'x' or 'y'
+def make_prof_plot_tab(prof_names, mAP_tabs):
+    prof_plot = {}
+    for prof_name, mAP_tab in zip(prof_names, mAP_tabs):
+        epochs = get_col(mAP_tab, header.index('epoch'))
+        plot_tab = []
+        for data_name in header[1:]:
+            y_data = get_col(mAP_tab, header.index(data_name))
+            kw_grep = '_'.join([PLOT_KW, 'prof', prof_name, data_name])
+            plot_tab.append([kw_grep+'_x'] + epochs)
+            plot_tab.append([kw_grep+'_y'] + y_data)
+            prof_plot[prof_name] = plot_tab
+    return prof_plot
+
+
+# data is like {'mAP': {'prof1': {'x':[...], 'y':[...]}}  ...}
+def make_comp_plot_tab(data):
+    comp_plot = {}
+    for data_name, cont in data.items():
+        plot_tab = []
+        for prof_name, entry in cont.items():
+            kw_grep='_'.join([PLOT_KW, 'comp', prof_name, data_name])
+            plot_tab.append([kw_grep+'_x']+entry['x'])
+            plot_tab.append([kw_grep+'_y']+entry['y'])
+            comp_plot[data_name] = plot_tab
+    return comp_plot
+
+def report_plot_data(prof_plot, comp_plot):
+    report.append('# The following data for plotting, so x and y are printed in order.\n'\
+                  + '# Run grep {} for only plotting data.'.format(PLOT_KW))
+    for desc, data in zip(['# Data for each profile', '# Data for each metric'],
+                          [prof_plot, comp_plot]):
+        report.append(desc)
+        for name, cont in data.items():
+            for x in cont:
+                report.append('\t'.join([str(i) for i in x]))
+    
+def main():
+    check_args()
+    prof_names = []
+    mAP_tabs = []
+    for res_dir in args.res_dir:
+        name = osp.basename(res_dir)
+        prof_names.append(name)
+        report.append('###' + name)
+        mAP_tabs.append(report_one(res_dir))
+
+    # next compare mAP among different profiles
+    report.append('# Compare metric among profiles')
+    comp_plot = {}
+    for mAP_name in header[1:]:
+        comp_tab, comp_xy = report_mAP_compare(mAP_name, mAP_tabs, prof_names)
+        [report.append(row) for row in tab2rows(comp_tab)]
+        comp_plot[mAP_name] = comp_xy
+        
+
+    prof_plot = make_prof_plot_tab(prof_names, mAP_tabs)
+    comp_plot = make_comp_plot_tab(comp_plot)
+    report_plot_data(prof_plot, comp_plot)
+    print('\n'.join(report))
+
+    
+    
+if __name__ == '__main__':
+    main()

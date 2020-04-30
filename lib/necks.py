@@ -88,7 +88,56 @@ class FPN(nn.Module):
                 else:
                     outs.append(F.max_pool2d(outs[-1], 1, stride=2))
         return outs
+
+
+class BFP(nn.Module):
+    def __init__(self,
+                 in_channels=256,
+                 num_levels=5,
+                 refine_level=2,
+                 refine_type=None):
+        super(BFP, self).__init__()
+        assert refine_type in [None]
+        assert refine_level >=0 and refine_level < num_levels
+
+        self.in_channels=in_channels
+        self.num_levels=num_levels
+        self.refine_level=refine_level
+        self.refine_type=None
+
+    def init_layers(self):
+        #raise NotImplementedError('Please implement init_layer for BFP')
+        pass
+
+    def init_weights(self):
+        pass
+
+    # feats are features from FPN
+    def forward(self, feats):
+        assert len(feats) == self.num_levels
+        uniform_size = feats[self.refine_level].shape[-2:]
+        uniform_feats = []
+        for i in range(self.num_levels):
+            if i < self.refine_level:
+                uniform_feats.append(F.adaptive_max_pool2d(feats[i], output_size=uniform_size))
+            elif i > self.refine_level:
+                uniform_feats.append(F.interpolate(feats[i], size=uniform_size, mode='nearest'))
+            else:
+                pass
+
+        if self.refine_type is not None:
+            raise NotImplementedError('refine type for not None mode is not implemented')
+
+        refine_layer = sum(uniform_feats)/len(uniform_feats)
+        outs = []
+        for i in range(self.num_levels):
+            if i < self.refine_level:
+                residual = F.interpolate(refine_layer, size=feats[i].shape[-2:], mode='nearest')
+            elif i > self.refine_level:
+                residual = F.adaptive_max_pool2d(refine_layer, output_size=feats[i].shape[-2:])
+            else:
+                residual = refine_layer
+            outs.append(feats[i] + residual)
+        return outs
+                
         
-        
-        
-    

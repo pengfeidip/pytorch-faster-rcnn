@@ -1,0 +1,149 @@
+#! /usr/bin/env python
+
+import json
+import sys
+import os.path as osp
+from collections import Counter
+
+def print_help():
+   print('\nHave a peek at coco annotation')
+   print('Usage:', osp.basename(__file__), 'json_file\n')
+   exit()
+
+def tab2str(tab):
+   return '\n'.join(['\t'.join([str(x) for x in row]) for row in tab])
+
+def stats_of_category(cid_by_iid, iids):
+   multi_bbox = len([iid for iid in iids if len(cid_by_iid[iid])>1])
+   multi_category = len([iid for iid in iids if len(set(cid_by_iid[iid]))>1])
+   return multi_bbox, multi_category
+
+def stats_by_category(cont):
+   cate_info = {x['id']:x['name'] for x in cont['categories']}
+   cid_by_iid = {}
+   iid_by_cid = {}
+   for anno in cont['annotations']:
+      iid = anno['image_id']
+      cid = anno['category_id']
+      if iid in cid_by_iid:
+         cid_by_iid[iid].append(cid)
+      else:
+         cid_by_iid[iid] = [cid]
+      if cid in iid_by_cid:
+         iid_by_cid[cid].add(iid)
+      else:
+         iid_by_cid[cid] = set([iid])
+   cate_ctr = {cid:0 for cid in iid_by_cid.keys()}
+   for anno in cont['annotations']:
+      cate_ctr[anno['category_id']] += 1
+   header = ['cid', 'category', 'tot_bbox', 'images', 'multi_bbox', 'multi_category']
+   tab = [header]
+   for cid in sorted(list(iid_by_cid.keys())):
+      iids = iid_by_cid[cid]
+      multi_bbox, multi_category = stats_of_category(cid_by_iid, iids)
+      tab.append([cid, cate_info[cid], cate_ctr[cid], len(iid_by_cid[cid]),
+                  multi_bbox, multi_category])
+   print(tab2str(tab))
+
+
+if __name__ == '__main__':
+   try:
+      jf = sys.argv[1]
+   except:
+      print_help()
+
+   x = json.load(open(jf))
+
+   # print info
+   if 'info' in x:
+      print('info')
+      for a, b in x['info'].items():
+         print('  ' + str(a) + ': ' + str(b))
+
+   # print licenses
+   if 'licenses' in x:
+      print('licenses')
+      for li in x['licenses']:
+         for a, b in li.items():
+            print('  ' + str(a) + ': ' + str(b))
+
+   # print categories
+   if 'categories' in x:
+      print('categories ({})'.format(len(x['categories'])))
+      for cate in x['categories']:
+         print(cate)
+
+   # print imgages
+   imgs = x['images']
+   img_names = set((img['file_name'] for img in imgs))
+   print('images ({})'.format(len(imgs)))
+   if len(imgs)!=len(img_names):
+      print('WARNING: found repeated image names {}'.format(len(imgs)-len(img_names)))
+   str_iids = [img['id'] for img in imgs if isinstance(img['id'], str)]
+   if len(str_iids) > 0:
+      print('WARNING: found string image ids {}'.format(len(str_iids)))
+   for img in imgs:
+      print(img)
+      print('  ...')
+      break
+   anno = x['annotations']
+   print('annotations ({})'.format(len(anno)))
+   for ann in anno:
+      print(ann)
+      print('  ...')
+      break
+
+   cate_dict = {c['id']:c['name'] for c in x['categories']}
+   cate_ctr = {i:0 for i in cate_dict.keys()}
+   for a in x['annotations']:
+      cate_ctr[a['category_id']]+=1
+   cate_ctr = [[cid, cate_dict[cid], num] for cid, num in cate_ctr.items()]
+   cate_ctr = sorted(cate_ctr, key=lambda x: x[0])
+   print('annotation count by category with category id sorted:')
+   for cid, name, num in cate_ctr:
+      print('\t'.join([str(cid), str(name), str(num)]))
+
+   img_id_images = set([i['id'] for i in x['images']])
+   img_id_annos = set([i['image_id'] for i in x['annotations']])
+
+   ctr_of_img_by_cate = {}
+   for anno in x['annotations']:
+      cid = anno['category_id']
+      if cid in ctr_of_img_by_cate:
+         ctr_of_img_by_cate[cid].add(anno['image_id'])
+      else:
+         ctr_of_img_by_cate[cid] = set([anno['image_id']])
+   print('image count by category with category id sorted:')
+   for cid in sorted(ctr_of_img_by_cate.keys()):
+      print('\t'.join([str(cid), cate_dict[cid], str(len(ctr_of_img_by_cate[cid]))]))
+   print("Image id in 'images' but not in 'annotations': {}"\
+         .format(len(img_id_images - img_id_annos)))
+   print("Image id in 'annotations' but not in 'images': {}"\
+         .format(len(img_id_annos - img_id_images)))
+
+   bbox_ct_per_img = {}
+   for a in x['annotations']:
+      iid = a['image_id']
+      if iid in bbox_ct_per_img:
+         bbox_ct_per_img[iid].append(a['category_id'])
+      else:
+         bbox_ct_per_img[iid] = [a['category_id']]
+   num_all_imgs = len(set([ii['id'] for ii in x['images']]))
+   print('Images having multiple bboxes: {}'.format(
+      sum([1 if len(v) > 1 else 0 for k, v in bbox_ct_per_img.items()])
+   ))
+   print("Images having multiple categories: {}".format(
+      sum([1 if len(set(v)) > 1 else 0 for k, v in bbox_ct_per_img.items()])
+   ))
+         
+   anno_ids = [anno['id'] for anno in x['annotations']]
+   if len(anno_ids) != len(set(anno_ids)):
+      print('WARNING: found {} duplicated annotations ids.'\
+            .format(len(anno_ids) - len(set(anno_ids))))
+   img_ids = [img['id'] for img in x['images']]
+   if len(img_ids) != len(set(img_ids)):
+      print('WARNING: found {} duplicated image ids.'\
+            .format(len(img_ids)-len(set(img_ids))))
+
+   print('Stats of images for each category:')
+   stats_by_category(x)

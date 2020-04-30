@@ -3,6 +3,7 @@ import torch, logging
 from . import region
 import torch.nn.functional as F
 from . import utils
+import numpy as np
 
 def sigmoid_focal_loss(pred, target, alpha=0.25, gamma=2.0, fix_alpha=False):
     '''
@@ -125,3 +126,26 @@ class CrossEntropyLoss(nn.Module):
             loss = F.cross_entropy(pred, label, reduction='none')
             return loss.sum() * self.loss_weight
 
+def balanced_l1_loss(pred, target, beta=1.0, alpha=0.5, gamma=1.5):
+    # borrowed from mmdet
+    assert pred.size() == target.size()
+    diff = torch.abs(pred-target)
+    b = np.e**(gamma/alpha) - 1
+    loss = torch.where(
+        diff < beta,
+        alpha / b * (b*diff + 1)*torch.log(b*diff/beta + 1) - alpha*diff,
+        gamma*diff+gamma/b-alpha*beta
+    )
+    return loss
+
+class BalancedL1Loss(nn.Module):
+    def __init__(self, alpha=0.5, gamma=1.5, beta=1.0, loss_weight=1.0):
+        super(BalancedL1Loss, self).__init__()
+        self.alpha=alpha
+        self.gamma=gamma
+        self.beta=beta
+        self.loss_weight=loss_weight
+
+    def forward(self, pred, label):
+        b_loss = balanced_l1_loss(pred, label, beta=self.beta, alpha=self.alpha, gamma=self.gamma)
+        return b_loss.sum() * self.loss_weight

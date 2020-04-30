@@ -22,7 +22,10 @@ class CascadeRCNN(nn.Module):
 
         self.backbone = build_module(backbone)
         if neck is not None:
-            self.neck=build_module(neck)
+            if isinstance(neck, list):
+                self.neck = nn.Sequential(*[build_module(neck_cfg) for neck_cfg in neck])
+            else:
+                self.neck = build_module(neck)
             self.with_neck=True
         else:
             self.with_neck=False
@@ -65,7 +68,10 @@ class CascadeRCNN(nn.Module):
         self.rpn_head.init_weights()
         # init neck weights
         if self.with_neck:
-            self.neck.init_weights()
+            if isinstance(self.neck, nn.Sequential):
+                _ = [nk.init_weights() for nk in self.neck]
+            else:
+                self.neck.init_weights()
         for i, bbox_head in enumerate(self.rcnn_head):
             bbox_head.init_weights()
             logging.info('(weights of bbox_head={})'.format(i))

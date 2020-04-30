@@ -5,11 +5,17 @@ model=dict(
     type='CascadeRCNN',
     num_stages=1,
     backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
-    neck=dict(
-        type='FPN',
-        in_channels=[256, 512, 1024, 2048],
-        out_channels=256,
-        num_outs=5),
+    neck=[
+        dict(type='FPN',
+             in_channels=[256, 512, 1024, 2048],
+             out_channels=256,
+             num_outs=5),
+        dict(type='BFP',
+             in_channels=256,
+             num_levels=5,
+             refine_level=2,
+             refine_type=None)
+    ],
     rpn_head=dict(
         type='RPNHead',
         in_channels=256,
@@ -40,13 +46,11 @@ model=dict(
             num_classes=21,
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
-            reg_class_agnostic=False,
+            reg_class_agnostic=True,
             loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)
-        )
+            loss_bbox=dict(type='BalancedL1Loss', alpha=0.5, gamma=1.5, beta=1.0, loss_weight=1.0))
     ]
 )
-
 
 train_cfg = dict(
     rpn=dict(
@@ -65,7 +69,7 @@ train_cfg = dict(
     ),
     rpn_proposal=dict(
         pre_nms=2000,
-        post_nms=2000, # used to be post_nms
+        post_nms=2000, 
         max_num=2000,
         nms_iou=0.7,
         min_bbox_size=0,
@@ -78,16 +82,18 @@ train_cfg = dict(
                 neg_iou=0.5,
                 min_pos_iou=0.5),
             sampler=dict(
-                type='RandomSampler',
+                type='IoUBalancedNegSampler',
                 max_num=512,
-                pos_num=128))
+                pos_num=128,
+                floor_thr=-1,
+                floor_fraction=0,
+                num_bins=3))
     ],
     stage_loss_weight=[1.0],
-
-    log_level='DEBUG',
     
     total_epochs=14,
     log_file='train.log',
+    log_level='DEBUG',
     save_interval=2
 )
 

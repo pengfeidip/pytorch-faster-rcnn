@@ -145,7 +145,7 @@ class MaxIoUAssigner(object):
         gt_bbox: tensor of shape (4, m), m is number of gt bboxes
     Returns:
         labels: consists of >0:positive anchor, 0:negative anchor, -1:ignore
-        bbox_labels: gt bboxes assigned to each anchor
+        max_gt_iou: max overlap of each bbox with gt
     '''
     def __init__(self, pos_iou, neg_iou, min_pos_iou):
         self.pos_iou = pos_iou
@@ -186,13 +186,16 @@ class MaxIoUAssigner(object):
             labels[labels_==1] = (max_gt_arg+1)[labels_==1]
         return labels, max_gt_iou
 
+
+
+
 class RandomSampler(object):
     def __init__(self, max_num, pos_num):
         assert pos_num <= max_num
         self.max_num = max_num
         self.pos_num = pos_num
         
-    def __call__(self, labels):
+    def __call__(self, labels, overlaps_iou=None, props_bbox=None, gt_bbox=None):
         # labels is vector returned by an assigner where
         # -1:ignore, 0:negative, >0:positive
         labels_ = labels.clone().detach()
@@ -202,6 +205,51 @@ class RandomSampler(object):
         labels_[pos_places] = labels[pos_places]
         return labels_
 
+class IoUBalancedNegSampler(object):
+    def __init__(self, max_num, pos_num, num_bins=3, max_iou=0.5, floor_thr=-1, floor_fraction=0):
+        # floor_thr and floor_fraction are not supported
+        self.max_num = max_num
+        self.pos_num = pos_num
+        self.num_bins=num_bins
+        self.max_iou=max_iou
+        assert max_num >= pos_num
+        assert max_iou >0 and max_iou <=1
+
+    def __call__(self, labels, overlaps, props_bbox, gt_bbox):
+        # res_labels = labels.clone().detach()
+        neg_ious = overlaps[labels==0]
+        
+        logging.debug('IoUBalancedNegSampler: mean iou of tot neg samples: {}'.format(
+            neg_ious.sum()/neg_ious.shape[0] if neg_ious.shape[0]>0 else None))
+        pos_places = (labels > 0).nonzero()
+        if pos_places.shape[0] > self.pos_num:
+            pos_places = utils.random_select(pos_places, self.pos_num)
+        num_neg = self.max_num - pos_places.shape[0]
+
+        num_per_bin = int(num_neg/self.num_bins)
+        bin_size = self.max_iou / self.num_bins
+        starts = [i*bin_size for i in range(self.num_bins)]
+        ends = [s+bin_size for s in starts]
+        neg_chosen, neg_places = 0, []
+        for i, se in enumerate(zip(starts[::-1], ends[::-1])):
+            s, e = se
+            cur_negs = (labels==0) & (overlaps >= s) & (overlaps < e)
+            cur_negs = cur_negs.nonzero()
+            cur_allowed = num_per_bin if i < self.num_bins - 1 else num_neg - neg_chosen
+            if cur_negs.shape[0] > cur_allowed:
+                cur_negs = utils.random_select(cur_negs, cur_allowed)
+            neg_chosen += cur_negs.shape[0]
+            neg_places.append(cur_negs)
+        tot_chosen = torch.cat([pos_places]+neg_places)
+        if tot_chosen.shape[0] < self.max_num:
+            logging.warning('Sampler can not sample max number of samples, instead: {}'.format(tot_chosen.shape[0]))
+        res_labels = labels.clone().detach()
+        res_labels[:] = -1
+        res_labels[tot_chosen] = labels[tot_chosen]
+        neg_ious = overlaps[torch.cat(neg_places)]
+        logging.debug('IoUBalancedNegSampler: mean iou of neg samples after sampling: {}'.format(
+            neg_ious.sum()/neg_ious.shape[0] if neg_ious.shape[0]>0 else None))
+        return res_labels
 
 
 class ProposalCreator(object):

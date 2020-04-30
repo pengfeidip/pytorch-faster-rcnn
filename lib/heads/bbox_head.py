@@ -134,6 +134,7 @@ class BBoxHead(nn.Module):
                 label += 1
             else:
                 score = cls_out.softmax(dim=1)
+                _, label = score.max(dim=1)
             if self.reg_class_agnostic:
                 reg_out = reg_out.view(-1, 4)
             else:

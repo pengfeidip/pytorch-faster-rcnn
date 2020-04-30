@@ -2,6 +2,7 @@ from PIL import Image
 
 import torchvision as tv
 import torch
+import numpy as np
 
 IMGNET_MEAN = [0.485, 0.456, 0.406]
 IMGNET_STD  = [0.229, 0.224, 0.225]
@@ -326,3 +327,12 @@ def unpack_multi_result(multi_res):
         
 def class_name(slf):
     return slf.__class__.__name__
+
+def random_select_dim(tsr, dim, num, replace=False):
+    tot = tsr.shape[dim]
+    idx = np.random.choice(tot, num, replace)
+    return tsr.index_select(dim, torch.tensor(idx, device=tsr.device))
+
+def random_select(tsr, num, replace=False):
+    return random_select_dim(tsr, 0, num, replace)
+    

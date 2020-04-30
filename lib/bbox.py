@@ -16,15 +16,25 @@ def _bbox_target_(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means
         sampler = build_module(sampler)
     gt_bbox = gt_bbox.to(props_bbox.dtype)
     logging.debug('props_bbox before adding GT: {}'.format(props_bbox.shape))
-    props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
-    logging.debug('props_bbox after adding GT: {}'.format(props_bbox.shape))
+    # props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
     
+    # NOTICE: here labels are not values in gt_label, instead it's the index+1 of the index in gt_label
     labels, overlaps_ious = assigner(props_bbox, gt_bbox)
+    
     logging.debug('labels after assigner: -1:{}, 0:{}, >0:{}, >=0: {}'\
                   .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
-    labels = sampler(labels)
+
+    props_bbox = torch.cat([gt_bbox, props_bbox], dim=1)
+    labels = torch.cat([labels.new(range(1, gt_label.numel()+1)), labels])
+    overlaps_ious = torch.cat([overlaps_ious.new_full((gt_label.numel(), ), 1), overlaps_ious])
+
+    logging.debug('labels after add gt: -1:{}, 0:{}, >0:{}, >=0: {}'\
+                  .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
+
+    labels = sampler(labels, overlaps_ious, props_bbox, gt_bbox)
     logging.debug('labels after sampler: -1:{}, 0:{}, >0:{}, >=0: {}'\
                   .format((labels==-1).sum(), (labels==0).sum(), (labels>0).sum(), (labels>=0).sum()))
+
     pos_places = (labels > 0)
     neg_places = (labels == 0)
     chosen_places = (labels>=0)
@@ -52,8 +62,6 @@ def _bbox_target_(props_bbox, gt_bbox, gt_label, assigner, sampler, target_means
     tar_is_gt = is_gt_chosen
     tar_props = props_bbox[:, chosen_places]
     tar_label = label_cls[chosen_places] # class of each gt label, 0 means background                                  
-    # logging.debug('class of each target label, 0 means background')                                                  
-    # logging.debug('{}'.format(tar_label))                                                                            
     tar_bbox = label_bboxes[:, chosen_places]
     # calc target param which reg_out regress to                                                                       
     tar_param = utils.bbox2param(tar_props, tar_bbox)

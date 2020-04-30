@@ -1,0 +1,169 @@
+#! /usr/bin/env python
+
+'''
+This script adds bounding boxes to images in coco format.
+User needs to provide a list of images, a annotation json in coco format
+and a the output directory.
+'''
+
+COLOR_SET = ['red', 'green', 'blue', 'cyan', 'yellow', 'magenta', 'white', 'black']
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--images', action='store', dest='images',
+                    metavar='REQUIRED', nargs='*', 
+                    required=True, help='a list of images to be added on bboxes')
+parser.add_argument('--json', action='store', dest='anno_json', metavar='REQUIRED', 
+                    required=True, help='annotation json file in coco format')
+parser.add_argument('--out', action='store', dest='out', metavar='REQUIRED',
+                    required=True, help='output directory to put all bboxed images')
+parser.add_argument('--bbox-color', action='store', dest='bbox_color',
+                    metavar='', default='black',
+                    choices=COLOR_SET, help='color of the bounding box')
+parser.add_argument('--text-color', action='store', dest='text_color',
+                    metavar='', default='black',
+                    choices=COLOR_SET, help='color of the label')
+parser.add_argument('--font-scale', action='store', dest='font_scale',
+                    metavar='', default = '0.5',
+                    help='font scale')
+parser.add_argument('--thickness', action='store', dest='thickness',
+                    metavar='', default='1',
+                    help='thickness of the box')
+parser.add_argument('--suffix', action='store', dest='suffix',
+                    metavar='', default='bboxed',
+                    help='suffix added to new images')
+parser.add_argument('--min-score', help='min score to draw')
+args = parser.parse_args()
+
+import json
+import os.path as osp
+import os
+import numpy as np
+from mmcv import imshow_det_bboxes
+from cv2 import imread, imwrite
+import glob
+
+def group_anno(cont):
+    anno_info = {}
+    for a in cont:
+        iid = a['image_id']
+        if iid in anno_info:
+            anno_info[iid].append(a)
+        else:
+            anno_info[iid] = [a]
+    return anno_info
+
+# anno  {file_name: anno_info}
+def fetch_data_from_json(json_file, min_score=None):
+    cont = json.load(open(json_file))
+    cates = None
+    if isinstance(cont, list):
+        anno = {}
+        cates = {}
+        for x in cont:
+            if min_score is not None and x['score'] < min_score:
+                continue
+            if 'category_name' in x:
+                cates[x['category_id']] = x['category_name'] 
+            else:
+                cates[x['category_id']] = str(x['category_id'])
+            file_name = x['file_name']
+            if file_name in anno:
+                anno[file_name].append(x)
+            else:
+                anno[file_name] = [x]
+        cates = [{'id':k, 'name':v} for k,v in cates.items()]
+    elif isinstance(cont, dict):
+        anno_info = group_anno(cont['annotations'])
+        imgs = cont['images']
+        anno = {}
+        for img in imgs:
+            iid = img['id']
+            if iid in anno_info:
+                anno[img['file_name']] = anno_info[iid]
+        cates = cont['categories']
+    else:
+        raise ValueError('Unknown annotation file: {}'.format(json_file))
+    return anno, cates
+
+def create_bboxes(img_anno, cate_info, label_info):
+    bboxes = []
+    labels = []
+    for anno in img_anno:
+        bbox = anno['bbox']
+        if 'score' in anno:
+            bboxes.append([bbox[0], bbox[1], bbox[0]+bbox[2], bbox[1]+bbox[3], anno['score']])
+        else:
+            bboxes.append([bbox[0], bbox[1], bbox[0]+bbox[2], bbox[1]+bbox[3]])
+        cate_id = anno['category_id']
+        labels.append(label_info[cate_id])
+    return np.array(bboxes).astype(np.float), np.array(labels)
+
+
+# cate_info   {cate_id: cate_name}
+# label_info  {cate_id: label}
+# class_names [class_names]
+def index_categories(cate_info):
+    cate_info = {cate['id']: cate['name'] for cate in cate_info}
+    label_info, class_names = {}, []
+    for i, info in enumerate(cate_info.items()):
+        cate_id, cate_name = info
+        label_info[cate_id] = i
+        class_names.append(cate_name)
+    return cate_info, label_info, class_names
+
+def main():
+    print('Options:')
+    print('  Output directory:', args.out)
+    print('  BBox color:', args.bbox_color)
+    print('  Text color:', args.text_color)
+    print('  Font scale:', args.font_scale)
+    print('  Thickness:', args.thickness)
+    print('  Suffix to append to output names:', args.suffix)
+    if args.min_score is not None:
+        args.min_score = float(args.min_score)
+    
+    print('  Min score:', args.min_score)
+
+
+    anno, cate = fetch_data_from_json(args.anno_json, args.min_score)
+    cate_info, label_info, class_names=index_categories(cate)
+    print('Fetched annotation information from {}.'.format(args.anno_json))
+    added = 0
+    imgs = []
+    for img_arg in args.images:
+        if osp.isdir(img_arg):
+            imgs += glob.glob(osp.join(img_arg, "*"))
+        else:
+            imgs.append(img_arg)
+    print('Start to add bboxes to {} images...'.format(len(imgs)))
+    bad_imgs = []
+        
+    for img in imgs:
+        img_name = osp.basename(img)
+        if img_name not in anno:
+            continue
+        img_anno = anno[img_name]
+        bboxes, labels = create_bboxes(img_anno, cate_info, label_info)
+        img_obj = imread(img)
+        if img_obj is None:
+            bad_imgs.append(img_name)
+            continue
+        ext_pos = img_name.rfind('.')
+        suff_name = '_' + args.suffix if args.suffix != '' else ''
+        out_img = osp.join(args.out,
+                           img_name[:ext_pos] + suff_name + img_name[ext_pos:])
+        imshow_det_bboxes(img_obj,bboxes=bboxes,labels=labels,class_names=class_names,
+                          bbox_color=args.bbox_color, text_color=args.text_color,
+                          thickness=int(args.thickness), font_scale=float(args.font_scale),
+                          show=False)
+        imwrite(out_img, img_obj)
+        added += 1
+    print('SUCCESS!!! Finished adding bboxes to {} images.'.format(added))
+    print('Found {} bad images:'.format(len(bad_imgs)))
+    print('\n'.join(bad_imgs))
+
+    
+
+if __name__ == '__main__':
+    main()
