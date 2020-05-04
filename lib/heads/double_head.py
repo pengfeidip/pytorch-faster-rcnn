@@ -12,7 +12,7 @@ class DoubleHead(BBoxHead):
                  in_channels,
                  roi_out_size=7,
                  fc_channels=[1024, 1024],
-                 conv_channels=[1024, 1024, 1024],
+                 conv_channels=[256, 256, 256],
                  conv_strides=[1, 2, 2],
                  conv_paddings=[1, 0, 0],
                  num_classes=21,
@@ -70,8 +70,10 @@ class DoubleHead(BBoxHead):
             conv_in_channels = conv_channels
         conv_layers.append(nn.Tanh())
         self.conv_layer = nn.Sequential(*conv_layers)
-        self.conv_classifier = nn.Linear(conv_channels, self.cls_channels)
-        self.conv_regressor  = nn.Linear(conv_channels, 4 if self.reg_class_agnostic else self.num_classes * 4)
+        self.conv_classifier = nn.Linear(conv_channels*sum(self.roi_out_size),
+                                         self.cls_channels)
+        self.conv_regressor  = nn.Linear(conv_channels*sum(self.roi_out_size),
+                                         4 if self.reg_class_agnostic else self.num_classes * 4)
         
     def init_weights(self):
         for i, fc in enumerate(self.fc_layer):
@@ -104,10 +106,14 @@ class DoubleHead(BBoxHead):
         fc_x = x.view(batch_size, -1)
         fc_x = self.fc_layer(fc_x)
         fc_cls_out = self.fc_classifier(fc_x)
-        fc_reg_out = self.fc_regressor(fc_x)
+        #fc_reg_out = self.fc_regressor(fc_x)
 
-        conv_x = self.conv_layer(x).view(batch_size, -1)
-        conv_cls_out = self.conv_classifier(conv_x)
+        conv_x = self.conv_layer(x)
+        ver_max, _ = conv_x.max(dim=-2)
+        lat_max, _ = conv_x.max(dim=-1)
+        conv_x = torch.cat([ver_max, lat_max], dim=-1)
+        conv_x = conv_x.view(batch_size, -1)
+        #conv_cls_out = self.conv_classifier(conv_x)
         conv_reg_out = self.conv_regressor(conv_x)
 
         fc_cls_outs, fc_reg_outs = [], []
@@ -115,8 +121,8 @@ class DoubleHead(BBoxHead):
         start_idx = 0
         for sz in roi_sizes:
             fc_cls_outs.append(fc_cls_out[start_idx:start_idx+sz])
-            fc_reg_outs.append(fc_reg_out[start_idx:start_idx+sz])
-            conv_cls_outs.append(conv_cls_out[start_idx:start_idx+sz])
+            #fc_reg_outs.append(fc_reg_out[start_idx:start_idx+sz])
+            #conv_cls_outs.append(conv_cls_out[start_idx:start_idx+sz])
             conv_reg_outs.append(conv_reg_out[start_idx:start_idx+sz])
             start_idx += sz
         if self.training:
