@@ -46,6 +46,7 @@ test_cfg = dict(
     min_bbox_size=0,
     min_score=0.05,
     nms_iou=0.5,
+    nms_type='strict',
     max_per_img=100
 ) 
 

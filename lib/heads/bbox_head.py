@@ -142,7 +142,15 @@ class BBoxHead(nn.Module):
                 reg_out = reg_out[torch.arange(n_props), :, label]
             preds = utils.param2bbox(props, reg_out.t(), self.target_means, self.target_stds, img_size)
             if cfg is not None:
-                preds, score, label = utils.multiclass_nms_mmdet(
+                if 'nms_type' not in cfg:
+                    nms_op = utils.multiclass_nms_mmdet
+                elif cfg.nms_type == 'official':
+                    nms_op = utils.multiclass_nms_mmdet
+                elif cfg.nms_type == 'strict':
+                    nms_op = utils.multiclass_nms_v2
+                else:
+                    raise ValueError('Unknown nms_type: {}'.format(cfg.nms_type))
+                preds, score, label = nms_op(
                     preds.t(), score, range(1, self.num_classes), cfg.nms_iou, cfg.min_score, cfg.max_per_img)
                 preds = preds.t()
         return preds, score, label

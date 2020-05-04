@@ -126,8 +126,8 @@ class CascadeRCNN(nn.Module):
                 raise NotImplementedError('multi-image shared head is not implemented for CascadeRCNN')
             
             cls_outs, reg_outs = cur_rcnn_head(roi_outs)
-            logging.debug('cls_outs by current head: {}'.format([co.shape for co in cls_outs]))
-            logging.debug('reg_outs by current head: {}'.format([ro.shape for ro in reg_outs]))
+            #logging.debug('cls_outs by current head: {}'.format([co.shape for co in cls_outs]))
+            #logging.debug('reg_outs by current head: {}'.format([ro.shape for ro in reg_outs]))
             cur_cls_loss, cur_reg_loss = cur_rcnn_head.calc_loss(
                 cls_outs, reg_outs, tar_labels, tar_params, cur_rcnn_train_cfg)
             losses['rcnn_{}_cls_loss'.format(i)] = cur_cls_loss * train_cfg.stage_loss_weight[i]

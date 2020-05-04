@@ -3,7 +3,7 @@ from .region import MaxIoUAssigner, RandomSampler, SingleRoIExtractor, BasicRoIE
 from .necks import FPN, BFP
 from .losses import FocalLoss, SmoothL1Loss, CrossEntropyLoss, BalancedL1Loss
 from .detectors import RetinaNet, CascadeRCNN
-from .heads import RetinaHead, RPNHead, RCNNHead
+from .heads import RetinaHead, RPNHead, RCNNHead, DoubleHead
 from torch.optim import SGD
 from torchvision.ops import RoIAlign, RoIPool
 
@@ -15,7 +15,7 @@ from .utils import sum_list
 _detectors_ = [RetinaNet, CascadeRCNN]
 _backbones_ = [ResNet50, VGG16, ResLayerC5]
 _necks_ = [FPN, BFP]
-_heads_ = [RetinaHead, RPNHead, RCNNHead]
+_heads_ = [RetinaHead, RPNHead, RCNNHead, DoubleHead]
 _losses_ = [CrossEntropyLoss, SmoothL1Loss, FocalLoss, BalancedL1Loss]
 _roi_extractors_ = [SingleRoIExtractor, BasicRoIExtractor, RoIAlign, RoIPool]
 _optimizers_ = [SGD]
