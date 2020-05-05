@@ -1,6 +1,9 @@
 from . import utils
 import os.path as osp
 import copy, torch, logging
+from mmcv import ProgressBar
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 class BasicTester(object):
     def __init__(self,
@@ -25,11 +28,11 @@ class BasicTester(object):
         logging.info('Start to inference {} images...'.format(len(dataloader)))
         logging.info('Test config:')
         logging.info(str(self.test_cfg))
+        prog_bar = ProgressBar(len(dataloader))
         with torch.no_grad():
             for test_data in dataloader:
                 img_metas = test_data['img_meta'].data[0]
                 img_data  = test_data['img'].data[0].to(self.device)
-                
 
                 bboxes, scores, categories = self.inference_one(img_data, img_metas)
                 for i in range(len(img_metas)):
@@ -50,6 +53,7 @@ class BasicTester(object):
                         bbox.shape[1], ith, iid))
                     inf_res.append(img_res)
                 ith += 1
+                prog_bar.update()
         return inf_res
 
     def inference_one(self, img_data, img_metas):

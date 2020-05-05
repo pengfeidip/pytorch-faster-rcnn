@@ -4,6 +4,7 @@ parser.add_argument('config', help='Model configs, train configs and test config
 parser.add_argument('ckpt', help='Model ckpt file ending with .pth')
 parser.add_argument('--gpu', help='GPU cardinal, only support single GPU at now.')
 parser.add_argument('--out', required=True, help='Output result in json format.')
+parser.add_argument('--log', help='Output log to this file.')
 
 args = parser.parse_args()
 
@@ -14,6 +15,8 @@ from lib import datasets
 from lib.tester import BasicTester
 import torch, time
 
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 def check_args():
     args.config_file = osp.realpath(args.config)
@@ -32,9 +35,14 @@ def set_seed(seed):
 
 def main():
     check_args()
-    logging.basicConfig(format='%(asctime)s: %(message)s\t[%(levelname)s]',
-                        datefmt='%y%m%d_%H%M%S_%a',
-                        level=logging.DEBUG)
+    if args.log is not None:
+        logging.basicConfig(format='%(asctime)s: %(message)s\t[%(levelname)s]',
+                            datefmt='%y%m%d_%H%M%S_%a',
+                            filename=args.log,
+                            level=logging.DEBUG)
+    else:
+        logger = logging.getLogger()
+        logger.disabled=True
 
     config = args.config
     dataset = datasets.VOCDataset(
@@ -77,8 +85,13 @@ def main():
             out_json.append(cur_pred)
             anno_idx += 1
     json.dump(out_json, open(args.out, 'w'))
-    time_used = time.time() - start
-    print('Finished inference, time used: {} secs or {} mins'.format(time_used, time_used/60))
+    gt = COCO(config.data.test.ann_file)
+    dt = gt.loadRes(args.out)
+    img_ids = gt.getImgIds()
+    cocoEval = COCOeval(gt, dt, 'bbox')
+    cocoEval.evaluate()
+    cocoEval.accumulate()
+    cocoEval.summarize()
     
 if __name__ == '__main__':
     main()
