@@ -4,6 +4,7 @@ from ..utils import init_module_normal
 from torch import nn
 from .. import debug
 import logging, torch
+import torch.nn.functional as F
 from mmcv.cnn import normal_init, constant_init
 
 
@@ -11,15 +12,14 @@ class DoubleHead(BBoxHead):
     def __init__(self,
                  in_channels,
                  roi_out_size=7,
-                 fc_channels=[1024, 1024],
-                 conv_channels=[256, 256, 256],
-                 conv_strides=[1, 2, 2],
-                 conv_paddings=[1, 0, 0],
+                 cls_fc_channels=[1024, 1024],
+                 reg_conv_channels=[256],
+                 reg_conv_strides=[1],
+                 reg_conv_paddings=[1],
+                 reg_fc_channels=[256*7*7, 1024, 1024],
                  num_classes=21,
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[0.1, 0.1, 0.2, 0.2],
-                 lambda_fc=0.5,
-                 lambda_conv=0.5,
                  reg_class_agnostic=False,
                  loss_cls=None,
                  loss_bbox=None):
@@ -33,67 +33,73 @@ class DoubleHead(BBoxHead):
 
         self.in_channels=in_channels
         self.roi_out_size=utils.to_pair(roi_out_size)
-        self.fc_channels=fc_channels
-        self.conv_channels=conv_channels
-        self.conv_strides=conv_strides
-        self.conv_paddings=conv_paddings
-        self.lambda_fc=lambda_fc
-        self.lambda_conv=lambda_conv
+        self.cls_fc_channels=cls_fc_channels
+        self.reg_conv_channels=reg_conv_channels
+        self.reg_conv_strides=reg_conv_strides
+        self.reg_conv_paddings=reg_conv_paddings
+        self.reg_fc_channels=reg_fc_channels
         
+        assert len(reg_fc_channels) > 0
         assert self.roi_out_size[0] == self.roi_out_size[1] == 7
-        assert len(conv_channels) == len(conv_strides) == len(conv_paddings)
-        
+        assert len(reg_conv_channels) == len(reg_conv_strides) == len(reg_conv_paddings)
         
         self.init_layers()
+
 
     def init_layers(self):
         # the fc head
         spatial_size = self.roi_out_size[0] * self.roi_out_size[1]
         fc_in_channels = spatial_size * self.in_channels
         fc_layers = []
-        for fc_channels in self.fc_channels:
+        for fc_channels in self.cls_fc_channels:
             fc_layers.append(nn.Linear(fc_in_channels, fc_channels))
             fc_layers.append(nn.ReLU(inplace=True))
             fc_in_channels = fc_channels
         self.fc_layer = nn.Sequential(*fc_layers)
         self.fc_classifier = nn.Linear(fc_channels, self.cls_channels)
-        self.fc_regressor  = nn.Linear(fc_channels, 4 if self.reg_class_agnostic else self.num_classes * 4)
 
         # the conv head
         conv_layers = []
+        
         conv_in_channels = self.in_channels
-        for i in range(len(self.conv_channels)):
-            conv_channels = self.conv_channels[i]
+        for i in range(len(self.reg_conv_channels)):
+            conv_channels = self.reg_conv_channels[i]
             conv_layers.append(nn.Conv2d(conv_in_channels, conv_channels, 3,
-                                         padding=self.conv_paddings[i], stride=self.conv_strides[i]))
+                                         padding=self.reg_conv_paddings[i], stride=self.reg_conv_strides[i],
+                                         bias=False))
             conv_layers.append(nn.BatchNorm2d(conv_channels))
             conv_in_channels = conv_channels
-        conv_layers.append(nn.Tanh())
-        self.conv_layer = nn.Sequential(*conv_layers)
-        self.conv_classifier = nn.Linear(conv_channels*sum(self.roi_out_size),
-                                         self.cls_channels)
-        self.conv_regressor  = nn.Linear(conv_channels*sum(self.roi_out_size),
-                                         4 if self.reg_class_agnostic else self.num_classes * 4)
+        conv_layers.append(nn.ReLU())
+
+        self.conv_layer = nn.ModuleList(conv_layers)
+
+        reg_fc_layers = []
+        reg_fc_in_channels = self.reg_fc_channels[0]
+        for i in range(1, len(self.reg_fc_channels)):
+            reg_fc_layers.append(nn.Linear(reg_fc_in_channels, self.reg_fc_channels[i]))
+            reg_fc_layers.append(nn.ReLU(inplace=True))
+            reg_fc_in_channels = self.reg_fc_channels[i]
+        self.reg_fc_layer = nn.Sequential(*reg_fc_layers)
+                
+        self.conv_regressor = nn.Linear(reg_fc_in_channels,
+                                        4 if self.reg_class_agnostic else self.num_classes * 4)
         
     def init_weights(self):
-        for i, fc in enumerate(self.fc_layer):
+        for i, fc in enumerate(list(self.fc_layer)+list(self.reg_fc_layer)):
             if isinstance(fc, nn.Linear):
                 nn.init.xavier_uniform_(fc.weight)
                 nn.init.constant_(fc.bias, 0)
                 logging.info('Init {} fc layer with xavier and constant'.format(i))
         normal_init(self.fc_classifier, std=0.01)
-        normal_init(self.fc_regressor, std=0.001)
-        for i, conv in enumerate(self.conv_layer):
+        for i, conv in enumerate(list(self.conv_layer)):
             if isinstance(conv, nn.Conv2d):
                 normal_init(conv, std=0.01)
                 logging.info('Init {} conv layer with normal distribution'.format(i))
             if isinstance(conv, nn.BatchNorm2d):
                 constant_init(conv, 1, bias=0)
                 logging.info('Init {} conv layer (BN) with constant')
-        normal_init(self.conv_classifier, std=0.01)
         normal_init(self.conv_regressor, std=0.001)
         
-                
 
     # for input, rois is a list of roi output from diff imgs
     # for output, cls_outs and reg_outs are list of results for diff imgs
@@ -106,23 +112,21 @@ class DoubleHead(BBoxHead):
         fc_x = x.view(batch_size, -1)
         fc_x = self.fc_layer(fc_x)
         fc_cls_out = self.fc_classifier(fc_x)
-        #fc_reg_out = self.fc_regressor(fc_x)
 
-        conv_x = self.conv_layer(x)
-        ver_max, _ = conv_x.max(dim=-2)
-        lat_max, _ = conv_x.max(dim=-1)
-        conv_x = torch.cat([ver_max, lat_max], dim=-1)
+        
+        # conv regressor
+        conv_x = x
+        for conv in self.conv_layer:
+            conv_x = conv(conv_x)
         conv_x = conv_x.view(batch_size, -1)
-        #conv_cls_out = self.conv_classifier(conv_x)
+
+        conv_x = self.reg_fc_layer(conv_x)
         conv_reg_out = self.conv_regressor(conv_x)
 
-        fc_cls_outs, fc_reg_outs = [], []
-        conv_cls_outs, conv_reg_outs = [], []
+        fc_cls_outs, conv_reg_outs = [], []
         start_idx = 0
         for sz in roi_sizes:
             fc_cls_outs.append(fc_cls_out[start_idx:start_idx+sz])
-            #fc_reg_outs.append(fc_reg_out[start_idx:start_idx+sz])
-            #conv_cls_outs.append(conv_cls_out[start_idx:start_idx+sz])
             conv_reg_outs.append(conv_reg_out[start_idx:start_idx+sz])
             start_idx += sz
         if self.training:
