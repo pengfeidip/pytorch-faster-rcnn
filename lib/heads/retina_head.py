@@ -34,13 +34,13 @@ class RetinaHead(AnchorHead):
         self.anchor_strides = anchor_strides
         self.base_sizes = anchor_strides
         super(RetinaHead, self).__init__(num_classes,
-                                            anchor_scales,
-                                            anchor_ratios,
-                                            anchor_strides,
-                                            target_means,
-                                            target_stds,
-                                            loss_cls,
-                                            loss_bbox)
+                                         anchor_scales,
+                                         anchor_ratios,
+                                         anchor_strides,
+                                         target_means,
+                                         target_stds,
+                                         loss_cls,
+                                         loss_bbox)
         
         self.init_layers()
         logging.info('Constructed RetinaHead with in_channels={}, feat_channels={}, num_levels={}, num_anchors={}'\
