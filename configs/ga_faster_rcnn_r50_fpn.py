@@ -18,7 +18,6 @@ model=dict(
         scales_per_octave=3,
         octave_ratios=[0.5, 1.0, 2.0],
         anchor_strides=[4, 8, 16, 32, 64],
-        anchor_base_sizes=None,
         anchoring_means=[.0, .0, .0, .0],
         anchoring_stds=[0.07, 0.07, 0.14, 0.14],
         target_means=(.0, .0, .0, .0),
@@ -67,7 +66,7 @@ train_cfg = dict(
             type='ApproxMaxIoUAssigner',
             pos_iou=0.7,
             neg_iou=0.3,
-            min_pos=0.3
+            min_pos_iou=0.3
         ),
         ga_sampler=dict(
             type='RandomSampler',

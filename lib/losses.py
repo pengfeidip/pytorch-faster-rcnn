@@ -149,3 +149,17 @@ class BalancedL1Loss(nn.Module):
     def forward(self, pred, label):
         b_loss = balanced_l1_loss(pred, label, beta=self.beta, alpha=self.alpha, gamma=self.gamma)
         return b_loss.sum() * self.loss_weight
+
+class BoundedIoULoss(nn.Module):
+    def __init__(self, beta=0.2, loss_weight=1.0):
+        self.beta=beta
+        self.loss_weight=loss_weight
+        super(BoundedIoULoss, self).__init__()
+
+    def forward(self, x, y):
+        assert x.shape == y.shape
+        x = x + 1e-6
+        y = y + 1e-6
+        loss = 1-torch.min(x/y, y/x)
+        return smooth_l1_loss_v2(loss, loss.new_zeros(loss.size()), self.beta).sum()
+

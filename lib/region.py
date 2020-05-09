@@ -251,6 +251,10 @@ class IoUBalancedNegSampler(object):
             neg_ious.sum()/neg_ious.shape[0] if neg_ious.shape[0]>0 else None))
         return res_labels
 
+def ApproxMaxIoUAssigner(object):
+    def __init__(self, pos_iou=0.7, neg_iou=0.3, min_pos_iou=0.3):
+        pass
+
 
 class ProposalCreator(object):
     def __init__(self,

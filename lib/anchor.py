@@ -8,7 +8,7 @@ import torch
 # If gt_label is not None, the returned tar_labels contains 0 and positive specific labels of assigned gt.
 # Since 0 is reserved as negative(background), gt labels can't contain 0.
 def anchor_target(cls_out, reg_out, cls_channels, in_anchors, in_mask, gt_bbox, gt_label=None,
-                     assigner=None, sampler=None, target_means=None, target_stds=None):
+                  assigner=None, sampler=None, target_means=None, target_stds=None):
     '''
     Args:
         cls_out: [1, n], class predict of all anchors
