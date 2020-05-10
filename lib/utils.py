@@ -24,14 +24,6 @@ def input_size(img_metas):
     pad_sizes = [img_meta['pad_shape'][:2] for img_meta in img_metas]
     return [max([pad_size[i] for pad_size in pad_sizes]) for i in range(2)]
 
-# from image file to batched input to a network
-def imread(file_path):
-    img = Image.open(file_path)
-    return IMG_PIL2TENSOR(img).unsqueeze(0)
-
-def image2tensor(file_path):
-    return imread(file_path)
-
 def dict2str(d):
     return '{ '+', '.join(['{}:{}'.format(k, dict2str(v)) for k,v in d.items()])+' }' \
         if isinstance(d, dict) else str(d)

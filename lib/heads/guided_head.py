@@ -17,6 +17,21 @@ def shape_target_single_image(shape_outs, anchors, img_meta, assigner, sampler, 
     
     pass
 
+def map_gt_level(anchor_scale, anchor_strides, gt_bbox):
+    # borrow from mmdet
+    scales = torch.sqrt((gt_bbox[2] - gt_bbox[0] + 1) * (gt_bbox[3] - gt_bbox[1] + 1))
+    min_anchor_size = scales.new_full((1, ), float(anchor_scale * anchor_strides[0]))
+    target_lvls = torch.floor(torch.log2(scales) - torch.log2(min_anchor_size) + 0.5)
+    target_lvls = target_lvls.clamp(0, len(anchor_strides)-1).long()
+    return target_lvls
+
+def paint_bbox(canvas, bbox, scale, val):
+    assert level.dim() == 2
+    bbox = bbox * scale
+    bbox = bbox.round()
+    canvas[bbox[1]:bbox[3]+1, bbox[0]:bbox[2]+1] = val
+    return canvas
+
 # it is actually multi-level guided anchor
 class GuidedAnchor(nn.Module):
     def __init__(self,
@@ -71,7 +86,79 @@ class GuidedAnchor(nn.Module):
     def create_anchor(self):
         pass
 
-    def shape_target_single_image(self, )
+    def shape_target_single_image(self, shape_outs, gt_bbox, gt_label, img_meta, cfg):
+        # todo
+        pass
+
+    def shape_target(self, shape_outs, gt_bboxes, gt_labels, img_metas, cfg):
+        num_imgs = len(img_metas)
+        shape_outs_img = []
+        for i in range(num_imgs):
+            shape_outs_img.append([shape_out[i] for shape_out in shape_outs])
+        return unpack_multi_result(multi_apply(self.shape_target_single_image,
+                                               shape_outs_img,
+                                               gt_bboxes,
+                                               gt_labels,
+                                               img_metas,
+                                               cfg))
+
+
+
+    def loc_target(self, loc_outs, gt_bboxes, gt_labels, img_metas, cfg):
+        num_imgs = len(gt_bboxes)
+        loc_outs_img = []
+        for i in range(num_imgs):
+            loc_outs_img.append([loc_out[i] for loc_out in loc_outs])
+        return unpack_multi_result(multi_apply(self.loc_target_single_image,
+                                                loc_outs_img,
+                                                gt_bboxes,
+                                                gt_labels,
+                                                img_metas,
+                                                cfg))
+            
+    def loc_target_single_image(self, loc_outs, gt_bbox, gt_label, img_meta, cfg):
+        '''
+        Args:
+            loc_outs: list([1, 267, 200], [1, 134, 100], ...)
+            gt_bbox: [4, n], n gt bboxes
+            gt_label: [n], n gt labels
+            img_meta: 'img_shape', 'scale_factor' etc
+            cfg: 'sampler', 'assigner', 'center_ratio', 'ignore_ratio', etc
+        '''
+        # first set all targets to 0 which is negative. -1:ignore, 0:negative, 1:positive
+        targets = [lo.new_full(lo.shape[-2:], 0) for lo in loc_outs]
+        scales = [1.0 / x for x in self.anchor_strides]
+        num_lvls = len(targets)
+
+        gt_lvl = map_gt_level(self.anchor_scales[0], self.anchor_strides, gt_bbox)
+        # second set all ignore areas
+        ig_thr = cfg.ignore_ratio
+        for i in range(gt_bbox.shape[1]):
+            lvl = gt_lvl[i]
+            bbox = gt_bbox[:, i]
+            x1, y1, x2, y2 = bbox
+            w, h = x2 - x1 + 1, y2 - y1 + 1
+            w, h = w*cfg.ignore_ratio, h*cfg.ignore_ratio
+            ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
+            ig_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
+            ig_bbox = [x.round() for x in ig_bbox]
+            paint_bbox(targets[lvl], ig_bbox, scales[lvl], -1)
+            if lvl - 1 >= 0:
+                paint_bbox(targets[lvl-1], ig_bbox, scales[lvl-1], -1)
+            if lvl + 1 <  num_lvls:
+                paint_bbox(targets[lvl+1], ig_bbox, scales[lvl+1], -1)
+        # third, set all positive areas
+        for i in range(gt_bbox.shape[1]):
+            lvl = gt_lvl[i]
+            bbox = gt_bbox[:, i]
+            x1, y1, x2, y2 = bbox
+            w, h = x2 - x1 + 1, y2 - y1 + 1
+            w, h = w*cfg.center_ratio, h*cfg.center_ratio
+            ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
+            ctr_bbox = [ctr_x - w/2. ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
+            ctr_bbox = [x.round() for x in ig_bbox]
+            paint_bbox(targets[lvl], ctr_bbox, scales[lvl], 1)
+        return targets
 
 
     def forward(self, feats):
