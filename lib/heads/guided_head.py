@@ -1,17 +1,18 @@
 import torch.nn as nn
 from mmdet.ops.dcn import DeformConv
 from mmcv.cnn import normal_init
-import logging
-from .. import debug
+import logging, torch
+from .. import debug, utils, region
+from ..utils import multi_apply, unpack_multi_result
 
 # shape_outs [[1, 2, 267, 200], [1, 2, 134, 100], ...]
 # anchors [[4, num_anchors, 267, 200], [4, num_anchors, 134, 100], ...]
 # img_metas, mainly need img_shape
 #
-def shape_target_single_image(shape_outs, anchors, img_meta, assigner, sampler, gt_bbox, gt_label, assigner, sampler,
-                              target_means=None, target_stds=None):
+def _shape_target_single_image(shape_outs, anchors, img_meta, assigner, sampler,
+                               gt_bbox, gt_label, target_means=None, target_stds=None):
     from ..builder import build_module
-    img_size = img_meta['img_shape'][-2:]
+    img_size = img_meta['img_shape'][:2]
     grid_sizes = [so.shape[-2:] for so in shape_outs]
     num_anchors = anchors.shape[1]
     
@@ -26,9 +27,9 @@ def map_gt_level(anchor_scale, anchor_strides, gt_bbox):
     return target_lvls
 
 def paint_bbox(canvas, bbox, scale, val):
-    assert level.dim() == 2
+    assert canvas.dim() == 2
     bbox = bbox * scale
-    bbox = bbox.round()
+    bbox = bbox.round().long()
     canvas[bbox[1]:bbox[3]+1, bbox[0]:bbox[2]+1] = val
     return canvas
 
@@ -63,8 +64,14 @@ class GuidedAnchor(nn.Module):
         self.loss_loc=build_module(loss_loc)
         self.loss_shape=build_module(loss_shape)
 
+        self.anchor_creators = [
+            region.AnchorCreator(base=base, scales=anchor_scales,
+                                 aspect_ratios=anchor_ratios)
+            for base in self.anchor_strides]
+
         self.init_layers()
-        
+
+                
 
     def init_layers(self):
         self.loc_layer = nn.Conv2d(self.in_channels, 1, 3, padding=1)
@@ -84,24 +91,96 @@ class GuidedAnchor(nn.Module):
         normal_init(self.adapt_layer, std=0.01)
 
     def create_anchor(self):
+        # infer anchor from loc and shape predictions
         pass
 
-    def shape_target_single_image(self, shape_outs, gt_bbox, gt_label, img_meta, cfg):
-        # todo
-        pass
+    
+    def create_level_anchors(self, in_size, grid_sizes, device):
+        for ac in self.anchor_creators:
+            ac.to(device)
+        return [actr(in_size, grid_sizes[i]) for i, actr in enumerate(
+            self.anchor_creators)]
 
-    def shape_target(self, shape_outs, gt_bboxes, gt_labels, img_metas, cfg):
+    def shape_target_single_image(self, lvl_anchors, shape_outs,
+                                  gt_bbox, gt_label, img_meta, input_size, cfg):
+        from ..builder import build_module
+        # here shape_outs are shape reformed outs
+        device = shape_outs[0].device
+        grid_sizes = [so.shape[-2:] for so in shape_outs]
+        img_size = img_meta['img_shape'][:2]
+
+        assert cfg.allowed_border == -1 # assert this to make it a little easier
+        num_anchors = lvl_anchors[0].shape[1]
+        # only flatten spatial dim, i.e. w, h
+        anchors = [acs.view(4, num_anchors, -1) for acs in lvl_anchors]
+        anchors = torch.cat(anchors, dim=-1) # [4, 9, 80297]
+        # get grid that is within current image area, it is needed for multi-image mode
+        in_masks = [region.inside_grid_mask(1, input_size, img_size, grid_size, device)
+                    for grid_size in grid_sizes]
+        in_mask = torch.cat(in_masks)
+
+        # now we want to find the anchor(out of 9 anchors) that overlap gt
+        # the most for all grid position
+        max_ious = []
+        for i in range(num_anchors):
+            cur_anchor = anchors[:, i, :]
+            iou_tab = utils.calc_iou(gt_bbox, cur_anchor)
+            max_iou, max_gt_idx = iou_tab.max(dim=0)
+            max_ious.append(max_iou)
+        max_ious = torch.stack(max_ious) # [9, 80297]
+        # find out which anchor overlaps the most with gt
+        max_iou_with_gt, max_anchor_with_gt = max_ious.max(0)
+        max_anchors = anchors[:, max_anchor_with_gt, torch.arange(anchors.shape[-1])]
+
+        assigner = build_module(cfg.ga_assigner)
+        in_anchors = max_anchors[:, in_mask.bool()]
+        labels, overlap_ious = assigner(in_anchors, gt_bbox)
+        sampler = cfg.ga_sampler
+        if sampler is not None:
+            if isinstance(sampler, dict):
+                sampler = build_module(sampler)
+            labels = sampler(labels)
+            
+        neg_places, zero_places, pos_places = (labels<0), (labels==0), (labels>0)
+        non_neg_places = (~neg_places)
+
+        # select target shape outs before in_mask
+        shape_outs = [so.view(2, -1) for so in shape_outs]
+        shape_out = torch.cat(shape_outs, dim=1)
+        inside_args = torch.nonzero(in_mask)
+        chosen = inside_args[non_neg_places].squeeze()
+        tar_shape_out = shape_out[:, chosen]
+
+        # select target bbox and target label(1 and 0) after in_mask
+        tar_idx = labels - 1
+        tar_idx[tar_idx < 0] = 0
+        tar_bbox = gt_bbox[:, tar_idx]
+        tar_bbox = tar_bbox[:, non_neg_places]
+        tar_label = labels.detach().clone()
+        tar_label[pos_places] = 1
+        tar_label = tar_label[non_neg_places]
+        return tar_shape_out, tar_bbox, tar_label
+
+
+    def shape_target(self, shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg):
+        device = shape_reformed_outs[0].device
+        input_size = utils.input_size(img_metas)
+        input_size = tuple(input_size)
+        grid_sizes = [so.shape[-2:] for so in shape_reformed_outs]
+        lvl_anchors = self.create_level_anchors(input_size, grid_sizes, device)
+        lvl_anchors = tuple(lvl_anchors)
         num_imgs = len(img_metas)
         shape_outs_img = []
         for i in range(num_imgs):
-            shape_outs_img.append([shape_out[i] for shape_out in shape_outs])
+            shape_outs_img.append([shape[i] for shape in shape_reformed_outs])
         return unpack_multi_result(multi_apply(self.shape_target_single_image,
+                                               lvl_anchors,
                                                shape_outs_img,
                                                gt_bboxes,
                                                gt_labels,
                                                img_metas,
+                                               input_size,
                                                cfg))
-
 
 
     def loc_target(self, loc_outs, gt_bboxes, gt_labels, img_metas, cfg):
@@ -126,6 +205,7 @@ class GuidedAnchor(nn.Module):
             cfg: 'sampler', 'assigner', 'center_ratio', 'ignore_ratio', etc
         '''
         # first set all targets to 0 which is negative. -1:ignore, 0:negative, 1:positive
+        device = loc_outs[0].device
         targets = [lo.new_full(lo.shape[-2:], 0) for lo in loc_outs]
         scales = [1.0 / x for x in self.anchor_strides]
         num_lvls = len(targets)
@@ -141,7 +221,7 @@ class GuidedAnchor(nn.Module):
             w, h = w*cfg.ignore_ratio, h*cfg.ignore_ratio
             ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
             ig_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
-            ig_bbox = [x.round() for x in ig_bbox]
+            ig_bbox = torch.tensor([x.round() for x in ig_bbox], dtype=torch.float)
             paint_bbox(targets[lvl], ig_bbox, scales[lvl], -1)
             if lvl - 1 >= 0:
                 paint_bbox(targets[lvl-1], ig_bbox, scales[lvl-1], -1)
@@ -155,11 +235,10 @@ class GuidedAnchor(nn.Module):
             w, h = x2 - x1 + 1, y2 - y1 + 1
             w, h = w*cfg.center_ratio, h*cfg.center_ratio
             ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
-            ctr_bbox = [ctr_x - w/2. ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
-            ctr_bbox = [x.round() for x in ig_bbox]
+            ctr_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
+            ctr_bbox = torch.tensor([x.round() for x in ig_bbox], dtype=torch.float)
             paint_bbox(targets[lvl], ctr_bbox, scales[lvl], 1)
-        return targets
-
+        return targets, cfg
 
     def forward(self, feats):
         assert len(feats) == len(self.anchor_strides)
@@ -170,8 +249,6 @@ class GuidedAnchor(nn.Module):
         shape_reformed_outs = [self.sigma*self.anchor_strides[i]*(shape_outs[i].exp()) for i in range(len(feats))]
         return loc_outs, shape_outs, shape_reformed_outs, adapt_feats
 
-    def loc_target(self):
-        pass
 
     def loss(self, loc_outs, shape_outs, shape_reformed_outs, adapt_feats, gt_bboxes, gt_labels, img_metas):
         pass
@@ -226,11 +303,11 @@ class GARPNHead(nn.Module):
 
         octave_scales = [2**(i/scales_per_octave) for i in range(scales_per_octave)]
         anchor_scales = [octave_base_scale*octave_scale for octave_scale in octave_scales]
-
+        self.anchor_scales=anchor_scales
         self.guided_anchor = GuidedAnchor(
             in_channels,
             in_channels,
-            anchor_scales=octave_scales,
+            anchor_scales=anchor_scales,
             anchor_ratios=octave_ratios,
             anchor_strides=anchor_strides,
             anchoring_means=anchoring_means,
@@ -275,8 +352,8 @@ class GARPNHead(nn.Module):
         cls_outs, reg_outs = self.forward_conv(adapt_feats)
         return cls_outs, reg_outs, loc_outs, shape_outs, shape_reformed_outs, adapt_feats
 
-    def loss(self, cls_outs, reg_outs, loc_outs, shape_outs, shape_reformed_outs, adapt_feats,
-             gt_bboxes, gt_labels, img_metas, cfg):
+    def loss(self, cls_outs, reg_outs, loc_outs, shape_outs,
+             shape_reformed_outs, adapt_feats, gt_bboxes, gt_labels, img_metas, cfg):
         print('Reached loss'.center(50, '*'))
         print('cls_outs:')
         debug.tensor_shape(cls_outs)
@@ -292,6 +369,23 @@ class GARPNHead(nn.Module):
         debug.tensor_shape(adapt_feats)
         print('cfg')
         print(cfg)
+
+        shape_tars = self.guided_anchor.shape_target(shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg)
+        print('shape_tars')
+        tar_shape_outs, tar_bbox, tar_label = shape_tars
+        num_imgs = len(img_metas)
+        for i in range(num_imgs):
+            print('img:', i)
+            print('tar_shape_out:', tar_shape_outs[i].shape)
+            print('tar_bbox:', tar_bbox[i].shape)
+            print('tar_label:', utils.count_tensor(tar_label[i]))
+
+        loc_tars = self.guided_anchor.loc_target(
+            loc_outs, gt_bboxes, gt_labels, img_metas, cfg)
+        loc_tars, cfg = loc_tars
+        for i in range(num_imgs):
+            print('img:', i)
+            debug.tensor_shape(loc_tars[i])
         exit()
         return {}
 

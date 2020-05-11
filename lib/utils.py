@@ -327,4 +327,14 @@ def random_select_dim(tsr, dim, num, replace=False):
 
 def random_select(tsr, num, replace=False):
     return random_select_dim(tsr, 0, num, replace)
+
+def count_tensor(tsr):
+    assert isinstance(tsr, torch.Tensor)
+    uniq = tsr.unique()
+    ret = []
+    for v in uniq:
+        ret.append(str(v.item()) + ':' + str((tsr==v).sum().item()))
+    return ', '.join(ret)
+
+    
     

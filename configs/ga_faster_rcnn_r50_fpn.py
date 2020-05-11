@@ -63,7 +63,7 @@ model=dict(
 train_cfg = dict(
     rpn=dict(
         ga_assigner=dict(
-            type='ApproxMaxIoUAssigner',
+            type='MaxIoUAssigner',
             pos_iou=0.7,
             neg_iou=0.3,
             min_pos_iou=0.3
@@ -84,7 +84,7 @@ train_cfg = dict(
             max_num=256,
             pos_num=128
         ),
-        allowed_border=0,
+        allowed_border=-1,
         center_ratio=0.2,
         ignore_ratio=0.5
     ),
@@ -168,7 +168,7 @@ data = dict(
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
         img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
         pipeline=train_pipeline,
-        loader=dict(batch_size=1, num_workers=4, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=False),
     ),
     test=dict(
         imgs_per_gpu=2,
