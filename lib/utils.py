@@ -124,9 +124,9 @@ def _param2bbox_(base, param):
                         center_y+h/2])
 
 def xyxy2xywh(xyxy):
-    return torch.stack([xyxy[0], xyxy[1], xyxy[2]-xyxy[0], xyxy[3]-xyxy[1]])
+    return torch.stack([xyxy[0], xyxy[1], xyxy[2]-xyxy[0]+1, xyxy[3]-xyxy[1]+1])
 def xywh2xyxy(xywh):
-    return torch.stack([xywh[0], xywh[1], xywh[0]+xywh[2], xywh[1]+xywh[3]])
+    return torch.stack([xywh[0], xywh[1], xywh[0]+xywh[2]-1, xywh[1]+xywh[3]-1])
     
 def calc_iou(a, b):
     """
@@ -335,6 +335,26 @@ def count_tensor(tsr):
     for v in uniq:
         ret.append(str(v.item()) + ':' + str((tsr==v).sum().item()))
     return ', '.join(ret)
+
+def tensor_shape_helper(tsr):
+    if isinstance(tsr, (tuple, list)):
+        ret = []
+        for x in tsr:
+            ret += tensor_shape_helper(x)
+        return ['  ' + y for y in ret]
+    elif isinstance(tsr, torch.Tensor):
+        return [str(tsr.shape)]
+    else:
+        raise ValueError('Encounter non-tensor variable: {}'.format(type(tsr)))
+
+def tensor_shape(tsr):
+    return '\n'.join(tensor_shape_helper(tsr))
+
+def full_index(tsr):
+    assert isinstance(tsr, torch.Tensor)
+    full_one = tsr.new_full(tsr.size(), 1)
+    all_idx = full_one.nonzero()
+    return all_idx.view(*tsr.size(), tsr.dim())
 
     
     

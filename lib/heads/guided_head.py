@@ -89,10 +89,45 @@ class GuidedAnchor(nn.Module):
     def init_weights(self):
         normal_init(self.offset_layer, std=0.1)
         normal_init(self.adapt_layer, std=0.01)
+        
+        
+    def create_anchors_single_image(self, loc_outs, shape_reformed_outs, img_meta, input_size, cfg):
+        device = loc_outs[0].device
+        num_lvls = len(loc_outs)
+        grid_sizes = [lo.shape[-2:] for lo in loc_outs]
+        img_size = img_meta['img_shape'][:2]
+        in_grid_masks = [region.inside_grid_mask(1, input_size, img_size, grid_size, device)
+                         for grid_size in grid_sizes]
+        in_grid_masks = [in_grid_masks[i].view(gsz).bool() for i, gsz in enumerate(grid_sizes)]
+        in_masks = [(lo>self.loc_filter_thr) & in_grid_masks[i] for i, lo in enumerate(loc_outs)]
+        anchors = []
+        for i in range(num_lvls):
+            yx = utils.full_index(loc_outs[i].squeeze()).permute(2, 0, 1) + 0.5
+            wh = shape_reformed_outs[i]
+            print('wh:', wh.shape)
+            print('yx:', yx.shape)
+            anchor = torch.stack([yx[1], yx[0], wh[0], wh[1]])
+            anchor = utils.xywh2xyxy(anchor) * self.anchor_strides[i]
+            anchors.append(anchor)
+        return anchors, in_masks
+            
 
-    def create_anchor(self):
+    def create_anchors(self, loc_outs, shape_reformed_outs, img_metas, cfg):
         # infer anchor from loc and shape predictions
-        pass
+        input_size = utils.input_size(img_metas)
+        input_size = tuple(input_size)
+        num_imgs = len(img_metas)
+        loc_outs_img, shape_reformed_outs_img = [], []
+        for i in range(num_imgs):
+            loc_outs_img.append([loc[i] for loc in loc_outs])
+            shape_reformed_outs_img.append([sro[i] for sro in shape_reformed_outs])
+        return unpack_multi_result(multi_apply(
+            self.create_anchors_single_image,
+            loc_outs_img,
+            shape_reformed_outs_img,
+            img_metas,
+            input_size,
+            cfg))
 
     
     def create_level_anchors(self, in_size, grid_sizes, device):
@@ -100,6 +135,26 @@ class GuidedAnchor(nn.Module):
             ac.to(device)
         return [actr(in_size, grid_sizes[i]) for i, actr in enumerate(
             self.anchor_creators)]
+    
+    def shape_target(self, shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg):
+        device = shape_reformed_outs[0].device
+        input_size = utils.input_size(img_metas)
+        input_size = tuple(input_size)
+        grid_sizes = [so.shape[-2:] for so in shape_reformed_outs]
+        lvl_anchors = self.create_level_anchors(input_size, grid_sizes, device)
+        lvl_anchors = tuple(lvl_anchors)
+        num_imgs = len(img_metas)
+        shape_outs_img = []
+        for i in range(num_imgs):
+            shape_outs_img.append([shape[i] for shape in shape_reformed_outs])
+        return unpack_multi_result(multi_apply(self.shape_target_single_image,
+                                               lvl_anchors,
+                                               shape_outs_img,
+                                               gt_bboxes,
+                                               gt_labels,
+                                               img_metas,
+                                               input_size,
+                                               cfg))
 
     def shape_target_single_image(self, lvl_anchors, shape_outs,
                                   gt_bbox, gt_label, img_meta, input_size, cfg):
@@ -162,26 +217,6 @@ class GuidedAnchor(nn.Module):
         return tar_shape_out, tar_bbox, tar_label
 
 
-    def shape_target(self, shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg):
-        device = shape_reformed_outs[0].device
-        input_size = utils.input_size(img_metas)
-        input_size = tuple(input_size)
-        grid_sizes = [so.shape[-2:] for so in shape_reformed_outs]
-        lvl_anchors = self.create_level_anchors(input_size, grid_sizes, device)
-        lvl_anchors = tuple(lvl_anchors)
-        num_imgs = len(img_metas)
-        shape_outs_img = []
-        for i in range(num_imgs):
-            shape_outs_img.append([shape[i] for shape in shape_reformed_outs])
-        return unpack_multi_result(multi_apply(self.shape_target_single_image,
-                                               lvl_anchors,
-                                               shape_outs_img,
-                                               gt_bboxes,
-                                               gt_labels,
-                                               img_metas,
-                                               input_size,
-                                               cfg))
-
 
     def loc_target(self, loc_outs, gt_bboxes, gt_labels, img_metas, cfg):
         num_imgs = len(gt_bboxes)
@@ -223,28 +258,18 @@ class GuidedAnchor(nn.Module):
             tar_map[in_mask.bool()] = 0
 
         gt_lvl = map_gt_level(self.anchor_scales[0], self.anchor_strides, gt_bbox)
-        print('gt_lvl:', gt_lvl)
         # second set all ignore areas
         ig_thr = cfg.ignore_ratio
         for i in range(gt_bbox.shape[1]):
             lvl = gt_lvl[i]
-            print('lvl:', lvl)
             bbox = gt_bbox[:, i]
-            print('bbox:', bbox)
             x1, y1, x2, y2 = bbox
             w, h = x2 - x1 + 1, y2 - y1 + 1
-            print('w, h:', w, h)
             w, h = w*cfg.ignore_ratio, h*cfg.ignore_ratio
-            print('ig_w, ig_h:', w, h)
             ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
-            print('center:', ctr_x, ctr_y)
             ig_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
             ig_bbox = torch.tensor(ig_bbox, dtype=torch.float)
-            print('ig_bbox:', ig_bbox)
             paint_bbox(targets[lvl], ig_bbox, scales[lvl], -1)
-            print('scale:', scales[lvl])
-            print('counts of tar after setting -1:', utils.count_tensor(targets[lvl]))
-            continue
             if lvl - 1 >= 0:
                 paint_bbox(targets[lvl-1], ig_bbox, scales[lvl-1], -1)
             if lvl + 1 <  num_lvls:
@@ -256,14 +281,10 @@ class GuidedAnchor(nn.Module):
             x1, y1, x2, y2 = bbox
             w, h = x2 - x1 + 1, y2 - y1 + 1
             w, h = w*cfg.center_ratio, h*cfg.center_ratio
-            print('ctr_w, ctr_h:', w, h)
             ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
             ctr_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
             ctr_bbox = torch.tensor(ctr_bbox, dtype=torch.float)
-            print('ctr_bbox:', ctr_bbox)
             paint_bbox(targets[lvl], ctr_bbox, scales[lvl], 1)
-            print('counts of tar after setting 1:', utils.count_tensor(targets[lvl]))
-        exit()
         return targets, cfg
 
     def forward(self, feats):
@@ -278,6 +299,7 @@ class GuidedAnchor(nn.Module):
 
 
     def loss(self, loc_outs, shape_outs, shape_reformed_outs, adapt_feats, gt_bboxes, gt_labels, img_metas):
+        
         pass
 
 
@@ -420,8 +442,19 @@ class GARPNHead(nn.Module):
             loc_tar = [lt.view(-1) for lt in loc_tar]
             loc_tar = torch.cat(loc_tar)
             debug.count_tensor(loc_tar)
-            
-            
+
+        print('test create anchors'.center(50, '*'))
+        anchors, in_masks = self.guided_anchor.create_anchors(loc_outs, shape_reformed_outs, img_metas, cfg)
+        for i in range(num_imgs):
+            print('img:', i)
+            print('in_masks')
+            debug.tensor_shape(in_masks[i])
+            print('anchors:')
+            debug.tensor_shape(anchors[i])
+        in_mask = [x.flatten() for x in in_masks[0]]
+        in_mask = torch.cat(in_mask)
+        print('in_mask.shape:', in_mask.shape)
+        debug.count_tensor(in_mask)
         exit()
         return {}
 
