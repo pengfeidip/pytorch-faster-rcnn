@@ -1,3 +1,4 @@
+from . import utils
 
 def tensor_shape(tsr):
     if isinstance(tsr, list):
@@ -5,3 +6,6 @@ def tensor_shape(tsr):
             print('  ' + str(x.shape))
     else:
         print(tsr.shape)
+
+def count_tensor(tsr):
+    print(utils.count_tensor(tsr))

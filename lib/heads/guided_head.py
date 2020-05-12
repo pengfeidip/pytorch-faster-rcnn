@@ -185,17 +185,19 @@ class GuidedAnchor(nn.Module):
 
     def loc_target(self, loc_outs, gt_bboxes, gt_labels, img_metas, cfg):
         num_imgs = len(gt_bboxes)
+        input_size = tuple(utils.input_size(img_metas)) # make it not splitable for multi_apply
         loc_outs_img = []
         for i in range(num_imgs):
             loc_outs_img.append([loc_out[i] for loc_out in loc_outs])
         return unpack_multi_result(multi_apply(self.loc_target_single_image,
-                                                loc_outs_img,
-                                                gt_bboxes,
-                                                gt_labels,
-                                                img_metas,
-                                                cfg))
+                                               loc_outs_img,
+                                               gt_bboxes,
+                                               gt_labels,
+                                               img_metas,
+                                               input_size,
+                                               cfg))
             
-    def loc_target_single_image(self, loc_outs, gt_bbox, gt_label, img_meta, cfg):
+    def loc_target_single_image(self, loc_outs, gt_bbox, gt_label, img_meta, input_size, cfg):
         '''
         Args:
             loc_outs: list([1, 267, 200], [1, 134, 100], ...)
@@ -204,25 +206,45 @@ class GuidedAnchor(nn.Module):
             img_meta: 'img_shape', 'scale_factor' etc
             cfg: 'sampler', 'assigner', 'center_ratio', 'ignore_ratio', etc
         '''
-        # first set all targets to 0 which is negative. -1:ignore, 0:negative, 1:positive
         device = loc_outs[0].device
-        targets = [lo.new_full(lo.shape[-2:], 0) for lo in loc_outs]
         scales = [1.0 / x for x in self.anchor_strides]
-        num_lvls = len(targets)
+        num_lvls = len(loc_outs)
+        img_size = img_meta['img_shape'][:2]
+        grid_sizes = [lo.shape[-2:] for lo in loc_outs]
+
+        # first set all targets to -1 which is ignore, this mainly targets out-of-grid locations
+        targets = [lo.new_full(lo.shape[-2:], -2) for lo in loc_outs]
+        
+        # then set all in grid areas to 0 which is negative
+        in_masks = [region.inside_grid_mask(1, input_size, img_size, grid_size, device)
+                    for grid_size in grid_sizes]
+        for tar_map, in_mask in zip(targets, in_masks):
+            in_mask = in_mask.view(tar_map.size()).bool()
+            tar_map[in_mask.bool()] = 0
 
         gt_lvl = map_gt_level(self.anchor_scales[0], self.anchor_strides, gt_bbox)
+        print('gt_lvl:', gt_lvl)
         # second set all ignore areas
         ig_thr = cfg.ignore_ratio
         for i in range(gt_bbox.shape[1]):
             lvl = gt_lvl[i]
+            print('lvl:', lvl)
             bbox = gt_bbox[:, i]
+            print('bbox:', bbox)
             x1, y1, x2, y2 = bbox
             w, h = x2 - x1 + 1, y2 - y1 + 1
+            print('w, h:', w, h)
             w, h = w*cfg.ignore_ratio, h*cfg.ignore_ratio
+            print('ig_w, ig_h:', w, h)
             ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
+            print('center:', ctr_x, ctr_y)
             ig_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
-            ig_bbox = torch.tensor([x.round() for x in ig_bbox], dtype=torch.float)
+            ig_bbox = torch.tensor(ig_bbox, dtype=torch.float)
+            print('ig_bbox:', ig_bbox)
             paint_bbox(targets[lvl], ig_bbox, scales[lvl], -1)
+            print('scale:', scales[lvl])
+            print('counts of tar after setting -1:', utils.count_tensor(targets[lvl]))
+            continue
             if lvl - 1 >= 0:
                 paint_bbox(targets[lvl-1], ig_bbox, scales[lvl-1], -1)
             if lvl + 1 <  num_lvls:
@@ -234,10 +256,14 @@ class GuidedAnchor(nn.Module):
             x1, y1, x2, y2 = bbox
             w, h = x2 - x1 + 1, y2 - y1 + 1
             w, h = w*cfg.center_ratio, h*cfg.center_ratio
+            print('ctr_w, ctr_h:', w, h)
             ctr_x, ctr_y = (x2 + x1) / 2, (y2 + y1) / 2
             ctr_bbox = [ctr_x - w/2, ctr_y - h/2, ctr_x + w/2, ctr_y + h/2]
-            ctr_bbox = torch.tensor([x.round() for x in ig_bbox], dtype=torch.float)
+            ctr_bbox = torch.tensor(ctr_bbox, dtype=torch.float)
+            print('ctr_bbox:', ctr_bbox)
             paint_bbox(targets[lvl], ctr_bbox, scales[lvl], 1)
+            print('counts of tar after setting 1:', utils.count_tensor(targets[lvl]))
+        exit()
         return targets, cfg
 
     def forward(self, feats):
@@ -246,7 +272,8 @@ class GuidedAnchor(nn.Module):
         shape_outs = [self.shape_layer(feat) for feat in feats]
         offsets = [self.offset_layer(so.detach()) for so in shape_outs]
         adapt_feats = [self.relu(self.adapt_layer(feats[i], offsets[i])) for i in range(len(feats))]
-        shape_reformed_outs = [self.sigma*self.anchor_strides[i]*(shape_outs[i].exp()) for i in range(len(feats))]
+        shape_reformed_outs = [self.sigma*self.anchor_strides[i]*(shape_outs[i].exp())
+                               for i in range(len(feats))]
         return loc_outs, shape_outs, shape_reformed_outs, adapt_feats
 
 
@@ -370,7 +397,8 @@ class GARPNHead(nn.Module):
         print('cfg')
         print(cfg)
 
-        shape_tars = self.guided_anchor.shape_target(shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg)
+        shape_tars = self.guided_anchor.shape_target(
+            shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg)
         print('shape_tars')
         tar_shape_outs, tar_bbox, tar_label = shape_tars
         num_imgs = len(img_metas)
@@ -385,7 +413,15 @@ class GARPNHead(nn.Module):
         loc_tars, cfg = loc_tars
         for i in range(num_imgs):
             print('img:', i)
-            debug.tensor_shape(loc_tars[i])
+            print('gt:', gt_bboxes[i])
+            print(img_metas[i])
+            loc_tar = loc_tars[i]
+            debug.tensor_shape(loc_tar)
+            loc_tar = [lt.view(-1) for lt in loc_tar]
+            loc_tar = torch.cat(loc_tar)
+            debug.count_tensor(loc_tar)
+            
+            
         exit()
         return {}
 
