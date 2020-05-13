@@ -51,7 +51,7 @@ def anchor_target(cls_out, reg_out, cls_channels, in_anchors, in_mask, gt_bbox, 
     reg_out_ = reg_out.view(4, -1)
     assert cls_out_.shape[-1] == reg_out_.shape[-1]
     # notice tar_cls_out and tar_reg_out has larger sizes than labels, as labels only consider in_anchors
-    tar_cls_out = cls_out_[:, chosen]  # 128 chosen places from cls_out 
+    tar_cls_out = cls_out_[:, chosen]  # 128 chosen places from cls_out
     tar_reg_out = reg_out_[:, chosen]  # 128 chosen places from reg_out
     if gt_label is None:
         # It is an RPN

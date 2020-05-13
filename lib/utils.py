@@ -365,7 +365,15 @@ def inplace_apply(nested, func):
             nested[i] = inplace_apply(nested[i], func)
         return nested
     else:
-        return func(nested)    
+        return func(nested)
+
+def split_by_image(tsr_list):
+    num_imgs = tsr_list[0].shape[0]
+    res = []
+    for i in range(num_imgs):
+        res.append([x[i] for x in tsr_list])
+    return res
+    
 
     
     

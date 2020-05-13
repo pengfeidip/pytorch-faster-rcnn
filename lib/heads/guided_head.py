@@ -5,6 +5,7 @@ from mmcv.cnn import normal_init
 import logging, torch
 from .. import debug, utils, region
 from ..utils import multi_apply, unpack_multi_result
+from ..anchor import anchor_target
 
 # shape_outs [[1, 2, 267, 200], [1, 2, 134, 100], ...]
 # anchors [[4, num_anchors, 267, 200], [4, num_anchors, 134, 100], ...]
@@ -478,19 +479,41 @@ class GARPNHead(nn.Module):
         loc_outs, shape_outs, shape_reformed_outs, adapt_feats = self.forward_ga(feats)
         cls_outs, reg_outs = self.forward_conv(adapt_feats)
         return cls_outs, reg_outs, loc_outs, shape_outs, shape_reformed_outs, adapt_feats
+ 
+    def rpn_target_single_image(self, cls_outs, reg_outs, anchors, in_masks, gt_bbox, gt_label, img_meta, cfg):
+        print('in rpn_target_single_image'.center(50, '='))
+        print('cls_outs')
+        debug.tensor_shape(cls_outs)
+        print('reg_outs')
+        debug.tensor_shape(reg_outs)
+        print('anchors')
+        debug.tensor_shape(anchors)
+        print('in_masks')
+        debug.tensor_shape(in_masks)
 
-    def rpn_target(self, cls_out, reg_out):
-        # split data from different images
-        # find target for each image
-        pass
+        cls_outs = utils.inplace_apply(cls_outs, lambda x:x.view(1, -1))
+        reg_outs = utils.inplace_apply(reg_outs, lambda x:x.view(4, -1))
+        anchors = utils.inplace_apply(anchors, lambda x:x.view(4, -1))
+        in_masks = utils.inplace_apply(in_masks, lambda x:x.view(1, -1))
+        cls_out = torch.cat(cls_outs, dim=1)
+        reg_out = torch.cat(reg_outs, dim=1)
+        anchors = torch.cat(anchors, dim=1)
+        in_mask = torch.cat(in_masks, dim=1).squeeze()
+        
+        debug.tensor_shape(cls_out, 'cls_out')
+        debug.tensor_shape(reg_out, 'reg_out')
+        debug.tensor_shape(anchors, 'anchors')
+        debug.tensor_shape(in_mask, 'in_mask')
+        in_anchors = anchors[:, in_mask.bool()]
 
-    def rpn_target_single_image(self):
-        # we can use anchor_target here
-        pass
+        return anchor_target(cls_out, reg_out, 1, in_anchors, in_mask, gt_bbox, None,
+                             assigner=cfg.assigner, sampler=cfg.sampler,
+                             target_means=self.target_means, target_stds=self.target_stds)
+        
 
-    def rpn_loss(self, cls_outs, reg_outs, anchors, in_masks,
-                 gt_bboxes, gt_labels, img_metas, cfg):
-        print('in rpn_loss'.center(50, '*'))
+    def rpn_target(self, cls_outs, reg_outs, anchors, in_masks,
+                   gt_bboxes, gt_labels, img_metas, cfg):
+        print('in rpn_target'.center(50, '*'))
         print('cls_outs')
         debug.tensor_shape(cls_outs)
         print('reg_outs')
@@ -507,12 +530,21 @@ class GARPNHead(nn.Module):
         print('cfg', cfg)
         
         num_imgs = len(img_metas)
-        # TODO:
-        # find targets for each image repectively
-        # combine targets and calc loss at once
-        pass
-        
+        cls_outs_img = utils.split_by_image(cls_outs)
+        reg_outs_img = utils.split_by_image(reg_outs)
+        rpn_tars = unpack_multi_result(multi_apply(
+            self.rpn_target_single_image,
+            cls_outs_img,
+            reg_outs_img,
+            anchors,
+            in_masks,
+            gt_bboxes,
+            gt_labels,
+            img_metas,
+            cfg))
+        return rpn_tars
 
+        
     def loss(self, cls_outs, reg_outs, loc_outs, shape_outs,
              shape_reformed_outs, adapt_feats, gt_bboxes, gt_labels, img_metas, cfg):
         print('Reached loss'.center(50, '*'))
@@ -540,16 +572,70 @@ class GARPNHead(nn.Module):
         
         print('test create anchors'.center(50, '*'))
         anchors, in_masks = self.guided_anchor.create_anchors(loc_outs, shape_reformed_outs, img_metas)
-        rpn_loss = self.rpn_loss(
+        rpn_tars = self.rpn_target(
             cls_outs, reg_outs, anchors, in_masks, gt_bboxes, gt_labels, img_metas, cfg)
-        
-        exit()
-        return {}
 
-    def predict_bboxes(cls_outs, reg_outs, loc_outs, shape_outs, shape_reformed_outs, adapt_feats, cfg):
+        tar_cls_outs, tar_reg_outs, tar_labels, tar_anchors, tar_bboxes, tar_params = rpn_tars
+        print('tar_cls_outs')
+        debug.tensor_shape(tar_cls_outs)
+        print('tar_reg_outs')
+        debug.tensor_shape(tar_reg_outs)
+        print('tar_labels:')
+        debug.tensor_shape(tar_labels)
+        debug.count_tensor(tar_labels[0])
+        debug.count_tensor(tar_labels[1])
+        print('tar_bboxes:')
+        debug.tensor_shape(tar_bboxes)
+        print('tar_params:')
+        debug.tensor_shape(tar_params)
+        
+        tar_label = torch.cat(tar_labels)
+        print('tar_label', debug.peek_tensor(tar_label))
+        pos_places = (tar_label==1)
+        tar_cls_out = torch.cat(tar_cls_outs, dim=1)
+        tar_reg_out = torch.cat(tar_reg_outs, dim=1)[:, pos_places]
+        tar_param = torch.cat(tar_params, dim=1)[:, pos_places]
+        
+        avg_factor = tar_label.shape[0]
+        tar_cls_out = tar_cls_out.t()
+        cls_loss = self.loss_cls(tar_cls_out, tar_label) / avg_factor
+        reg_loss = self.loss_bbox(tar_reg_out, tar_param) / avg_factor
+
+        
+        rpn_loss = {'cls_loss':cls_loss, 'reg_loss':reg_loss}
+        rpn_loss.update(ga_loss)
+        print('final loss for ga_rpn', rpn_loss)
+        return rpn_loss
+
+    def predict_bboxes_single_image(self):
+        # TODO
+        # predict bboxes in one image
+        pass
+
+    def predict_bboxes_from_output(self, cls_outs, reg_outs, loc_outs, shape_outs,
+                                   shape_reformed_outs, adapt_feats, img_metas, cfg):
         '''
         cfg: pre_nms, pos_nms, max_num, nms_iou, min_bbox_size
         '''
+        print('in predic_bboxes'.center(50, '*'))
+        print('cls_outs')
+        debug.tensor_shape(cls_outs)
+        print('reg_outs')
+        debug.tensor_shape(reg_outs)
+        print('loc_outs')
+        debug.tensor_shape(loc_outs)
+        print('shape_outs')
+        debug.tensor_shape(shape_outs)
+        print('shape_reformed_outs')
+        debug.tensor_shape(shape_reformed_outs)
+        print('adapt_feats')
+        debug.tensor_shape(adapt_feats)
+
+        print('cfg')
+        print(cfg)
+
+        # TODO
+        exit()
         pass
         
 
