@@ -330,6 +330,8 @@ def random_select(tsr, num, replace=False):
 
 def count_tensor(tsr):
     assert isinstance(tsr, torch.Tensor)
+    if tsr.dtype == torch.bool:
+        tsr = tsr.int()
     uniq = tsr.unique()
     ret = []
     for v in uniq:
@@ -341,7 +343,7 @@ def tensor_shape_helper(tsr):
         ret = []
         for x in tsr:
             ret += tensor_shape_helper(x)
-        return ['  ' + y for y in ret]
+        return [str(type(tsr))] + ['  ' + y for y in ret]
     elif isinstance(tsr, torch.Tensor):
         return [str(tsr.shape)]
     else:
@@ -355,6 +357,15 @@ def full_index(tsr):
     full_one = tsr.new_full(tsr.size(), 1)
     all_idx = full_one.nonzero()
     return all_idx.view(*tsr.size(), tsr.dim())
+
+# apply func to all elements in nested list or tuple
+def inplace_apply(nested, func):
+    if isinstance(nested, (list, tuple)):
+        for i in range(len(nested)):
+            nested[i] = inplace_apply(nested[i], func)
+        return nested
+    else:
+        return func(nested)    
 
     
     
