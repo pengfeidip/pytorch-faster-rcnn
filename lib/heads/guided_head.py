@@ -3,6 +3,7 @@ import numpy as np
 from mmdet.ops.dcn import DeformConv
 from mmcv.cnn import normal_init
 import logging, torch
+import torchvision.ops as tvops
 from .. import debug, utils, region
 from ..utils import multi_apply, unpack_multi_result
 from ..anchor import anchor_target
@@ -94,7 +95,7 @@ class GuidedAnchor(nn.Module):
         normal_init(self.shape_layer, std=0.01)
         prior_prob = 0.01
         bias_init = float(-np.log((1-prior_prob)/prior_prob))
-        normal_init(self.loc_layer, std=0.01, bias=bias_init)  # borrow mmdet?
+        normal_init(self.loc_layer, std=0.01, bias=bias_init)  # borrow from mmdet?
         
         
     def create_anchors_single_image(self, loc_outs, shape_reformed_outs, img_meta, input_size):
@@ -110,9 +111,8 @@ class GuidedAnchor(nn.Module):
         anchors = []
         for i in range(num_lvls):
             yx = utils.full_index(loc_outs[i].squeeze()).permute(2, 0, 1).float() + 0.5
+            yx = yx * self.anchor_strides[i]
             wh = shape_reformed_outs[i]
-            print('wh:', wh.shape, wh.dtype)
-            print('yx:', yx.shape, yx.dtype)
             anchor = torch.stack([yx[1], yx[0], wh[0], wh[1]])
             anchor = utils.xywh2xyxy(anchor) * self.anchor_strides[i]
             anchors.append(anchor)
@@ -170,11 +170,6 @@ class GuidedAnchor(nn.Module):
             shape_outs: [Tensor[2, 200, 301], Tensor[2, 100, 151], ...]
                         the first 2 channels are for w and h
         '''
-        print('in shape target single'.center(50, '*'))
-        print('lvl_anchors')
-        debug.tensor_shape(lvl_anchors)
-        print('shape_outs:')
-        debug.tensor_shape(shape_outs)
         from ..builder import build_module
         # here shape_outs are shape reformed outs
         device = shape_outs[0].device
@@ -277,7 +272,6 @@ class GuidedAnchor(nn.Module):
 
         gt_lvl = map_gt_level(self.anchor_scales[0], self.anchor_strides, gt_bbox)
         # second set all ignore areas
-        print('cfg in loc_target_single', cfg)
         ig_thr = cfg.ignore_ratio
         for i in range(gt_bbox.shape[1]):
             lvl = gt_lvl[i]
@@ -322,13 +316,6 @@ class GuidedAnchor(nn.Module):
         tar_locs, tar_loc_outs = self.loc_target(loc_outs, gt_bboxes, gt_labels, img_metas, cfg)
         tar_shape_outs, tar_bboxes, tar_labels = self.shape_target(
             shape_reformed_outs, gt_bboxes, gt_labels, img_metas, cfg)
-        print('in loss'.center(50, '*'))
-        print('loc_outs:')
-        debug.tensor_shape(loc_outs)
-        print('tar_locs:')
-        debug.tensor_shape(tar_locs)
-        print('tar_loc_outs:')
-        debug.tensor_shape(tar_loc_outs)
         
         num_imgs = len(img_metas)
         for i in range(num_imgs):
@@ -338,26 +325,10 @@ class GuidedAnchor(nn.Module):
             tar_loc_outs[i] = torch.cat(tar_loc_outs[i])
         tar_locs = torch.cat(tar_locs)
         tar_loc_outs = torch.cat(tar_loc_outs)
-        print('tar_locs after concat')
-        debug.tensor_shape(tar_locs)
-        debug.count_tensor(tar_locs)
-        print('tar_loc_outs after concat')
-        debug.tensor_shape(tar_loc_outs)
 
         non_neg_places = (tar_locs >= 0)
         loc_loss = self.loss_loc(tar_loc_outs[non_neg_places].unsqueeze(1), tar_locs[non_neg_places])
         loc_loss = loc_loss / (tar_locs==1).sum()
-        print('loc_loss:', loc_loss)
-
-        # next calculate shape loss
-        
-        print('tar_shape_outs:')
-        debug.tensor_shape(tar_shape_outs)
-        print('tar_bboxes:')
-        debug.tensor_shape(tar_bboxes)
-        print('tar_labels:')
-        debug.tensor_shape(tar_labels)
-        _ = [debug.count_tensor(x) for x in tar_labels]
 
         tar_shape_outs = torch.cat(tar_shape_outs, dim=1)
         tar_bboxes = torch.cat(tar_bboxes, dim=1)
@@ -366,8 +337,6 @@ class GuidedAnchor(nn.Module):
         tar_labels = torch.cat(tar_labels)
 
         pos_places = (tar_labels == 1)
-        print('pos_places:')
-        debug.count_tensor(tar_labels)
         # shape_out[0] <-> w and shape_out[1] <-> h
         shape_loss = self.loss_shape(
             tar_w[pos_places], tar_shape_outs[0][pos_places]) + \
@@ -376,7 +345,6 @@ class GuidedAnchor(nn.Module):
         shape_loss = shape_loss / pos_places.sum().item()
 
         ga_loss = {'loc_loss': loc_loss, 'shape_loss': shape_loss}
-        print('ga_loss', ga_loss)
         return ga_loss
 
 
@@ -480,16 +448,8 @@ class GARPNHead(nn.Module):
         cls_outs, reg_outs = self.forward_conv(adapt_feats)
         return cls_outs, reg_outs, loc_outs, shape_outs, shape_reformed_outs, adapt_feats
  
-    def rpn_target_single_image(self, cls_outs, reg_outs, anchors, in_masks, gt_bbox, gt_label, img_meta, cfg):
-        print('in rpn_target_single_image'.center(50, '='))
-        print('cls_outs')
-        debug.tensor_shape(cls_outs)
-        print('reg_outs')
-        debug.tensor_shape(reg_outs)
-        print('anchors')
-        debug.tensor_shape(anchors)
-        print('in_masks')
-        debug.tensor_shape(in_masks)
+    def rpn_target_single_image(self, cls_outs, reg_outs, anchors, in_masks,
+                                gt_bbox, gt_label, img_meta, cfg):
 
         cls_outs = utils.inplace_apply(cls_outs, lambda x:x.view(1, -1))
         reg_outs = utils.inplace_apply(reg_outs, lambda x:x.view(4, -1))
@@ -500,12 +460,7 @@ class GARPNHead(nn.Module):
         anchors = torch.cat(anchors, dim=1)
         in_mask = torch.cat(in_masks, dim=1).squeeze()
         
-        debug.tensor_shape(cls_out, 'cls_out')
-        debug.tensor_shape(reg_out, 'reg_out')
-        debug.tensor_shape(anchors, 'anchors')
-        debug.tensor_shape(in_mask, 'in_mask')
         in_anchors = anchors[:, in_mask.bool()]
-
         return anchor_target(cls_out, reg_out, 1, in_anchors, in_mask, gt_bbox, None,
                              assigner=cfg.assigner, sampler=cfg.sampler,
                              target_means=self.target_means, target_stds=self.target_stds)
@@ -513,21 +468,6 @@ class GARPNHead(nn.Module):
 
     def rpn_target(self, cls_outs, reg_outs, anchors, in_masks,
                    gt_bboxes, gt_labels, img_metas, cfg):
-        print('in rpn_target'.center(50, '*'))
-        print('cls_outs')
-        debug.tensor_shape(cls_outs)
-        print('reg_outs')
-        debug.tensor_shape(reg_outs)
-        print('anchors')
-        debug.tensor_shape(anchors)
-        print('in_masks')
-        debug.tensor_shape(in_masks)
-        print('gt_bboxes')
-        debug.tensor_shape(gt_bboxes)
-        print('gt_labels')
-        debug.tensor_shape(gt_labels)
-        print('img_metas', img_metas)
-        print('cfg', cfg)
         
         num_imgs = len(img_metas)
         cls_outs_img = utils.split_by_image(cls_outs)
@@ -547,50 +487,16 @@ class GARPNHead(nn.Module):
         
     def loss(self, cls_outs, reg_outs, loc_outs, shape_outs,
              shape_reformed_outs, adapt_feats, gt_bboxes, gt_labels, img_metas, cfg):
-        print('Reached loss'.center(50, '*'))
-        print('cls_outs:')
-        debug.tensor_shape(cls_outs)
-        print('reg_outs:')
-        debug.tensor_shape(reg_outs)
-        print('loc_outs:')
-        debug.tensor_shape(loc_outs)
-        print('shape_outs:')
-        debug.tensor_shape(shape_outs)
-        print('shape_reformed_outs:')
-        debug.tensor_shape(shape_reformed_outs)
-        print('adapt_feats:')
-        debug.tensor_shape(adapt_feats)
-        print('cfg')
-        print(cfg)
-
-
         num_imgs = len(img_metas)
-
         ga_loss = self.guided_anchor.loss(
             loc_outs, shape_outs, shape_reformed_outs, adapt_feats, gt_bboxes, gt_labels, img_metas, cfg)
 
-        
-        print('test create anchors'.center(50, '*'))
         anchors, in_masks = self.guided_anchor.create_anchors(loc_outs, shape_reformed_outs, img_metas)
         rpn_tars = self.rpn_target(
             cls_outs, reg_outs, anchors, in_masks, gt_bboxes, gt_labels, img_metas, cfg)
 
         tar_cls_outs, tar_reg_outs, tar_labels, tar_anchors, tar_bboxes, tar_params = rpn_tars
-        print('tar_cls_outs')
-        debug.tensor_shape(tar_cls_outs)
-        print('tar_reg_outs')
-        debug.tensor_shape(tar_reg_outs)
-        print('tar_labels:')
-        debug.tensor_shape(tar_labels)
-        debug.count_tensor(tar_labels[0])
-        debug.count_tensor(tar_labels[1])
-        print('tar_bboxes:')
-        debug.tensor_shape(tar_bboxes)
-        print('tar_params:')
-        debug.tensor_shape(tar_params)
-        
         tar_label = torch.cat(tar_labels)
-        print('tar_label', debug.peek_tensor(tar_label))
         pos_places = (tar_label==1)
         tar_cls_out = torch.cat(tar_cls_outs, dim=1)
         tar_reg_out = torch.cat(tar_reg_outs, dim=1)[:, pos_places]
@@ -604,39 +510,82 @@ class GARPNHead(nn.Module):
         
         rpn_loss = {'cls_loss':cls_loss, 'reg_loss':reg_loss}
         rpn_loss.update(ga_loss)
-        print('final loss for ga_rpn', rpn_loss)
         return rpn_loss
 
-    def predict_bboxes_single_image(self):
-        # TODO
-        # predict bboxes in one image
-        pass
+    def predict_bboxes_single_image(self, cls_outs, reg_outs, anchors, in_masks, img_meta, cfg):
+        # cfg: pre_nms, pos_nms, max_num, nms_iou, min_bbox_size
+        num_lvls = len(cls_outs)
+        device = cls_outs[0].device
+        img_size = img_meta['img_shape'][:2]
+        H, W = img_size
+        min_size = img_meta['scale_factor'] * cfg.min_bbox_size
+        
+        cls_outs = utils.inplace_apply(cls_outs, lambda x:x.view(1, -1))
+        reg_outs = utils.inplace_apply(reg_outs, lambda x:x.view(4, -1))
+        anchors  = utils.inplace_apply(anchors,  lambda x:x.view(4, -1))
+        in_masks = utils.inplace_apply(in_masks, lambda x:x.view(-1))
+
+        cls_scores, cls_labels, pred_bboxes = [], [], []
+
+        for i in range(num_lvls):
+            in_mask = in_masks[i]
+            cls_out, reg_out = cls_outs[i][:, in_mask], reg_outs[i][:, in_mask]
+            anchor = anchors[i][:, in_mask]
+            cls_sig = cls_out.sigmoid()
+            cls_score = cls_sig[0]
+            if cfg.pre_nms > 0 and cfg.pre_nms < len(cls_score):
+                _, topk_inds = cls_score.topk(cfg.pre_nms)
+                cls_score = cls_score[topk_inds]
+                reg_out = reg_out[:, topk_inds]
+                anchor = anchor[:, topk_inds]
+            pred_bbox = utils.param2bbox(anchor, reg_out, self.target_means, self.target_stds, img_size)
+            if min_size > 0:
+                non_small = (pred_bbox[2] - pred_bbox[0] + 1 >= min_size) \
+                            & (pred_bbox[3] - pred_bbox[1] + 1 >= min_size)
+                cls_score = cls_score[non_small]
+                pred_bbox = pred_bbox[:, non_small]
+            keep = tvops.nms(pred_bbox.t(), cls_score, cfg.nms_iou)
+            cls_score = cls_score[keep]
+            pred_bbox = pred_bbox[:, keep]
+
+            if cfg.post_nms > 0 and cfg.post_nms < len(cls_score):
+                cls_score = cls_score[:cfg.pos_nms]
+                pred_bbox = pred_bbox[:, :cfg.pos_nms]
+            cls_scores.append(cls_score)
+            pred_bboxes.append(pred_bbox)
+        mlvl_cls_score = torch.cat(cls_scores)
+        mlvl_pred_bbox = torch.cat(pred_bboxes, dim=1)
+        max_num = cfg.max_num
+        if max_num > 0 and len(mlvl_cls_score) > max_num:
+            _, topk_inds = mlvl_cls_score.topk(max_num)
+            mlvl_cls_socre = mlvl_cls_score[topk_inds]
+            mlvl_pred_bbox = mlvl_pred_bbox[:, topk_inds]
+        return mlvl_pred_bbox, mlvl_cls_score, None
+
 
     def predict_bboxes_from_output(self, cls_outs, reg_outs, loc_outs, shape_outs,
                                    shape_reformed_outs, adapt_feats, img_metas, cfg):
         '''
         cfg: pre_nms, pos_nms, max_num, nms_iou, min_bbox_size
         '''
-        print('in predic_bboxes'.center(50, '*'))
-        print('cls_outs')
-        debug.tensor_shape(cls_outs)
-        print('reg_outs')
-        debug.tensor_shape(reg_outs)
-        print('loc_outs')
-        debug.tensor_shape(loc_outs)
-        print('shape_outs')
-        debug.tensor_shape(shape_outs)
-        print('shape_reformed_outs')
-        debug.tensor_shape(shape_reformed_outs)
-        print('adapt_feats')
-        debug.tensor_shape(adapt_feats)
+        # create anchors for all images
+        with torch.no_grad():
+            anchors, in_masks = self.guided_anchor.create_anchors(loc_outs, shape_reformed_outs, img_metas)
+            cls_outs_img = utils.split_by_image(cls_outs)
+            reg_outs_img = utils.split_by_image(reg_outs)
+            predict_res = unpack_multi_result(multi_apply(
+                self.predict_bboxes_single_image,
+                cls_outs_img,
+                reg_outs_img,
+                anchors,
+                in_masks,
+                img_metas,
+                cfg))
 
-        print('cfg')
-        print(cfg)
+        return predict_res
+        
 
-        # TODO
-        exit()
-        pass
+
         
 
 

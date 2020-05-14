@@ -97,7 +97,8 @@ class CascadeRCNN(nn.Module):
             forward_res = self.rpn_head(feats)
             rpn_loss = self.rpn_head.loss(*(forward_res+(gt_bboxes, gt_labels, img_metas, train_cfg.rpn)))
             losses.update(rpn_loss)
-            rpn_props = self.rpn_head.predict_bboxes_from_output(*(forward_res+(img_metas, train_cfg.rpn_proposal,)))
+            rpn_props = self.rpn_head.predict_bboxes_from_output(
+                *(forward_res+(img_metas, train_cfg.rpn_proposal,)))
         else:
             rpn_cls_outs, rpn_reg_outs = self.rpn_head(feats)
             rpn_cls_loss, rpn_reg_loss = self.rpn_head.loss(
@@ -106,7 +107,7 @@ class CascadeRCNN(nn.Module):
             losses['rpn_reg_loss'] = rpn_reg_loss
             rpn_props = self.rpn_head.predict_bboxes_from_output(
                 rpn_cls_outs, rpn_reg_outs, img_metas, train_cfg.rpn_proposal)
-            rpn_props = rpn_props[0]
+        rpn_props = rpn_props[0]
         
         logging.debug('{}:  proposals from rpn: {}'.format(
             class_name(self), '\n' + '\n'.join([str(pr.shape) for pr in rpn_props])))
