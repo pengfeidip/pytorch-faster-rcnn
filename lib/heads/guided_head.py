@@ -76,8 +76,8 @@ class GuidedAnchor(nn.Module):
                 
 
     def init_layers(self):
-        self.loc_layer = nn.Conv2d(self.in_channels, 1, 3, padding=1)
-        self.shape_layer = nn.Conv2d(self.in_channels, 2, 3, padding=1)
+        self.loc_layer = nn.Conv2d(self.in_channels, 1, 1)
+        self.shape_layer = nn.Conv2d(self.in_channels, 2, 1)
 
         offset_channels = 3 * 3 * 2 * self.deformable_groups
         self.offset_layer = nn.Conv2d(2, offset_channels, 1, bias=False)
@@ -558,7 +558,7 @@ class GARPNHead(nn.Module):
         max_num = cfg.max_num
         if max_num > 0 and len(mlvl_cls_score) > max_num:
             _, topk_inds = mlvl_cls_score.topk(max_num)
-            mlvl_cls_socre = mlvl_cls_score[topk_inds]
+            mlvl_cls_score = mlvl_cls_score[topk_inds]
             mlvl_pred_bbox = mlvl_pred_bbox[:, topk_inds]
         return mlvl_pred_bbox, mlvl_cls_score, None
 
@@ -584,9 +584,3 @@ class GARPNHead(nn.Module):
 
         return predict_res
         
-
-
-        
-
-
-    

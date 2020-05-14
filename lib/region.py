@@ -20,7 +20,7 @@ class AnchorCreator(object):
     Returns:
         anchors: a tensor of shape (4, num_anchors, h, w)
     '''
-    MAX_CACHE_ANCHOR = 2000
+    MAX_CACHE_ANCHOR = 10
     CACHE_REPORT_PERIOD = 200
     def __init__(self, base=16, scales=[8, 16, 32],
                  aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cuda:0')):
@@ -40,6 +40,8 @@ class AnchorCreator(object):
         self.anchor_hs = torch.tensor(anchor_hs, device=device, dtype=torch.float32)
 
     def to(self, device):
+        if self.device == device:
+            return True
         self.device = device
         self.anchor_ws = self.anchor_ws.to(device)
         self.anchor_hs = self.anchor_hs.to(device)
