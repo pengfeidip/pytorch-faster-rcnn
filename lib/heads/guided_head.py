@@ -85,7 +85,7 @@ class GuidedAnchor(nn.Module):
         self.adapt_layer = DeformConv(self.in_channels, self.out_channels, 3, padding=1,
                                       deformable_groups=self.deformable_groups)
         self.relu=nn.ReLU(inplace=True)
-
+        logging.info('Init layers of GuidedAnchor')
 
 
     def init_weights(self):
@@ -96,6 +96,7 @@ class GuidedAnchor(nn.Module):
         prior_prob = 0.01
         bias_init = float(-np.log((1-prior_prob)/prior_prob))
         normal_init(self.loc_layer, std=0.01, bias=bias_init)  # borrow from mmdet?
+        logging.info('Init weights of GuidedAnchor')
         
         
     def create_anchors_single_image(self, loc_outs, shape_reformed_outs, img_meta, input_size):
@@ -114,7 +115,7 @@ class GuidedAnchor(nn.Module):
             yx = yx * self.anchor_strides[i]
             wh = shape_reformed_outs[i]
             anchor = torch.stack([yx[1], yx[0], wh[0], wh[1]])
-            anchor = utils.xywh2xyxy(anchor) * self.anchor_strides[i]
+            anchor = utils.xywh2xyxy(anchor) 
             anchors.append(anchor)
         return anchors, in_masks
             
@@ -584,3 +585,7 @@ class GARPNHead(nn.Module):
 
         return predict_res
         
+    def predict_bboxes(self, feats, img_metas, cfg):
+        forward_res = self.forward(feats)
+        pred_res = self.predict_bboxes_from_output(*(forward_res+(img_metas, cfg)))
+        return pred_res

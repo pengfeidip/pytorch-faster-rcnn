@@ -168,7 +168,7 @@ data = dict(
         ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
         img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
         pipeline=train_pipeline,
-        loader=dict(batch_size=1, num_workers=4, shuffle=False),
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
         imgs_per_gpu=2,
