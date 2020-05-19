@@ -121,6 +121,17 @@ def inside_anchor_mask(anchors, img_size, allowed_border=0):
                 (anchors[2,:] <  W + allowed_border) & \
                 (anchors[3,:] <  H + allowed_border)
 
+def map_gt2level(scale, strides, gt_bbox):
+    '''
+    scale: a number
+    strides: [4, 8, 16, 32, 64], strides of feature maps
+    gt_bbox: [4, n]
+    '''
+    gt_sides = torch.sqrt((gt_bbox[2] - gt_bbox[1]) * (gt_bbox[3] - gt_bbox[1]))
+    min_scale = scale * strides[0]
+    gt_sides = gt_sides / min_scale
+    return torch.log2(gt_sides).floor().long().clamp(0, len(strides)-1)
+
         
 def random_sample_label(labels, pos_num, tot_num):
     assert pos_num <= tot_num
