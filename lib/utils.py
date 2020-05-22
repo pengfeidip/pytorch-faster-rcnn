@@ -43,7 +43,7 @@ def wh_from_xyxy(bbox):
 def center_of(bbox):
     return (bbox[2]+bbox[0])/2, (bbox[3]+bbox[1])/2
 
-def bbox2param(base, bbox):
+def bbox2param(base, bbox, means=[0.0, 0.0, 0.0, 0.0], stds=[1.0, 1.0, 1.0, 1.0]):
     """
     It calculates the relative distance of a bbox to a base bbox.
 
@@ -55,6 +55,7 @@ def bbox2param(base, bbox):
         parameters representing the distance of bbox to base bbox (tx, ty, tw, th)
     """
     assert base.shape == bbox.shape
+    
     base_w, base_h = wh_from_xyxy(base)
     bbox_w, bbox_h = wh_from_xyxy(bbox)
     base_center = center_of(base)
@@ -62,7 +63,10 @@ def bbox2param(base, bbox):
     tx, ty = (bbox_center[0]-base_center[0])/base_w, (bbox_center[1]-base_center[1])/base_h
     #tx, ty = (bbox[0]-base[0])/base_w, (bbox[1]-base[1])/base_h
     tw, th = torch.log(bbox_w/base_w), torch.log(bbox_h/base_h)
-    return torch.stack([tx, ty, tw, th])
+    param = torch.stack([tx, ty, tw, th])
+    means = base.new(means).view(4, -1)
+    stds = base.new(stds).view(4, -1)
+    return (param - means) / stds
 
 """
 It applies delta to base bboxes.
