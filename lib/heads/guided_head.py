@@ -19,7 +19,7 @@ def map_gt_level(anchor_scale, anchor_strides, gt_bbox):
     target_lvls = target_lvls.clamp(0, len(anchor_strides)-1).long()
     return target_lvls
 
-# ??? do we optimize area by adjusting +1 after ending index
+# TODO:do we optimize area by adjusting +1 after ending index or by taking floor and start and +1 at end?
 def paint_value(canvas, bbox, scale, val):
     assert canvas.dim() == 2
     bbox = bbox * scale
@@ -32,7 +32,7 @@ def paint_bbox(canvas, bbox, scale, bbox_val):
     # bbox: [x_min, y_min, x_max, y_max]
     # scale: bbox will be scaled to this
     # bbox_val: [x_min, y_min, x_max, y_max] the value to paint to canvas
-    assert canvas.dim() == 2
+    assert canvas.dim() == 3
     bbox = bbox * scale
     bbox = bbox.round().long()
     canvas[:, bbox[1]:bbox[3]+1, bbox[0]:bbox[2]+1] = bbox_val.view(4, 1, 1)
@@ -182,9 +182,9 @@ class GuidedAnchor(nn.Module):
         shape_outs_img = []
         for i in range(num_imgs):
             shape_outs_img.append([shape[i] for shape in shape_outs])
-        return unpack_multi_result(multi_apply(self.shape_target_single_image,
-                                               approx_anchors,
+        return unpack_multi_result(multi_apply(self.shape_target_single_image_v2,
                                                square_anchors,
+                                               approx_anchors,
                                                shape_outs_img,
                                                gt_bboxes,
                                                gt_labels,
@@ -195,26 +195,61 @@ class GuidedAnchor(nn.Module):
     def shape_target_single_image_v2(self, square_anchors, approx_anchors, shape_outs,
                                      gt_bbox, gt_label, img_meta, input_size, cfg):
         # return tar_shape_out, tar_bbox, tar_sqr_anchors, tar_label
+        logging.debug('IN shape_target_single_image_v2'.center(30, '*'))
+        device = shape_outs[0].device
         gt_lvl = region.map_gt2level(self.anchor_scales[0], self.anchor_strides, gt_bbox)
-        ctr_ratio = cfg.get('shape_center_ratio', 0.3)
+        logging.debug('mapped gt to levels: {}'.format(gt_lvl.tolist()))
+        ctr_ratio = cfg.get('shape_center_ratio', 0.5)
         scales = [1.0/x for x in self.anchor_strides]
-        tar_masks = [so.new_full(so.shape[-2:], 0, dtype=torch.long) for so in shape_outs]
-        tar_bboxs = [so.new_full([4] + list(so.shape[-2:]), 0, dtype=torch.float) \
+        tar_masks = [so.new_full(so.shape[-2:], 0, dtype=torch.long, device=device) \
+                     for so in shape_outs]
+        tar_bboxes = [so.new_full([4] + list(so.shape[-2:]), 0, dtype=torch.float, device=device) \
                      for so in shape_outs]
 
+        debug_tar_places = []
         for i in range(gt_bbox.shape[1]):
             lvl = gt_lvl[i]
-            bbox = gt_bbox[:, i] / self.strides[lvl]
+            bbox = gt_bbox[:, i]
             x1, y1, x2, y2 = bbox.float()
             w, h = x2-x1+1, y2-y1+1
             w, h = w*ctr_ratio, h*ctr_ratio
             ctr_x, ctr_y = (x2+x1)/2, (y2+y1)/2
             ctr_bbox = torch.tensor([ctr_x-w/2, ctr_y-h/2, ctr_x+w/2, ctr_y+h/2], dtype=torch.float)
             paint_value(tar_masks[lvl], ctr_bbox, scales[lvl], 1)
+            debug_tar_places.append(tar_masks[lvl].sum().item())
+            # TODO: do we do the following instead?
+            # tar_bboxes[lvl][:, tar_masks[lvl]] = bbox
+            # TODO: what order should we paint bbox values to tar_bboxes?
+            # Stride from low to hight or inverse?
             paint_bbox(tar_bboxes[lvl], ctr_bbox, scales[lvl], bbox)
-            # TODO
-            
-        pass
+        logging.debug('target places for each gt: {}'.format(debug_tar_places))
+        # tar_bboxes: [[4, 200, 300], [4, 100, 150], ...]
+        # tar_masks:  [[200, 300], [100, 150], ...]
+        tar_masks  = [tm.view(-1) for tm in tar_masks]
+        tar_bboxes = [tb.view(4, -1) for tb in tar_bboxes]
+        tar_mask = torch.cat(tar_masks)
+        tar_bbox = torch.cat(tar_bboxes, dim=1)
+
+        # if we do targets in this way, assigner is not needed
+        from ..builder import build_module
+        sampler = cfg.ga_sampler
+        if sampler is not None:
+            sampler = build_module(sampler)
+            labels = sampler(tar_mask)
+
+        non_neg_places = (labels>=0)
+        tar_bbox = tar_bbox[:, non_neg_places]
+        tar_label = labels[non_neg_places]
+        sqr_anchors = [sa.view(4, -1) for sa in square_anchors]
+        sqr_anchor = torch.cat(sqr_anchors, dim=1)
+        tar_sqr_anchor = sqr_anchor[:, non_neg_places]
+        shape_outs = [so.view(2, -1) for so in shape_outs]
+        shape_out = torch.cat(shape_outs, dim=1)
+        tar_shape_out = shape_out[:, non_neg_places]
+        logging.debug('tar_labels: {}'.format(utils.count_tensor(tar_label)))
+        
+        return tar_shape_out, tar_bbox, tar_sqr_anchor, tar_label
+
     
     # finished
     def shape_target_single_image(self, square_anchors, approx_anchors, shape_outs,
@@ -222,7 +257,7 @@ class GuidedAnchor(nn.Module):
         '''
         Args:
             approx_anchors: [Tensor[4, 9, 200, 301], Tensor[4, 9, 100, 151], ...]
-            approx_anchors: [Tensor[4, 1, 200, 301], Tensor[4, 1, 100, 151], ...]
+            square_anchors: [Tensor[4, 1, 200, 301], Tensor[4, 1, 100, 151], ...]
             shape_outs: [Tensor[2, 200, 301], Tensor[2, 100, 151], ...]
                         the first 2 channels are for w and h
         '''
@@ -331,6 +366,7 @@ class GuidedAnchor(nn.Module):
             tar_map[in_mask.bool()] = 0
 
         gt_lvl = region.map_gt2level(self.anchor_scales[0], self.anchor_strides, gt_bbox)
+        logging.debug('mapped gt in levels: {}'.format(gt_lvl))
         # second set all ignore areas
         ig_thr = cfg.ignore_ratio
         for i in range(gt_bbox.shape[1]):
@@ -372,11 +408,22 @@ class GuidedAnchor(nn.Module):
     # finished
     def loss(self, loc_outs, shape_outs, 
              adapt_feats, gt_bboxes, gt_labels, img_metas, cfg):
+        print('IN LOSS')
         device = loc_outs[0].device
+        logging.debug('START: Loc Target'.center(50, '='))
         tar_locs, tar_loc_outs = self.loc_target(loc_outs, gt_bboxes, gt_labels, img_metas, cfg)
+        logging.debug('END: Loc Target'.center(50, '='))
+        debug.tensor_shape(tar_locs, 'tar_locs')
+        debug.tensor_shape(tar_loc_outs, 'tar_loc_outs')
+        
+        logging.debug('START: Shape target'.center(50, '='))
         tar_shape_outs, tar_bboxes, tar_sqr_anchors, tar_labels = self.shape_target(
             shape_outs, gt_bboxes, gt_labels, img_metas, cfg)
-        
+        logging.debug('END: Shape target'.center(50, '='))
+        debug.tensor_shape(tar_shape_outs, 'tar_shape_outs')
+        debug.tensor_shape(tar_labels, 'tar_labels')
+
+        # first calc loc loss
         num_imgs = len(img_metas)
         for i in range(num_imgs):
             tar_locs[i] = [x.view(-1) for x in tar_locs[i]]
@@ -384,6 +431,7 @@ class GuidedAnchor(nn.Module):
             tar_loc_outs[i] = [x.view(-1) for x in tar_loc_outs[i]]
             tar_loc_outs[i] = torch.cat(tar_loc_outs[i])
         tar_locs = torch.cat(tar_locs)
+        logging.debug('Chosen loc targets: {}'.format(utils.count_tensor(tar_locs)))
         tar_loc_outs = torch.cat(tar_loc_outs)
 
         non_neg_places = (tar_locs >= 0)
@@ -391,19 +439,26 @@ class GuidedAnchor(nn.Module):
         loc_loss = loc_loss / (tar_locs==1).sum()
 
         # next calc shape loss
+        tar_labels = torch.cat(tar_labels)
+        pos_places = (tar_labels==1)
+        print('num of pos places', pos_places.sum())
         tar_shape_outs = torch.cat(tar_shape_outs, dim=1)
         tar_bboxes = torch.cat(tar_bboxes, dim=1)
         tar_sqr_anchors = torch.cat(tar_sqr_anchors, dim=1)
         tar_params = utils.bbox2param(tar_sqr_anchors, tar_bboxes,
                                      self.anchoring_means, self.anchoring_stds)
-        tar_labels = torch.cat(tar_labels)
-        pos_places = (tar_labels==1)
+        pos_tar_params = tar_params[:, pos_places]
+        print('pos_tar_params values:')
+        print(pos_tar_params.t())
+
+        logging.debug('pos shape tar params.sum(1): {}'.format(pos_tar_params.sum(1)))
+        exit()
+
+
 
         avg_factor = pos_places.sum().item()
         shape_loss = losses.zero_loss(device)
 
-        logging.debug('tar_params.sum(1): {}'.format(tar_params.sum(dim=1)))
-        
         if avg_factor > 0:
             shape_loss = self.loss_shape(tar_shape_outs[0][pos_places], tar_params[2][pos_places]) + \
                 self.loss_shape(tar_shape_outs[1][pos_places], tar_params[3][pos_places])

@@ -86,7 +86,8 @@ train_cfg = dict(
         ),
         allowed_border=-1,
         center_ratio=0.2,
-        ignore_ratio=0.5
+        ignore_ratio=0.5,
+        shape_center_ratio=0.1
     ),
     rpn_proposal=dict(
         pre_nms=2000,
@@ -111,7 +112,7 @@ train_cfg = dict(
 
     log_level='DEBUG',
     total_epochs=14,
-    log_file='train.log',
+    log_file=None,
     save_interval=2
 )
 

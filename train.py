@@ -9,7 +9,7 @@ args = parser.parse_args()
 
 import os, sys, glob, random, logging
 import os.path as osp
-import mmcv, torch
+import mmcv, torch, numpy as np
 from lib import datasets
 from lib.trainer import BasicTrainer
 import torch
@@ -21,9 +21,13 @@ def check_args():
     args.work_dir = osp.realpath(args.work_dir)
     args.config_file = osp.realpath(args.config)
     args.config = mmcv.Config.fromfile(args.config)
+    if args.seed is not None:
+        args.seed = int(args.seed)
 
 def set_seed(seed):
     random.seed(seed)
+    np.random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.manual_seed(seed)
 
 def set_logging(log_file=None, level='DEBUG'):
@@ -40,6 +44,8 @@ def set_logging(log_file=None, level='DEBUG'):
 
 def main():
     check_args()
+    if args.seed is not None:
+        set_seed(args.seed)
     config = args.config
 
     device = torch.device('cpu')  # set default device

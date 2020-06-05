@@ -55,10 +55,12 @@ def main():
     device = torch.device('cpu')
     if args.gpu is not None:
         device = torch.device('cuda:{}'.format(args.gpu))
-
+    print('device:', device)
     from lib.builder import build_module
     model = build_module(config.model, train_cfg=config.train_cfg, test_cfg=config.test_cfg)
     model.to(device)
+
+    print('finished build module')
 
     tester = BasicTester(
         model,
