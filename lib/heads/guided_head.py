@@ -408,20 +408,15 @@ class GuidedAnchor(nn.Module):
     # finished
     def loss(self, loc_outs, shape_outs, 
              adapt_feats, gt_bboxes, gt_labels, img_metas, cfg):
-        print('IN LOSS')
         device = loc_outs[0].device
         logging.debug('START: Loc Target'.center(50, '='))
         tar_locs, tar_loc_outs = self.loc_target(loc_outs, gt_bboxes, gt_labels, img_metas, cfg)
         logging.debug('END: Loc Target'.center(50, '='))
-        debug.tensor_shape(tar_locs, 'tar_locs')
-        debug.tensor_shape(tar_loc_outs, 'tar_loc_outs')
         
         logging.debug('START: Shape target'.center(50, '='))
         tar_shape_outs, tar_bboxes, tar_sqr_anchors, tar_labels = self.shape_target(
             shape_outs, gt_bboxes, gt_labels, img_metas, cfg)
         logging.debug('END: Shape target'.center(50, '='))
-        debug.tensor_shape(tar_shape_outs, 'tar_shape_outs')
-        debug.tensor_shape(tar_labels, 'tar_labels')
 
         # first calc loc loss
         num_imgs = len(img_metas)
@@ -441,27 +436,21 @@ class GuidedAnchor(nn.Module):
         # next calc shape loss
         tar_labels = torch.cat(tar_labels)
         pos_places = (tar_labels==1)
-        print('num of pos places', pos_places.sum())
         tar_shape_outs = torch.cat(tar_shape_outs, dim=1)
         tar_bboxes = torch.cat(tar_bboxes, dim=1)
         tar_sqr_anchors = torch.cat(tar_sqr_anchors, dim=1)
         tar_params = utils.bbox2param(tar_sqr_anchors, tar_bboxes,
-                                     self.anchoring_means, self.anchoring_stds)
+                                      self.anchoring_means, self.anchoring_stds)
         pos_tar_params = tar_params[:, pos_places]
-        print('pos_tar_params values:')
-        print(pos_tar_params.t())
 
         logging.debug('pos shape tar params.sum(1): {}'.format(pos_tar_params.sum(1)))
-        exit()
-
-
 
         avg_factor = pos_places.sum().item()
         shape_loss = losses.zero_loss(device)
 
         if avg_factor > 0:
-            shape_loss = self.loss_shape(tar_shape_outs[0][pos_places], tar_params[2][pos_places]) + \
-                self.loss_shape(tar_shape_outs[1][pos_places], tar_params[3][pos_places])
+            shape_loss=self.loss_shape(tar_shape_outs[0][pos_places],tar_params[2][pos_places]) \
+                        + self.loss_shape(tar_shape_outs[1][pos_places], tar_params[3][pos_places])
             shape_loss = shape_loss / avg_factor
         ga_loss = {'loc_loss': loc_loss, 'shape_loss': shape_loss}
         return ga_loss

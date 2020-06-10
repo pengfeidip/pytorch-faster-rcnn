@@ -29,7 +29,7 @@ model=dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_shape=dict(type='BoundedIoULoss', beta=0.2, loss_weight=1.0),
+        loss_shape=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
         loss_cls=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)),
@@ -87,7 +87,7 @@ train_cfg = dict(
         allowed_border=-1,
         center_ratio=0.2,
         ignore_ratio=0.5,
-        shape_center_ratio=0.1
+        shape_center_ratio=0.4
     ),
     rpn_proposal=dict(
         pre_nms=2000,
@@ -112,7 +112,7 @@ train_cfg = dict(
 
     log_level='DEBUG',
     total_epochs=14,
-    log_file=None,
+    log_file='train.log',
     save_interval=2
 )
 
