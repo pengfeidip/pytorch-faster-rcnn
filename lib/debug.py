@@ -16,3 +16,16 @@ def peek_tensor(tsr):
     out_str = 'size:{}, dtype:{}, device:{}'\
               .format(tsr.shape, tsr.dtype, tsr.device)
     print(out_str)
+
+def vis_2d(tsr, trans=lambda x:x):
+    row, col = tsr.shape[:2]
+    tab = []
+    for i in range(row):
+        rows = []
+        for j in range(col):
+            rows.append(str(trans(tsr[i, j])))
+        tab.append(rows)
+    lines = [' '.join(x) for x in tab]
+    tab_str = '\n'.join(lines)
+    print(tab_str)
+    

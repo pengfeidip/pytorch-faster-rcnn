@@ -3,6 +3,7 @@ from PIL import Image
 import torchvision as tv
 import torch
 import numpy as np
+from . import debug
 
 IMGNET_MEAN = [0.485, 0.456, 0.406]
 IMGNET_STD  = [0.229, 0.224, 0.225]
@@ -213,6 +214,7 @@ def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
         nms_bbox, nms_score, nms_label = torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
     return nms_bbox, nms_score, nms_label
 
+# the strict impl
 def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score, max_num=None):
     label_set = list(label_set)
     
@@ -256,6 +258,7 @@ Args:
     nms_iou: 0.5
     min_score: 0.05
 '''
+# the official impl
 def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score, max_num=None):
     assert bbox.shape[0] == score.shape[0]
     label_set = list(label_set)
@@ -356,11 +359,10 @@ def tensor_shape_helper(tsr):
 def tensor_shape(tsr):
     return '\n'.join(tensor_shape_helper(tsr))
 
-def full_index(tsr):
-    assert isinstance(tsr, torch.Tensor)
-    full_one = tsr.new_full(tsr.size(), 1)
+def full_index(size):
+    full_one = torch.full(size, 1)
     all_idx = full_one.nonzero()
-    return all_idx.view(*tsr.size(), tsr.dim())
+    return all_idx.view(*size, len(size))
 
 # apply func to all elements in nested list or tuple
 def inplace_apply(nested, func):
@@ -370,7 +372,9 @@ def inplace_apply(nested, func):
         return nested
     else:
         return func(nested)
-
+    
+# an example of tsr_list: [tensor(2, 3, 256, 256), ...]
+# return [[tensor(1, 3, 256, 256), ...], [tensor(1, 3, 256, 256), ...]]
 def split_by_image(tsr_list):
     num_imgs = tsr_list[0].shape[0]
     res = []
@@ -378,6 +382,20 @@ def split_by_image(tsr_list):
         res.append([x[i] for x in tsr_list])
     return res
     
+
+def sort_bbox(bbox, labels=None, descending=False):
+    w, h = wh_from_xyxy(bbox)
+    area = w*h
+    v, idx = area.sort(descending=descending)
+    return bbox[:, idx], labels[idx] if labels is not None else None
+    
+
+# grid_res is a list of results in grid format, e.g tensor([136, 100, 4]) which could be a
+# coordinate data of feature map (136, 100)
+# last means the data dim is the last, otherwise it is at the first
+def concate_grid_result(grid_res, last=True):
+    grid_res = [x.view(-1, x.shape[-1]) if last else x.view(x.shape[0], -1) for x in grid_res]
+    return torch.cat(grid_res, dim=0 if last else -1)
 
     
     

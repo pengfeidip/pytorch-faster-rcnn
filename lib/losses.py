@@ -117,11 +117,15 @@ class CrossEntropyLoss(nn.Module):
         '''
         n_classes = pred.shape[1]
         if self.use_sigmoid:
-            tar_one_hot = utils.one_hot_embedding(label, n_classes+1)
-            tar_one_hot = tar_one_hot[:, 1:]
-            tar_one_hot = tar_one_hot.to(dtype=pred.dtype)
-            loss = F.binary_cross_entropy_with_logits(pred, tar_one_hot, reduction='none')
-            return loss.sum() * self.loss_weight
+            if n_classes == 1:
+                loss = F.binary_cross_entropy_with_logits(pred, label.view(-1, 1), reduction='none')
+                return loss.sum() * self.loss_weight
+            else:
+                tar_one_hot = utils.one_hot_embedding(label, n_classes+1)
+                tar_one_hot = tar_one_hot[:, 1:]
+                tar_one_hot = tar_one_hot.to(dtype=pred.dtype)
+                loss = F.binary_cross_entropy_with_logits(pred, tar_one_hot, reduction='none')
+                return loss.sum() * self.loss_weight
         else:
             loss = F.cross_entropy(pred, label, reduction='none')
             return loss.sum() * self.loss_weight
