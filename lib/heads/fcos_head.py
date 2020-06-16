@@ -42,6 +42,7 @@ class FCOSHead(nn.Module):
                  strides=[8, 16, 32, 64, 126],
                  scale=8,
                  reg_std=300,
+                 center_neg_ratio=3,
                  loss_cls=None,
                  loss_bbox=None,
                  loss_centerness=None):
@@ -53,6 +54,7 @@ class FCOSHead(nn.Module):
         self.feat_channels=feat_channels
         self.strides=strides
         self.scale=scale
+        self.center_neg_ratio=center_neg_ratio
         self.reg_std=reg_std
         from ..builder import build_module
         self.loss_cls=build_module(loss_cls)
@@ -196,18 +198,26 @@ class FCOSHead(nn.Module):
 
         reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar.t()) / pos_reg
 
-
+        # next calc ctr loss
         ctr_tars = ctr_tars.squeeze() # [n]
         ctr_outs = ctr_outs.view(-1, 1) # [n, 1]
         pos_ctr_places = ctr_tars>0
         pos_ctr = (pos_ctr_places).sum().item()
-
-        ctr_loss = self.loss_centerness(
-            ctr_outs[pos_ctr_places, :], ctr_tars[pos_ctr_places]) / pos_ctr
-
+        neg_ctr_places = (ctr_tars==0)
+        neg_ctr = (neg_ctr_places).sum().item()
+        neg_allowed = self.center_neg_ratio * pos_ctr
+        if neg_ctr > neg_allowed:
+            chosen_neg_inds = utils.random_select(neg_ctr_places.nonzero(), neg_allowed)
+            chosen_pos_inds = pos_ctr_places.nonzero()
+            chosen_places = torch.cat([chosen_neg_inds, chosen_pos_inds])
+            ctr_tars = ctr_tars[chosen_places.squeeze()]
+            ctr_outs = ctr_outs[chosen_places.squeeze()]
+        
+        ctr_loss = self.loss_centerness(ctr_outs, ctr_tars) / ctr_tars.numel()
+        logging.debug('pos ctr samples: {}, total ctr samples: {}'.format(
+            pos_ctr, ctr_tars.numel()))
         logging.debug('Positive count: pos_cls={}, pos_reg={}, pos_ctr={}'.format(
             pos_cls, pos_reg, pos_ctr))
-
         return {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
 
     def loss(self):
