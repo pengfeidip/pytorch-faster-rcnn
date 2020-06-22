@@ -58,8 +58,9 @@ class FCOSHead(nn.Module):
                  stacked_convs=4,
                  feat_channels=256,
                  strides=[8, 16, 32, 64, 126],
-                 scale=8,
                  reg_std=300,
+                 reg_coef=[1.0, 1.0, 1.0, 1.0],
+                 reg_coef_trainable=False,
                  center_neg_ratio=3,
                  loss_cls=None,
                  loss_bbox=None,
@@ -71,13 +72,17 @@ class FCOSHead(nn.Module):
         self.stacked_convs=stacked_convs
         self.feat_channels=feat_channels
         self.strides=strides
-        self.scale=scale
-        self.center_neg_ratio=center_neg_ratio
         self.reg_std=reg_std
+        self.reg_coef=reg_coef
+        self.reg_coef_trainable=reg_coef_trainable
+        self.center_neg_ratio=center_neg_ratio
         from ..builder import build_module
         self.loss_cls=build_module(loss_cls)
         self.loss_bbox=build_module(loss_bbox)
         self.loss_centerness=build_module(loss_centerness)
+        self.use_giou=loss_bbox.type == 'GIoULoss'
+        if self.use_giou:
+            logging.debug('Use GIoU is True')
 
         self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]
 
@@ -106,7 +111,7 @@ class FCOSHead(nn.Module):
         self.fcos_center = nn.Conv2d(
             self.feat_channels, 1, 3, padding=1)
         self.reg_coef = nn.Parameter(
-            torch.tensor([1.0 for srd in self.strides], dtype=torch.float), requires_grad=True)
+            torch.tensor(self.reg_coef, dtype=torch.float), requires_grad=self.reg_coef_trainable)
 
     def init_weights(self):
         for m in self.cls_convs:
@@ -188,7 +193,9 @@ class FCOSHead(nn.Module):
         for i in range(len(reg_outs)):
             for j in range(len(reg_outs[i])):
                 reg_outs[i][j] = torch.exp(reg_outs[i][j]*self.reg_coef[j])
-        
+                logging.debug('mean of exp(reg_out*s): {}'.format(reg_outs[i][j].view(4, -1).mean(dim=1).tolist()))
+                logging.debug('std  of exp(reg_out*s): {}'.format(reg_outs[i][j].view(4, -1).std(dim=1).tolist()))
+            logging.debug('')
         # combine targets from all images and calculate loss at once
 
         num_imgs = len(cls_tars)
@@ -208,9 +215,9 @@ class FCOSHead(nn.Module):
         
         # second calc reg loss
         pos_reg = pos_cls
-        pos_reg_out = reg_outs[:, pos_mask]  # [4, m]
-        pos_reg_tar = reg_tars[pos_mask, :] / self.reg_std  # [m, 4]
-        reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar.t()) / pos_reg
+        pos_reg_out = reg_outs[:, pos_mask]  # [4, m], in ltrb format
+        pos_reg_tar = reg_tars[pos_mask, :].t() # [4, m] in ltrb format
+        reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar) / pos_reg
 
         # next calc ctr loss
         ctr_outs = ctr_outs.view(-1, 1) # [n, 1]
@@ -262,7 +269,7 @@ class FCOSHead(nn.Module):
         assert num_lvl == len(self.strides)
         bboxes, scores = [], []
         for i in range(num_lvl):
-            reg_outs[i] = torch.exp(reg_outs[i] * self.reg_coef[i]) * self.reg_std
+            reg_outs[i] = torch.exp(reg_outs[i] * self.reg_coef[i])
             bbox = ltrb2bbox(reg_outs[i], self.strides[i])
             score = cls_outs[i].sigmoid() * ctr_outs[i].sigmoid()
             bbox = bbox.view(4, -1)

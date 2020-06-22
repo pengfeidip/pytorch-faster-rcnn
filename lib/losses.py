@@ -5,6 +5,26 @@ import torch.nn.functional as F
 from . import utils
 import numpy as np
 
+# pred [4, n], gt [4, n]
+def giou_loss(a, b):
+    assert a.shape[0] == 4 and b.shape[0] == 4 and a.shape == b.shape
+    tl = torch.max(a[:2], b[:2])
+    br = torch.min(a[2:], b[2:])
+    area_i = torch.prod(br-tl, dim=0)
+    area_i = area_i * (tl<br).all(0).float()
+    area_a = torch.prod(a[2:]-a[:2], dim=0)
+    area_b = torch.prod(b[2:]-b[:2], dim=0)
+    area_u = area_a + area_b - area_i
+    iou = area_i / area_u
+    convex = torch.stack([
+        torch.min(a[0], b[0]),
+        torch.max(a[1], b[1]),
+        torch.min(a[2], b[2]),
+        torch.max(a[3], b[3])])
+    area_convex = torch.prod(area_convex[2:] - area_convex[:2], dim=0)
+    return iou - (area_convex - area_u) / area_convex
+
+
 def sigmoid_focal_loss(pred, target, alpha=0.25, gamma=2.0, fix_alpha=False):
     '''
     Args:
@@ -166,4 +186,13 @@ class BoundedIoULoss(nn.Module):
         y = y + 1e-6
         loss = 1-torch.min(x/y, y/x)
         return smooth_l1_loss_v2(loss, loss.new_zeros(loss.size()), self.beta).sum()
+
+
+class GIoULoss(nn.Module):
+    def __init__(self, loss_weight=1.0):
+        self.loss_weight = loss_weight
+
+    def forward(self, a, b):
+        return giou_loss(a, b) * self.loss_weight
+
 
