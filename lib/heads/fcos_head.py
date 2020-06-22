@@ -33,6 +33,24 @@ def ltrb2bbox(ltrb, stride):
     ])
     return bbox
 
+def bbox2ltrb(bbox, grid, stride):
+    full_idx = utils.full_index(grid).to(device=bbox.device).to(dtype=torch.float)
+    coor = full_idx * stride + stride/2.0
+    ltrb = torch.stack([
+        coor[:, :, 1] - bbox[0],
+        coor[:, :, 0] - bbox[1],
+        bbox[2] - coor[:, :, 1],
+        bbox[3] - coor[:, :, 0]
+    ], dim=-1)
+    return ltrb
+
+def paint_value(canvas, bbox, scale, val):
+    bbox = bbox * scale
+    bbox = bbox.round().long()
+    canvas[bbox[1]:bbox[3]+1, bbox[0]:bbox[2]+1] = val
+    return canvas
+                    
+
 class FCOSHead(nn.Module):
     def __init__(self,
                  num_classes=21,
@@ -61,6 +79,8 @@ class FCOSHead(nn.Module):
         self.loss_bbox=build_module(loss_bbox)
         self.loss_centerness=build_module(loss_centerness)
 
+        self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]
+
         self.init_layers()
         
     def init_layers(self):
@@ -86,7 +106,7 @@ class FCOSHead(nn.Module):
         self.fcos_center = nn.Conv2d(
             self.feat_channels, 1, 3, padding=1)
         self.reg_coef = nn.Parameter(
-            torch.tensor([1.0/srd for srd in self.strides], dtype=torch.float))
+            torch.tensor([1.0 for srd in self.strides], dtype=torch.float), requires_grad=True)
 
     def init_weights(self):
         for m in self.cls_convs:
@@ -114,61 +134,56 @@ class FCOSHead(nn.Module):
     def single_image_targets(self, cls_outs, reg_outs, ctr_outs,
                              gt_bboxes, gt_labels, img_meta, train_cfg):
         gt_bboxes, gt_labels = utils.sort_bbox(gt_bboxes, labels=gt_labels, descending=True)
-        gt_lvl = region.map_gt2level(self.scale, self.strides, gt_bboxes)
         device = cls_outs[0].device
         grids = [x.shape[-2:] for x in cls_outs]
+        img_size = img_meta['img_shape'][:2]
+        img_h, img_w = img_meta['img_shape'][:2]
+        scales = [1/stride for stride in self.strides]
 
-        cls_tars = make_level_blanks(grids, 1, 0, dtype=torch.long, device=device)
-        reg_tars = make_level_blanks(grids, 4, 0, dtype=torch.float, device=device)
-        ctr_tars = []
-
-        num_gt = gt_bboxes.shape[1]
+        num_gt  = gt_bboxes.shape[1]
         num_lvl = len(self.strides)
-        # make ltrb matrix for all gt
-        ltrb_list = []
-        for i in range(num_gt):
-            lvl = gt_lvl[i]
-            bbox = gt_bboxes[:, i]
-            full_idx = utils.full_index(grids[lvl]).to(device=device)
-            coor = full_idx * self.strides[lvl] + self.strides[lvl]/2
-            coor = coor.to(dtype=torch.float)
-            ltrb = torch.stack([
-                coor[:, :, 1] - bbox[0],
-                coor[:, :, 0] - bbox[1],
-                bbox[2] - coor[:, :, 1],
-                bbox[3] - coor[:, :, 0]
-            ], dim=-1)
-            ltrb_list.append(ltrb)
 
-        # find cls tars
-        for i in range(num_gt):
-            lvl = gt_lvl[i]
-            bbox = gt_bboxes[:, i] / self.strides[lvl]
-            bbox = bbox.round().int()
-            cls_tars[lvl][bbox[1]:bbox[3], bbox[0]:bbox[2]] = gt_labels[i]
-        
-        # find reg tars
-        for i in range(num_gt):
-            lvl = gt_lvl[i]
-            pos_ltrb = positive_ltrb(ltrb_list[i])
-            reg_tars[lvl][pos_ltrb] = ltrb_list[i][pos_ltrb]
+        # first create holders for all target values
+        cls_tars = make_level_blanks(grids, 1, -1, dtype=torch.long,  device=device)
+        reg_tars = make_level_blanks(grids, 4, -1, dtype=torch.float, device=device)
+        ctr_tars = make_level_blanks(grids, 1, -1, dtype=torch.float, device=device) 
 
-        pos_ltrb_list = [positive_ltrb(x).unsqueeze(-1) for x in reg_tars]
-        
-        # find center tars
+        # then find areas inside image
         for i in range(num_lvl):
+            paint_value(cls_tars[i], torch.tensor([0, 0, img_w, img_h], dtype=torch.float),
+                        scales[i], 0)
+            paint_value(ctr_tars[i], torch.tensor([0, 0, img_w, img_h], dtype=torch.float),
+                        scales[i], 0)
+
+        # assign positive grids on each level for each gt, we assign centerness later
+        for i in range(num_gt):
+            gt_bbox = gt_bboxes[:, i]
+            gt_label = gt_labels[i]
+            for j in range(num_lvl):
+                ltrb = bbox2ltrb(gt_bbox, grids[j], self.strides[j])
+                pos_ltrb = positive_ltrb(ltrb)
+                max_ltrb, _ = ltrb.max(2)
+                cur_scale = pos_ltrb & \
+                            (max_ltrb >= self.level_scale_thr[j]) & \
+                            (max_ltrb <  self.level_scale_thr[j+1])
+                cls_tars[j][cur_scale] = gt_label
+                reg_tars[j][cur_scale] = ltrb[cur_scale]
+
+        
+        for i in range(num_lvl):
+            pos_mask = cls_tars[i] > 0
             cur_ctr = centerness(reg_tars[i])
             cur_ctr = cur_ctr.unsqueeze(-1)
-            cur_ctr[~pos_ltrb_list[i]] = 0
-            ctr_tars.append(cur_ctr)
+            ctr_tars[i][pos_mask] = cur_ctr[pos_mask]
 
-        return cls_tars, reg_tars, ctr_tars, pos_ltrb_list
+        return cls_tars, reg_tars, ctr_tars
 
-    def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars, pos_ltrb):
+
+    def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars):
         logging.debug('IN Calculation Loss'.center(50, '*'))
         logging.debug('reg_coef: {}'.format(self.reg_coef.tolist()))
 
-        
+        ############################################
         # first transform reg_outs
         for i in range(len(reg_outs)):
             for j in range(len(reg_outs[i])):
@@ -183,42 +198,33 @@ class FCOSHead(nn.Module):
         cls_tars = torch.cat([utils.concate_grid_result(x, True)  for x in cls_tars], dim=0)
         reg_tars = torch.cat([utils.concate_grid_result(x, True)  for x in reg_tars], dim=0)
         ctr_tars = torch.cat([utils.concate_grid_result(x, True)  for x in ctr_tars], dim=0)
-        pos_ltrb = torch.cat([utils.concate_grid_result(x, True)  for x in pos_ltrb], dim=0)
 
+        chosen_mask = (cls_tars >=0).squeeze()
+        pos_mask = (cls_tars > 0).squeeze()
         # first calc cls loss
-
-        pos_cls = (cls_tars>0).sum().item()
-        cls_loss = self.loss_cls(cls_outs.t(), cls_tars.squeeze()) / pos_cls
+        pos_cls = pos_mask.sum().item()
+        cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
+                                 cls_tars[chosen_mask].squeeze()) / pos_cls
         
         # second calc reg loss
-        pos_ltrb = pos_ltrb.squeeze()
-        pos_reg = (pos_ltrb>0).sum().item()
-        pos_reg_out = reg_outs[:, pos_ltrb]  # [4, m]
-        pos_reg_tar = reg_tars[pos_ltrb, :] / self.reg_std  # [m, 4]
-
+        pos_reg = pos_cls
+        pos_reg_out = reg_outs[:, pos_mask]  # [4, m]
+        pos_reg_tar = reg_tars[pos_mask, :] / self.reg_std  # [m, 4]
         reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar.t()) / pos_reg
 
         # next calc ctr loss
-        ctr_tars = ctr_tars.squeeze() # [n]
         ctr_outs = ctr_outs.view(-1, 1) # [n, 1]
-        pos_ctr_places = ctr_tars>0
-        pos_ctr = (pos_ctr_places).sum().item()
-        neg_ctr_places = (ctr_tars==0)
-        neg_ctr = (neg_ctr_places).sum().item()
-        neg_allowed = self.center_neg_ratio * pos_ctr
-        if neg_ctr > neg_allowed:
-            chosen_neg_inds = utils.random_select(neg_ctr_places.nonzero(), neg_allowed)
-            chosen_pos_inds = pos_ctr_places.nonzero()
-            chosen_places = torch.cat([chosen_neg_inds, chosen_pos_inds])
-            ctr_tars = ctr_tars[chosen_places.squeeze()]
-            ctr_outs = ctr_outs[chosen_places.squeeze()]
+        ctr_tars = ctr_tars.squeeze()   # [n]
+        pos_ctr = pos_cls
+        ctr_loss = self.loss_centerness(ctr_outs[pos_mask, :], ctr_tars[pos_mask]) / pos_ctr
         
-        ctr_loss = self.loss_centerness(ctr_outs, ctr_tars) / ctr_tars.numel()
         logging.debug('pos ctr samples: {}, total ctr samples: {}'.format(
             pos_ctr, ctr_tars.numel()))
         logging.debug('Positive count: pos_cls={}, pos_reg={}, pos_ctr={}'.format(
             pos_cls, pos_reg, pos_ctr))
-        return {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
+        losses = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
+        return losses
+        
 
     def loss(self):
         # 1, find targets
@@ -228,6 +234,7 @@ class FCOSHead(nn.Module):
     # main interface for detector, it returns fcos head loss as a dict
     # loss: cls_loss, reg_loss, centerness_loss
     def forward_train(self, feats, gt_bboxes, gt_labels, img_metas, train_cfg):
+        
         # forward data and calc loss
         cls_outs, reg_outs, ctr_outs = self.forward(feats)
         cls_outs_img = utils.split_by_image(cls_outs)

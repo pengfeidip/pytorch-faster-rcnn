@@ -20,6 +20,7 @@ model=dict(
         feat_channels=256,
         strides=[8, 16, 32, 64, 128],
         scale=8, # is for 1333, 800
+        reg_std=1,
         loss_cls=dict(
             type='FocalLoss', use_sigmoid=True, alpha=0.25, gamma=2.0, loss_weight=1.0),
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
@@ -37,14 +38,14 @@ train_cfg = dict(
     ),
 
     allowed_border=-1,
-    total_epochs=14,
+    total_epochs=28,
     log_file='train.log',
     log_level='DEBUG'
 )
 
 test_cfg = dict(
     pre_nms=1000,
-    min_bbox_size=8,
+    min_bbox_size=0,
     min_score=0.05,
     nms_iou=0.5,
     nms_type='strict',
@@ -54,7 +55,7 @@ test_cfg = dict(
 lr_config=dict(
     warmup_iters=500,
     warmup_ratio=1.0/3,
-    lr_decay={9:0.1, 12:0.1},
+    lr_decay={17:0.1, 23:0.1},
 )
 
 optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
