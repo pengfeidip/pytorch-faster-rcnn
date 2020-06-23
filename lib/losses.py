@@ -7,21 +7,25 @@ import numpy as np
 
 # pred [4, n], gt [4, n]
 def giou_loss(a, b):
+    print('in giou_loss'.center(50, '='))
+    print('a.shape:', a.shape, 'b.shape:', b.shape)
     assert a.shape[0] == 4 and b.shape[0] == 4 and a.shape == b.shape
     tl = torch.max(a[:2], b[:2])
     br = torch.min(a[2:], b[2:])
     area_i = torch.prod(br-tl, dim=0)
     area_i = area_i * (tl<br).all(0).float()
+    print('area_i:', area_i.tolist())
     area_a = torch.prod(a[2:]-a[:2], dim=0)
     area_b = torch.prod(b[2:]-b[:2], dim=0)
     area_u = area_a + area_b - area_i
     iou = area_i / area_u
     convex = torch.stack([
         torch.min(a[0], b[0]),
-        torch.max(a[1], b[1]),
-        torch.min(a[2], b[2]),
+        torch.min(a[1], b[1]),
+        torch.max(a[2], b[2]),
         torch.max(a[3], b[3])])
-    area_convex = torch.prod(area_convex[2:] - area_convex[:2], dim=0)
+    area_convex = torch.prod(convex[2:] - convex[:2], dim=0)
+    print('area_convex:', area_convex.tolist())
     return iou - (area_convex - area_u) / area_convex
 
 
@@ -190,9 +194,11 @@ class BoundedIoULoss(nn.Module):
 
 class GIoULoss(nn.Module):
     def __init__(self, loss_weight=1.0):
+        super(GIoULoss, self).__init__()
         self.loss_weight = loss_weight
 
     def forward(self, a, b):
-        return giou_loss(a, b) * self.loss_weight
+        loss = giou_loss(a, b)
+        return loss.sum() * self.loss_weight
 
 

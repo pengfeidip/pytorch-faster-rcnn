@@ -49,6 +49,16 @@ def paint_value(canvas, bbox, scale, val):
     bbox = bbox.round().long()
     canvas[bbox[1]:bbox[3]+1, bbox[0]:bbox[2]+1] = val
     return canvas
+
+# with center (x, y)
+def simple_ltrb2bbox(ltrb, ctr_xy):
+    x, y = ctr_xy
+    return torch.stack([
+        x - ltrb[0],
+        x + ltrb[2],
+        y - ltrb[1],
+        y + ltrb[3]
+    ])
                     
 
 class FCOSHead(nn.Module):
@@ -59,9 +69,9 @@ class FCOSHead(nn.Module):
                  feat_channels=256,
                  strides=[8, 16, 32, 64, 126],
                  reg_std=300,
-                 reg_coef=[1.0, 1.0, 1.0, 1.0],
+                 reg_mean=0,
+                 reg_coef=[1.0, 1.0, 1.0, 1.0, 1.0],
                  reg_coef_trainable=False,
-                 center_neg_ratio=3,
                  loss_cls=None,
                  loss_bbox=None,
                  loss_centerness=None):
@@ -73,9 +83,9 @@ class FCOSHead(nn.Module):
         self.feat_channels=feat_channels
         self.strides=strides
         self.reg_std=reg_std
+        self.reg_mean=reg_mean
         self.reg_coef=reg_coef
         self.reg_coef_trainable=reg_coef_trainable
-        self.center_neg_ratio=center_neg_ratio
         from ..builder import build_module
         self.loss_cls=build_module(loss_cls)
         self.loss_bbox=build_module(loss_bbox)
@@ -187,6 +197,9 @@ class FCOSHead(nn.Module):
     def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars):
         logging.debug('IN Calculation Loss'.center(50, '*'))
         logging.debug('reg_coef: {}'.format(self.reg_coef.tolist()))
+        logging.debug('reg_mean: {}, reg_std: {}'.format(
+            self.reg_mean, self.reg_std))
+        logging.debug('use_giou: {}'.format(self.use_giou))
 
         ############################################
         # first transform reg_outs
@@ -196,6 +209,7 @@ class FCOSHead(nn.Module):
                 logging.debug('mean of exp(reg_out*s): {}'.format(reg_outs[i][j].view(4, -1).mean(dim=1).tolist()))
                 logging.debug('std  of exp(reg_out*s): {}'.format(reg_outs[i][j].view(4, -1).std(dim=1).tolist()))
             logging.debug('')
+            
         # combine targets from all images and calculate loss at once
 
         num_imgs = len(cls_tars)
@@ -206,6 +220,9 @@ class FCOSHead(nn.Module):
         reg_tars = torch.cat([utils.concate_grid_result(x, True)  for x in reg_tars], dim=0)
         ctr_tars = torch.cat([utils.concate_grid_result(x, True)  for x in ctr_tars], dim=0)
 
+        logging.debug('mean of all reg_outs: {}'.format(reg_outs.mean(dim=1).tolist()))
+        logging.debug('std  of all reg_outs: {}'.format(reg_outs.std(dim=1).tolist()))
+
         chosen_mask = (cls_tars >=0).squeeze()
         pos_mask = (cls_tars > 0).squeeze()
         # first calc cls loss
@@ -215,9 +232,28 @@ class FCOSHead(nn.Module):
         
         # second calc reg loss
         pos_reg = pos_cls
-        pos_reg_out = reg_outs[:, pos_mask]  # [4, m], in ltrb format
-        pos_reg_tar = reg_tars[pos_mask, :].t() # [4, m] in ltrb format
-        reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar) / pos_reg
+        pos_reg_out = reg_outs[:, pos_mask]   # [4, m], in ltrb format
+        pos_reg_tar = reg_tars[pos_mask, :].t()  # [4, m] in ltrb format
+        logging.debug('pos reg_out mean={}, std={}'.format(
+            pos_reg_out.mean(dim=1).tolist(), pos_reg_out.std(dim=1).tolist()))
+        logging.debug('pos reg_tar mean={}, std={}'.format(
+            pos_reg_tar.mean(dim=1).tolist(), pos_reg_tar.std(dim=1).tolist()))
+        if not self.use_giou:
+            pos_reg_out = pos_reg_out
+            pos_reg_tar = (pos_reg_tar - self.reg_mean) / self.reg_std
+        else:
+            pos_reg_out = pos_reg_out * self.reg_std
+        logging.debug('pos reg_out mean={}, std={}'.format(
+            pos_reg_out.mean(dim=1).tolist(), pos_reg_out.std(dim=1).tolist()))
+        logging.debug('pos reg_tar mean={}, std={}'.format(
+            pos_reg_tar.mean(dim=1).tolist(), pos_reg_tar.std(dim=1).tolist()))
+
+        # if use giou, need to turn ltrb to xyxy
+        if self.use_giou:
+            pos_reg_out = simple_ltrb2bbox(pos_reg_out, (0.0, 0.0))
+            pos_reg_tar = simple_ltrb2bbox(pos_reg_tar, (0.0, 0.0))
+            
+        reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar) / pos_reg 
 
         # next calc ctr loss
         ctr_outs = ctr_outs.view(-1, 1) # [n, 1]
@@ -269,7 +305,7 @@ class FCOSHead(nn.Module):
         assert num_lvl == len(self.strides)
         bboxes, scores = [], []
         for i in range(num_lvl):
-            reg_outs[i] = torch.exp(reg_outs[i] * self.reg_coef[i])
+            reg_outs[i] = torch.exp(reg_outs[i] * self.reg_coef[i]) * self.reg_std + self.reg_mean
             bbox = ltrb2bbox(reg_outs[i], self.strides[i])
             score = cls_outs[i].sigmoid() * ctr_outs[i].sigmoid()
             bbox = bbox.view(4, -1)
