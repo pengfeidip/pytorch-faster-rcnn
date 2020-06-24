@@ -7,14 +7,11 @@ import numpy as np
 
 # pred [4, n], gt [4, n]
 def giou_loss(a, b):
-    print('in giou_loss'.center(50, '='))
-    print('a.shape:', a.shape, 'b.shape:', b.shape)
     assert a.shape[0] == 4 and b.shape[0] == 4 and a.shape == b.shape
     tl = torch.max(a[:2], b[:2])
     br = torch.min(a[2:], b[2:])
     area_i = torch.prod(br-tl, dim=0)
     area_i = area_i * (tl<br).all(0).float()
-    print('area_i:', area_i.tolist())
     area_a = torch.prod(a[2:]-a[:2], dim=0)
     area_b = torch.prod(b[2:]-b[:2], dim=0)
     area_u = area_a + area_b - area_i
@@ -25,8 +22,8 @@ def giou_loss(a, b):
         torch.max(a[2], b[2]),
         torch.max(a[3], b[3])])
     area_convex = torch.prod(convex[2:] - convex[:2], dim=0)
-    print('area_convex:', area_convex.tolist())
-    return iou - (area_convex - area_u) / area_convex
+    giou = iou - (area_convex - area_u) / area_convex
+    return 1 - giou
 
 
 def sigmoid_focal_loss(pred, target, alpha=0.25, gamma=2.0, fix_alpha=False):

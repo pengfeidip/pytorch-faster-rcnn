@@ -55,12 +55,11 @@ def simple_ltrb2bbox(ltrb, ctr_xy):
     x, y = ctr_xy
     return torch.stack([
         x - ltrb[0],
-        x + ltrb[2],
         y - ltrb[1],
+        x + ltrb[2],
         y + ltrb[3]
     ])
                     
-
 class FCOSHead(nn.Module):
     def __init__(self,
                  num_classes=21,
@@ -252,7 +251,6 @@ class FCOSHead(nn.Module):
         if self.use_giou:
             pos_reg_out = simple_ltrb2bbox(pos_reg_out, (0.0, 0.0))
             pos_reg_tar = simple_ltrb2bbox(pos_reg_tar, (0.0, 0.0))
-            
         reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar) / pos_reg 
 
         # next calc ctr loss
