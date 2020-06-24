@@ -205,8 +205,10 @@ class FCOSHead(nn.Module):
         for i in range(len(reg_outs)):
             for j in range(len(reg_outs[i])):
                 reg_outs[i][j] = torch.exp(reg_outs[i][j]*self.reg_coef[j])
-                logging.debug('mean of exp(reg_out*s): {}'.format(reg_outs[i][j].view(4, -1).mean(dim=1).tolist()))
-                logging.debug('std  of exp(reg_out*s): {}'.format(reg_outs[i][j].view(4, -1).std(dim=1).tolist()))
+                logging.debug('mean of exp(reg_out*s): {}'.format(
+                    reg_outs[i][j].view(4, -1).mean(dim=1).tolist()))
+                logging.debug('std  of exp(reg_out*s): {}'.format(
+                    reg_outs[i][j].view(4, -1).std(dim=1).tolist()))
             logging.debug('')
             
         # combine targets from all images and calculate loss at once
@@ -237,11 +239,8 @@ class FCOSHead(nn.Module):
             pos_reg_out.mean(dim=1).tolist(), pos_reg_out.std(dim=1).tolist()))
         logging.debug('pos reg_tar mean={}, std={}'.format(
             pos_reg_tar.mean(dim=1).tolist(), pos_reg_tar.std(dim=1).tolist()))
-        if not self.use_giou:
-            pos_reg_out = pos_reg_out
-            pos_reg_tar = (pos_reg_tar - self.reg_mean) / self.reg_std
-        else:
-            pos_reg_out = pos_reg_out * self.reg_std
+        pos_reg_out = pos_reg_out
+        pos_reg_tar = (pos_reg_tar - self.reg_mean) / self.reg_std
         logging.debug('pos reg_out mean={}, std={}'.format(
             pos_reg_out.mean(dim=1).tolist(), pos_reg_out.std(dim=1).tolist()))
         logging.debug('pos reg_tar mean={}, std={}'.format(
@@ -249,6 +248,7 @@ class FCOSHead(nn.Module):
 
         # if use giou, need to turn ltrb to xyxy
         if self.use_giou:
+            assert self.reg_mean <= 0
             pos_reg_out = simple_ltrb2bbox(pos_reg_out, (0.0, 0.0))
             pos_reg_tar = simple_ltrb2bbox(pos_reg_tar, (0.0, 0.0))
         reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar) / pos_reg 
