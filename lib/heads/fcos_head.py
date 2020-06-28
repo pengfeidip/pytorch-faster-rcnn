@@ -59,6 +59,20 @@ def simple_ltrb2bbox(ltrb, ctr_xy):
         x + ltrb[2],
         y + ltrb[3]
     ])
+
+def topk_by_center(anchors, bbox, k):
+    h, w = anchors.shape[-2:]
+    anchors_flat = anchors.view(4, -1)
+    anchors_ctr = torch.stack(list(utils.center_of(anchors_flat)))
+    bbox_ctr = torch.stack(list(utils.center_of(bbox))).view(-1, 1)
+    diff = anchors_ctr - bbox_ctr
+    l2 = diff.norm(dim=0)
+    k_val, k_inds = l2.topk(k, largest=False)
+    top_anchors = anchors_flat[:, k_inds]
+    k_inds_x, k_inds_y = k_inds % w, k_inds / w
+    return k_inds_x, k_inds_y, top_anchors, k_inds_x.numel()
+
+    
                     
 class FCOSHead(nn.Module):
     def __init__(self,
@@ -71,6 +85,7 @@ class FCOSHead(nn.Module):
                  reg_mean=0,
                  reg_coef=[1.0, 1.0, 1.0, 1.0, 1.0],
                  reg_coef_trainable=False,
+                 atss_cfg=None,
                  loss_cls=None,
                  loss_bbox=None,
                  loss_centerness=None):
@@ -89,6 +104,17 @@ class FCOSHead(nn.Module):
         self.loss_cls=build_module(loss_cls)
         self.loss_bbox=build_module(loss_bbox)
         self.loss_centerness=build_module(loss_centerness)
+
+        self.atss_cfg=atss_cfg
+        if atss_cfg is not None:
+            self.use_atss=True
+            self.anchor_creators=[
+                region.AnchorCreator(base=stride, scales=[atss_cfg.scale], aspect_ratios=[1.0]) \
+                for stride in strides]
+            logging.debug('Use ATSS sampler')
+        else:
+            self.use_atss=False
+
         self.use_giou=loss_bbox.type == 'GIoULoss'
         if self.use_giou:
             logging.debug('Use GIoU is True')
@@ -143,6 +169,93 @@ class FCOSHead(nn.Module):
         reg_outs = [self.fcos_reg(x) for x in reg_conv_outs]
         ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
         return cls_outs, reg_outs, ctr_outs
+
+    def single_image_targets_atss(self, cls_outs, reg_outs, ctr_outs,
+                                  lvl_anchors, gt_bboxes, gt_labels, img_meta, train_cfg):
+        logging.debug('Use ATSS to find targets'.center(50, '*'))
+        logging.debug('GT lables for current image: {}'.format(gt_labels.tolist()))
+        logging.debug('GT bboxes for current image: {}'.format(gt_bboxes.tolist()))
+        assert len(cls_outs) == len(reg_outs) == len(ctr_outs) \
+            == len(self.strides) == len(lvl_anchors) 
+        device = cls_outs[0].device
+        grids = [x.shape[-2:] for x in cls_outs]
+        img_size = img_meta['img_shape'][:2]
+        img_h, img_w = img_size
+        scales = [1/stride for stride in self.strides]
+
+        num_gt = gt_bboxes.shape[1]
+        num_lvl = len(self.strides)
+
+        # first create holders for all target values
+        cls_tars = make_level_blanks(grids, 1, -1, dtype=torch.long,  device=device)
+        reg_tars = make_level_blanks(grids, 4, -1, dtype=torch.float, device=device)
+        ctr_tars = make_level_blanks(grids, 1, -1, dtype=torch.float, device=device)
+        max_ious = make_level_blanks(grids, 1,  0, dtype=torch.float, device=device)
+
+        # then find areas inside image
+        for i in range(num_lvl):
+            paint_value(cls_tars[i], torch.tensor([0, 0, img_w, img_h], dtype=torch.float),
+                        scales[i], 0)
+            paint_value(ctr_tars[i], torch.tensor([0, 0, img_w, img_h], dtype=torch.float),
+                        scales[i], 0)
+
+        # assign positive grids on each level for each gt, we assign centerness later
+        for i in range(num_gt):
+            gt_bbox = gt_bboxes[:, i]
+            gt_label = gt_labels[i]
+            ltrb_list = []
+            topk_list = [] # a list of (x_inds, y_inds, k_anchors, num)
+            for j in range(num_lvl):
+                ltrb = bbox2ltrb(gt_bbox, grids[j], self.strides[j])
+                ltrb_list.append(ltrb)
+                topk_list.append(topk_by_center(lvl_anchors[j], gt_bbox, self.atss_cfg.topk))
+                ###
+            
+            # cat topk information from all levels
+            x_inds, y_inds, close_anchors = torch.cat([x[0] for x in topk_list]), \
+                                            torch.cat([x[1] for x in topk_list]), \
+                                            torch.cat([x[2] for x in topk_list], dim=1)
+            num_topk = [x[-1] for x in topk_list]
+            logging.debug('number of topk by center distance: '.format(num_topk))
+            
+            ious = utils.calc_iou(close_anchors, gt_bbox).view(-1)
+            mean, std = ious.mean(), ious.std()
+            iou_thr = mean + std
+            pos_mask = ious > iou_thr  # positive samples by iou
+            tot_topk = 0
+            # next update positive information level by level
+            for lvl, lvl_topk in enumerate(num_topk):
+                lvl_x, lvl_y, lvl_iou, lvl_pos_mask = x_inds[tot_topk:tot_topk+lvl_topk],\
+                                                      y_inds[tot_topk:tot_topk+lvl_topk],\
+                                                      ious[tot_topk:tot_topk+lvl_topk],\
+                                                      pos_mask[tot_topk:tot_topk+lvl_topk]
+                exist_iou = max_ious[lvl][lvl_y, lvl_x, 0]
+                lvl_pos_ltrb = positive_ltrb(ltrb_list[lvl])[lvl_y, lvl_x]
+                
+                # lvl_mask marks places where positive information should be updated
+                # the places are:
+                #   1, positive by iou_thr filtering
+                #   2, current iou be bigger than the existing iou to chose gt with larger iou
+                #   3, center inside gt, by choose places where ltrb > 0
+                lvl_mask = (lvl_iou >= exist_iou) & lvl_pos_mask & lvl_pos_ltrb
+                lvl_x_chosen = lvl_x[lvl_mask]
+                lvl_y_chosen = lvl_y[lvl_mask]
+
+                cls_tars[lvl][lvl_y_chosen, lvl_x_chosen, :] = gt_label  # update gt label
+                reg_tars[lvl][lvl_y_chosen, lvl_x_chosen, :] \
+                    = ltrb_list[lvl][lvl_y_chosen, lvl_x_chosen, :]  # update reg ltrb
+                max_ious[lvl][lvl_y_chosen, lvl_x_chosen, 0] = lvl_iou[lvl_mask]  # update max iou
+                tot_topk += lvl_topk
+
+        # next calc centerness from ltrb
+        for lvl in range(num_lvl):
+            pos_mask = cls_tars[lvl] > 0
+            cur_ctr = centerness(reg_tars[lvl])
+            cur_ctr = cur_ctr.unsqueeze(-1)
+            ctr_tars[lvl][pos_mask] = cur_ctr[pos_mask]
+
+        # for debug
+        return cls_tars, reg_tars, ctr_tars
 
 
     def single_image_targets(self, cls_outs, reg_outs, ctr_outs,
@@ -282,15 +395,38 @@ class FCOSHead(nn.Module):
         reg_outs_img = utils.split_by_image(reg_outs)
         ctr_outs_img = utils.split_by_image(ctr_outs)
 
-        tars = utils.unpack_multi_result(utils.multi_apply(
-            self.single_image_targets,
-            cls_outs_img,
-            reg_outs_img,
-            ctr_outs_img,
-            gt_bboxes,
-            gt_labels,
-            img_metas,
-            train_cfg))
+        device = feats[0].device
+        grids = [x.shape[-2:] for x in cls_outs_img[0]]
+
+        input_size = utils.input_size(img_metas)
+        logging.debug('Input size infered: '.format(input_size))
+
+        if self.use_atss:
+            _ = [x.to(device=device) for x in self.anchor_creators]
+            lvl_anchors = tuple((
+                self.anchor_creators[i](input_size, grids[i]).squeeze() \
+                for i, stride in enumerate(self.strides)
+            ))
+            tars = utils.unpack_multi_result(utils.multi_apply(
+                self.single_image_targets_atss,
+                cls_outs_img,
+                reg_outs_img,
+                ctr_outs_img,
+                lvl_anchors,
+                gt_bboxes,
+                gt_labels,
+                img_metas,
+                train_cfg))
+        else:
+            tars = utils.unpack_multi_result(utils.multi_apply(
+                self.single_image_targets,
+                cls_outs_img,
+                reg_outs_img,
+                ctr_outs_img,
+                gt_bboxes,
+                gt_labels,
+                img_metas,
+                train_cfg))
         tars = [cls_outs_img, reg_outs_img, ctr_outs_img] + list(tars)
         return self.calc_loss(*tars)
 
