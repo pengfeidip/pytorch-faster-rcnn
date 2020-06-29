@@ -19,26 +19,20 @@ model=dict(
         stacked_convs=4,
         feat_channels=256,
         strides=[8, 16, 32, 64, 128],
-        scale=8, # is for 1333, 800
-        reg_std=1,
+        reg_std=300,
+        reg_mean=0,
+        reg_coef=[1.0, 1.0, 1.0, 1.0, 1.0],
+        reg_coef_trainable=True,
         loss_cls=dict(
             type='FocalLoss', use_sigmoid=True, alpha=0.25, gamma=2.0, loss_weight=1.0),
-        loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
+        loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
         loss_centerness=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)
     )
 )
 
 
 train_cfg = dict(
-    assigner=dict(
-        type='MaxIoUAssigner',
-        pos_iou=0.5,
-        neg_iou=0.4,
-        min_pos_iou=0.0
-    ),
-
-    allowed_border=-1,
-    total_epochs=28,
+    total_epochs=24,
     log_file='train.log',
     log_level='DEBUG'
 )
@@ -55,7 +49,7 @@ test_cfg = dict(
 lr_config=dict(
     warmup_iters=500,
     warmup_ratio=1.0/3,
-    lr_decay={17:0.1, 23:0.1},
+    lr_decay={17:0.1, 22:0.1},
 )
 
 optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)

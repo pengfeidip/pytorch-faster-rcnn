@@ -166,8 +166,9 @@ class FCOSHead(nn.Module):
         cls_conv_outs = [self.cls_convs(x) for x in xs]
         reg_conv_outs = [self.reg_convs(x) for x in xs]
         cls_outs = [self.fcos_cls(x) for x in cls_conv_outs]
-        reg_outs = [self.fcos_reg(x) for x in reg_conv_outs]
         ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
+        reg_outs = [torch.exp(self.fcos_reg(x)*self.reg_coef[i]) \
+                    for i, x in enumerate(reg_conv_outs)]
         return cls_outs, reg_outs, ctr_outs
 
     def single_image_targets_atss(self, cls_outs, reg_outs, ctr_outs,
@@ -309,16 +310,9 @@ class FCOSHead(nn.Module):
     def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars):
         logging.debug('IN Calculation Loss'.center(50, '*'))
         logging.debug('reg_coef: {}'.format(self.reg_coef.tolist()))
-        logging.debug('reg_mean: {}, reg_std: {}'.format(
-            self.reg_mean, self.reg_std))
+        logging.debug('reg_mean: {}, reg_std: {}'.format(self.reg_mean, self.reg_std))
         logging.debug('use_giou: {}'.format(self.use_giou))
 
-        ############################################
-        # first transform reg_outs
-        for i in range(len(reg_outs)):
-            for j in range(len(reg_outs[i])):
-                reg_outs[i][j] = torch.exp(reg_outs[i][j]*self.reg_coef[j])
-            
         # combine targets from all images and calculate loss at once
 
         num_imgs = len(cls_tars)
@@ -329,48 +323,41 @@ class FCOSHead(nn.Module):
         reg_tars = torch.cat([utils.concate_grid_result(x, True)  for x in reg_tars], dim=0)
         ctr_tars = torch.cat([utils.concate_grid_result(x, True)  for x in ctr_tars], dim=0)
 
-        logging.debug('mean of all reg_outs: {}'.format(reg_outs.mean(dim=1).tolist()))
-        logging.debug('std  of all reg_outs: {}'.format(reg_outs.std(dim=1).tolist()))
-
         chosen_mask = (cls_tars >=0).squeeze()
         pos_mask = (cls_tars > 0).squeeze()
         # first calc cls loss
-        pos_cls = pos_mask.sum().item()
+        num_pos_cls = pos_mask.sum().item()
         cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
-                                 cls_tars[chosen_mask].squeeze()) / pos_cls
+                                 cls_tars[chosen_mask].squeeze()) / num_pos_cls
         
-        # second calc reg loss
-        pos_reg = pos_cls
-        pos_reg_out = reg_outs[:, pos_mask]   # [4, m], in ltrb format
-        pos_reg_tar = reg_tars[pos_mask, :].t()  # [4, m] in ltrb format
+        # next calc ctr loss
+        ctr_outs = ctr_outs.view(-1, 1) # [m, 1]
+        ctr_tars = ctr_tars.squeeze()   # [m]
+        num_pos_ctr = num_pos_cls
+        pos_ctr_outs = ctr_outs[pos_mask, :]
+        pos_ctr_tars = ctr_tars[pos_mask]
+        ctr_loss = self.loss_centerness(pos_ctr_outs, pos_ctr_tars) / num_pos_ctr
+
+        
+        # next calc reg loss
+        pos_reg_outs = reg_outs[:, pos_mask]      # [4, m], in ltrb format
+        pos_reg_tars = reg_tars[pos_mask, :].t()  # [4, m], in ltrb format
+        pos_reg_tars = (pos_reg_tars - self.reg_mean) / self.reg_std
         logging.debug('pos reg_out mean={}, std={}'.format(
-            pos_reg_out.mean(dim=1).tolist(), pos_reg_out.std(dim=1).tolist()))
+            pos_reg_outs.mean(dim=1).tolist(), pos_reg_outs.std(dim=1).tolist()))
         logging.debug('pos reg_tar mean={}, std={}'.format(
-            pos_reg_tar.mean(dim=1).tolist(), pos_reg_tar.std(dim=1).tolist()))
-        pos_reg_out = pos_reg_out
-        pos_reg_tar = (pos_reg_tar - self.reg_mean) / self.reg_std
-        logging.debug('pos reg_out mean={}, std={}'.format(
-            pos_reg_out.mean(dim=1).tolist(), pos_reg_out.std(dim=1).tolist()))
-        logging.debug('pos reg_tar mean={}, std={}'.format(
-            pos_reg_tar.mean(dim=1).tolist(), pos_reg_tar.std(dim=1).tolist()))
+            pos_reg_tars.mean(dim=1).tolist(), pos_reg_tars.std(dim=1).tolist()))
 
         # if use giou, need to turn ltrb to xyxy
         if self.use_giou:
             assert self.reg_mean <= 0
-            pos_reg_out = simple_ltrb2bbox(pos_reg_out, (0.0, 0.0))
-            pos_reg_tar = simple_ltrb2bbox(pos_reg_tar, (0.0, 0.0))
-        reg_loss = self.loss_bbox(pos_reg_out, pos_reg_tar) / pos_reg 
-
-        # next calc ctr loss
-        ctr_outs = ctr_outs.view(-1, 1) # [n, 1]
-        ctr_tars = ctr_tars.squeeze()   # [n]
-        pos_ctr = pos_cls
-        ctr_loss = self.loss_centerness(ctr_outs[pos_mask, :], ctr_tars[pos_mask]) / pos_ctr
+            pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
+            pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
+        reg_loss \
+            = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=pos_ctr_tars) / (pos_ctr_tars.sum())
         
         logging.debug('pos ctr samples: {}, total ctr samples: {}'.format(
-            pos_ctr, ctr_tars.numel()))
-        logging.debug('Positive count: pos_cls={}, pos_reg={}, pos_ctr={}'.format(
-            pos_cls, pos_reg, pos_ctr))
+            num_pos_ctr, ctr_tars.numel()))
         losses = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
         return losses
         
