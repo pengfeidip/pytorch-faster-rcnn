@@ -5,6 +5,11 @@ import torch.nn.functional as F
 from . import utils
 import numpy as np
 
+def iou_loss(a, b):
+    assert a.shape == b.shape and a.shape[0]==b.shape[0]==4
+    iou = utils.elem_iou(a, b)
+    return -iou.log()
+    
 # pred [4, n], gt [4, n]
 def giou_loss(a, b):
     assert a.shape[0] == 4 and b.shape[0] == 4 and a.shape == b.shape
@@ -194,8 +199,19 @@ class GIoULoss(nn.Module):
         super(GIoULoss, self).__init__()
         self.loss_weight = loss_weight
 
-    def forward(self, a, b):
+    def forward(self, a, b, weight=None, avg_factor=None):
         loss = giou_loss(a, b)
+        if weight is not None:
+            loss = loss * weight
+        if avg_factor is not None:
+            loss = loss / avg_factor
         return loss.sum() * self.loss_weight
 
+class IoULoss(nn.Module):
+    def __init__(self, loss_weight=1.0):
+        super(IoULoss, self).__init__()
+        self.loss_weight = loss_weight
 
+    def forward(self, a, b):
+        loss = iou_loss(a, b)
+        return loss.sum() * self.loss_weight
