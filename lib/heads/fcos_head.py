@@ -318,11 +318,6 @@ class FCOSHead(nn.Module):
         for i in range(len(reg_outs)):
             for j in range(len(reg_outs[i])):
                 reg_outs[i][j] = torch.exp(reg_outs[i][j]*self.reg_coef[j])
-                logging.debug('mean of exp(reg_out*s): {}'.format(
-                    reg_outs[i][j].view(4, -1).mean(dim=1).tolist()))
-                logging.debug('std  of exp(reg_out*s): {}'.format(
-                    reg_outs[i][j].view(4, -1).std(dim=1).tolist()))
-            logging.debug('')
             
         # combine targets from all images and calculate loss at once
 
@@ -437,29 +432,40 @@ class FCOSHead(nn.Module):
         min_size = img_meta['scale_factor'] * test_cfg.min_bbox_size
         img_size = img_meta['img_shape'][:2]
         assert num_lvl == len(self.strides)
-        bboxes, scores = [], []
+        bboxes, scores, centerness = [], [], []
         for i in range(num_lvl):
             reg_outs[i] = torch.exp(reg_outs[i] * self.reg_coef[i]) * self.reg_std + self.reg_mean
             bbox = ltrb2bbox(reg_outs[i], self.strides[i])
-            score = cls_outs[i].sigmoid() * ctr_outs[i].sigmoid()
+            score = cls_outs[i].sigmoid()
+            ctr_score = ctr_outs[i].sigmoid()
+
             bbox = bbox.view(4, -1)
             score = score.view(self.cls_channels, -1)
+            ctr_score = ctr_score.view(1, -1)
+            
             
             bbox = utils.clamp_bbox(bbox, img_size)
             non_small = (bbox[2]-bbox[0] + 1>min_size) & (bbox[3]-bbox[1]+1>min_size)
             score = score[:, non_small]
             bbox = bbox[:, non_small]
+            ctr_score = ctr_score[:, non_small]
+            
             if test_cfg.pre_nms > 0 and test_cfg.pre_nms < score.shape[1]:
-                max_score, _ = score.max(0)
+                max_score, _ = (score * ctr_score).max(0)
                 _, top_inds = max_score.topk(test_cfg.pre_nms)
                 score = score[:, top_inds]
                 bbox = bbox[:, top_inds]
+                ctr_score = ctr_score[:, top_inds]
+
             bboxes.append(bbox)
             scores.append(score)
+            centerness.append(ctr_score)
         mlvl_score = torch.cat(scores, dim=1)
         mlvl_bbox  = torch.cat(bboxes, dim=1)
+        mlvl_ctr = torch.cat(centerness, dim=1).view(-1)
         nms_label_set = list(range(0, self.cls_channels))
         label_adjust = 1
+
         if 'nms_type' not in test_cfg:
             nms_op = utils.multiclass_nms_mmdet
         elif test_cfg.nms_type == 'official':
@@ -470,7 +476,7 @@ class FCOSHead(nn.Module):
             raise ValueError('Unknown nms_type: {}'.format(test_cfg.nms_type))
         keep_bbox, keep_score, keep_label = nms_op(
             mlvl_bbox.t(), mlvl_score.t(), nms_label_set,
-            test_cfg.nms_iou, test_cfg.min_score, test_cfg.max_per_img)
+            test_cfg.nms_iou, test_cfg.min_score, test_cfg.max_per_img, mlvl_ctr)
         keep_label += label_adjust
         return keep_bbox.t(), keep_score, keep_label
             

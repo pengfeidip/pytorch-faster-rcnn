@@ -215,7 +215,8 @@ def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
     return nms_bbox, nms_score, nms_label
 
 # the strict impl
-def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score, max_num=None):
+def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score,
+                      max_num=None, score_factor=None):
     label_set = list(label_set)
     
     score, label = score.max(1)
@@ -225,7 +226,10 @@ def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score, max_num=None):
         if not chosen.any():
             continue
         cur_bbox = bbox[chosen, :]
-        cur_score = score[chosen]
+        if score_factor is not None:
+            cur_score = score[chosen] * score_factor[chosen]
+        else:
+            cur_score = score[chosen]
         keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
         keep_bbox = cur_bbox[keep, :]
         keep_score = cur_score[keep]
@@ -259,7 +263,8 @@ Args:
     min_score: 0.05
 '''
 # the official impl
-def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score, max_num=None):
+def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score,
+                         max_num=None, score_factor=None):
     assert bbox.shape[0] == score.shape[0]
     label_set = list(label_set)
 
@@ -269,7 +274,10 @@ def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score, max_num=Non
         if not inds.any():
             continue
         cur_bbox = bbox[inds, :]
-        cur_score = score[inds, label]
+        if score_factor is not None:
+            cur_score = score[inds, label] * score_factor[inds]
+        else:
+            cur_score = score[ind, lable]
         keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
         keep_bbox = cur_bbox[keep, :]
         keep_score = cur_score[keep]
