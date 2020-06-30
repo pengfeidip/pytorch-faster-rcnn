@@ -421,7 +421,7 @@ class FCOSHead(nn.Module):
         assert num_lvl == len(self.strides)
         bboxes, scores, centerness = [], [], []
         for i in range(num_lvl):
-            reg_outs[i] = torch.exp(reg_outs[i] * self.reg_coef[i]) * self.reg_std + self.reg_mean
+            reg_outs[i] = reg_outs[i] * self.reg_std + self.reg_mean
             bbox = ltrb2bbox(reg_outs[i], self.strides[i])
             score = cls_outs[i].sigmoid()
             ctr_score = ctr_outs[i].sigmoid()

@@ -212,6 +212,10 @@ class IoULoss(nn.Module):
         super(IoULoss, self).__init__()
         self.loss_weight = loss_weight
 
-    def forward(self, a, b):
+    def forward(self, a, b, weight=None, avg_factor=None):
         loss = iou_loss(a, b)
+        if weight is not None:
+            loss = loss * weight
+        if avg_factor is not None:
+            loss = loss / avg_factor
         return loss.sum() * self.loss_weight
