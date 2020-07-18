@@ -124,3 +124,116 @@ class ResLayerC5(nn.Module):
 
     def init_weights(self):
         pass
+
+
+
+class Bottleneck(nn.Module):
+    def __init__(self, in_channels, out_channels, downsample=False):
+        super(Bottleneck, self).__init__()
+        is_first = in_channels*4==out_channels
+        self.in_channels=in_channels
+        self.out_channels=out_channels
+        hidden_channels=out_channels//4
+        self.hidden_channels=hidden_channels
+        self.do_downsample=downsample
+        
+        self.conv1 = nn.Conv2d(in_channels, hidden_channels, kernel_size=1, stride=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(hidden_channels)
+        self.conv2 = nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3,
+                               stride=2 if downsample and not is_first else 1,
+                               padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(hidden_channels)
+        self.conv3 = nn.Conv2d(hidden_channels, out_channels, kernel_size=1, stride=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        if downsample:
+            self.downsample = make_downsample(
+                in_channels, out_channels,
+                stride=1 if is_first else 2)
+
+            
+    def forward(self, x):
+        out = x
+        out = self.bn1(self.conv1(out))
+        out = self.relu(out)
+        out = self.bn2(self.conv2(out))
+        out = self.relu(out)
+        out = self.bn3(self.conv3(out))
+
+        if self.do_downsample:
+            x = self.downsample(x)
+        return self.relu(x+out)
+
+
+def make_reslayer(in_channels, out_channels, num_bns):
+    bns = [Bottleneck(in_channels, out_channels, True)]
+    for i in range(num_bns-1):
+        bns.append(Bottleneck(out_channels, out_channels))
+    return nn.Sequential(*bns)
+
+
+def make_downsample(in_channels, out_channels, stride=1):
+    return nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                         nn.BatchNorm2d(out_channels))
+
+
+RES_CONV_CFG = {
+    50 : [3, 4, 6, 3],
+    101: [3, 4, 23, 3],
+    152: [3, 8, 36, 3]}
+
+RES_CHANNELS = [64, 256, 512, 1024, 2048]
+        
+class ResNet(nn.Module):
+    def __init__(self, depth=50, frozen_stages=1, out_layers=(1, 2, 3, 4)):
+        super(ResNet, self).__init__()
+        self.depth = depth
+        assert depth in RES_CONV_CFG
+        self.frozen_stages = frozen_stages
+        self.out_layers = out_layers
+        conv_cfg = RES_CONV_CFG[depth]
+        self.conv_cfg = conv_cfg
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+        for i in range(4):
+            setattr(self, 'layer{}'.format(i+1), make_reslayer(RES_CHANNELS[i], RES_CHANNELS[i+1], conv_cfg[i]))
+
+        #self.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
+        #self.fc = nn.Linear(2048, 1000, bias=True)
+
+    def forward(self, x):
+        out = x
+        out = self.bn1(self.conv1(out))
+        out = self.relu(out)
+        out = self.maxpool(out)
+
+        feats = []
+        for i in range(1, 5):
+            layer = getattr(self, 'layer{}'.format(i))
+            out = layer(out)
+            if i in self.out_layers:
+                feats.append(out)
+                
+        return feats
+
+    def freeze_stages(self, stages):
+        if stages >= 0:
+            self.bn1.eval()
+            for m in [self.conv1, self.bn1]:
+                for param in m.parameters():
+                    param.requires_grad = False
+        for i in range(1, stages+1):
+            m = getattr(self, 'layer{}'.format(i))
+            m.eval()
+            for param in m.parameters():
+                param.requires_grad = False
+
+    def train(self, mode=True):
+        super(ResNet, self).train(mode)
+        self.freeze_stages(self.frozen_stages)
+        if mode:
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
