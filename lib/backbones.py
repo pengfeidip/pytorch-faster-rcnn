@@ -126,7 +126,10 @@ class ResLayerC5(nn.Module):
         pass
 
 
-
+###
+### a simple implementation of ResNet series
+###
+    
 class Bottleneck(nn.Module):
     def __init__(self, in_channels, out_channels, downsample=False):
         super(Bottleneck, self).__init__()
@@ -183,10 +186,17 @@ RES_CONV_CFG = {
     152: [3, 8, 36, 3]}
 
 RES_CHANNELS = [64, 256, 512, 1024, 2048]
+
+TORCH_RESNET = {
+    50 : tv.models.resnet50,
+    101: tv.models.resnet101,
+    152: tv.models.resnet152
+}
         
 class ResNet(nn.Module):
-    def __init__(self, depth=50, frozen_stages=1, out_layers=(1, 2, 3, 4)):
+    def __init__(self, depth=50, frozen_stages=1, out_layers=(1, 2, 3, 4), pretrained=True):
         super(ResNet, self).__init__()
+        self.pretrained = pretrained
         self.depth = depth
         assert depth in RES_CONV_CFG
         self.frozen_stages = frozen_stages
@@ -237,3 +247,8 @@ class ResNet(nn.Module):
             for m in self.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     m.eval()
+
+    def init_weights(self):
+        if self.pretrained:
+            torch_resnet = TORCH_RESNET[self.depth](pretrained=True)
+            self.load_state_dict(torch_resnet.state_dict())

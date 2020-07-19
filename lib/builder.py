@@ -1,4 +1,4 @@
-from .backbones import ResNet50, VGG16, ResLayerC5
+from .backbones import ResNet50, VGG16, ResLayerC5, ResNet
 from .region import MaxIoUAssigner, RandomSampler, SingleRoIExtractor, BasicRoIExtractor, IoUBalancedNegSampler
 from .necks import FPN, BFP
 from .losses import FocalLoss, SmoothL1Loss, CrossEntropyLoss, BalancedL1Loss, BoundedIoULoss, GIoULoss, IoULoss
@@ -13,7 +13,7 @@ from .utils import sum_list
 
 
 _detectors_ = [RetinaNet, CascadeRCNN, FCOS]
-_backbones_ = [ResNet50, VGG16, ResLayerC5]
+_backbones_ = [ResNet50, VGG16, ResLayerC5, ResNet]
 _necks_ = [FPN, BFP]
 _heads_ = [RetinaHead, RPNHead, RCNNHead, DoubleHead, GARPNHead, FCOSHead]
 _losses_ = [CrossEntropyLoss, SmoothL1Loss, FocalLoss, BalancedL1Loss, BoundedIoULoss, GIoULoss,
