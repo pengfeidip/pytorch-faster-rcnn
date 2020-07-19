@@ -1,6 +1,7 @@
 from . import utils
 import logging
 import torch
+import numpy as np
 
 # It finds positive, negative and ignored anchors based on assigner and sampler and return only
 # positive and negative targets.
@@ -73,3 +74,51 @@ def anchor_target(cls_out, reg_out, cls_channels, in_anchors, in_mask, gt_bbox, 
     logging.debug('labels chosen to train network neg={}, pos={}'\
                   .format((tar_labels==0).sum(), (tar_labels>0).sum()))
     return tar_cls_out, tar_reg_out, tar_labels, tar_anchors, tar_bbox, tar_param
+
+
+
+class AnchorCreator(object):
+
+    def __init__(self, base=16, scales=[8, 16, 32],
+                 aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cpu')):
+        self.device = device
+        self.base = base
+        self.scales = scales
+        self.aspect_ratios = aspect_ratios
+        self.num_anchors = len(scales)*len(aspect_ratios)
+        anchor_ws, anchor_hs = [], []
+        for s in scales:
+            for ar in aspect_ratios:
+                anchor_ws.append(base * s * np.sqrt(ar))
+                anchor_hs.append(base * s / np.sqrt(ar))
+        self.anchor_ws = torch.tensor(anchor_ws, device=device, dtype=torch.float32)
+        self.anchor_hs = torch.tensor(anchor_hs, device=device, dtype=torch.float32)
+
+    def to(self, device):
+        if self.device == device:
+            return True
+        self.device = device
+        self.anchor_ws = self.anchor_ws.to(device)
+        self.anchor_hs = self.anchor_hs.to(device)
+
+    def __call__(self, stride, grid):
+        with torch.no_grad():
+            grid_h, grid_w = grid
+            grid_dist_h, grid_dist_w = stride, stride
+        
+            center_h = torch.linspace(0, grid_dist_h * grid_h, grid_h+1,
+                                      device=self.device, dtype=torch.float32)[:-1] + grid_dist_h/2
+            center_w = torch.linspace(0, grid_dist_w * grid_w, grid_w+1,
+                                      device=self.device, dtype=torch.float32)[:-1] + grid_dist_w/2
+            mesh_h, mesh_w = torch.meshgrid(center_h, center_w)
+            # NOTE that the corresponding is h <-> y and w <-> x
+            anchor_hs = self.anchor_hs.view(-1, 1, 1)
+            anchor_ws = self.anchor_ws.view(-1, 1, 1)
+            x_min = mesh_w - anchor_ws / 2
+            x_max = mesh_w + anchor_ws / 2
+            y_min = mesh_h - anchor_hs / 2
+            y_max = mesh_h + anchor_hs / 2
+            anchors = torch.stack([x_min, y_min, x_max, y_max])
+        return anchors
+
+

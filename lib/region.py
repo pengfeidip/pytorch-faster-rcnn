@@ -98,10 +98,8 @@ class AnchorCreator(object):
         return anchors
 
 # inside grid mask, using img_size, not pad_size
-def inside_grid_mask(num_anchors, input_size, img_size, grid_size, device=torch.device('cpu')):
-    assert img_size[0] <= input_size[0] and img_size[1] <= input_size[1]
-    h_ratio, w_ratio = [grid_size[i]/input_size[i] for i in range(2)]
-    assert h_ratio <= 1 and w_ratio <= 1
+def inside_grid_mask(num_anchors, img_size, grid_size, stride, device=torch.device('cpu')):
+    h_ratio, w_ratio = 1.0/stride, 1.0/stride
     in_h = min(grid_size[0], int(img_size[0]*h_ratio)+1)
     in_w = min(grid_size[1], int(img_size[1]*w_ratio)+1)
     flags = torch.zeros((num_anchors, grid_size[0], grid_size[1]), device=device)

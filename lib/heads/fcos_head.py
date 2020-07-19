@@ -3,7 +3,7 @@ from mmcv.cnn import normal_init
 import numpy as np
 import logging, torch
 
-from .. import utils, debug, region
+from .. import utils, debug, region, anchor
 
 
 def make_level_blanks(grids, dim, value, dtype, device):
@@ -109,7 +109,7 @@ class FCOSHead(nn.Module):
         if atss_cfg is not None:
             self.use_atss=True
             self.anchor_creators=[
-                region.AnchorCreator(base=stride, scales=[atss_cfg.scale], aspect_ratios=[1.0]) \
+                anchor.AnchorCreator(base=stride, scales=[atss_cfg.scale], aspect_ratios=[1.0]) \
                 for stride in strides]
             logging.debug('Use ATSS sampler')
         else:
@@ -386,7 +386,7 @@ class FCOSHead(nn.Module):
         if self.use_atss:
             _ = [x.to(device=device) for x in self.anchor_creators]
             lvl_anchors = tuple((
-                self.anchor_creators[i](input_size, grids[i]).squeeze() \
+                self.anchor_creators[i](stride, grids[i]).squeeze() \
                 for i, stride in enumerate(self.strides)
             ))
             tars = utils.unpack_multi_result(utils.multi_apply(

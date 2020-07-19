@@ -1,5 +1,6 @@
 from torch import nn
-from ..region import AnchorCreator, inside_grid_mask, inside_anchor_mask
+from ..anchor import AnchorCreator
+from ..region import inside_grid_mask, inside_anchor_mask
 from ..anchor import anchor_target
 from ..utils import class_name
 from .. import losses
@@ -59,8 +60,8 @@ class AnchorHead(nn.Module):
     def forward(self):
         raise NotImplementedError('forward is not implemented')
 
-    def create_anchors(self, input_size, grid_sizes):
-        return [actr(input_size, grid_sizes[i]) for i, actr in enumerate(self.anchor_creators)]
+    def create_anchors(self, grid_sizes):
+        return [actr(self.anchor_strides[i], grid_sizes[i]) for i, actr in enumerate(self.anchor_creators)]
 
     def single_image_targets(self, level_cls_outs, level_reg_outs, gt_bbox, gt_label,
                              level_anchors, input_size, grid_sizes, img_meta, train_cfg):
@@ -87,8 +88,8 @@ class AnchorHead(nn.Module):
         logging.debug('anchors:    {}'.format(anchors.shape))
         img_size = img_meta['img_shape'][:2]
         in_img_mask = inside_anchor_mask(anchors, img_size, train_cfg.allowed_border)
-        in_grid_masks = [inside_grid_mask(self.num_anchors, input_size, img_size, grid_size, device)
-                         for grid_size in grid_sizes]
+        in_grid_masks = [inside_grid_mask(self.num_anchors, img_size, grid_sizes[lvl], stride, device)
+                         for lvl, stride in enumerate(self.anchor_strides)]
         in_grid_mask = torch.cat(in_grid_masks)
         logging.debug('in_img_mask: {}'.format(in_img_mask.sum().item()))
         logging.debug('in_grid_mask: {}'.format(in_grid_mask.sum().item()))
@@ -166,7 +167,7 @@ class AnchorHead(nn.Module):
         logging.info('Get input size: {}'.format(input_size))
         grid_sizes = [cls_out.shape[-2:] for cls_out in cls_outs]
         logging.info('Grid sizes: {}'.format(grid_sizes))
-        level_anchors = self.create_anchors(input_size, grid_sizes)
+        level_anchors = self.create_anchors(grid_sizes)
         logging.info('level_anchors: {}'.format('\n' + '\n'.join([str(ac.shape) for ac in level_anchors])))
 
         img_tar_cls_out, img_tar_reg_out, img_tar_label, img_tar_param = [], [], [], []
@@ -280,7 +281,7 @@ class AnchorHead(nn.Module):
         _ = [ac.to(device) for ac in self.anchor_creators]
         input_size = utils.input_size(img_metas)
         grid_sizes = [cls_out.shape[-2:] for cls_out in cls_outs]
-        level_anchors = self.create_anchors(input_size, grid_sizes)
+        level_anchors = self.create_anchors(grid_sizes)
         preds = []
         
         for i, img_meta in enumerate(img_metas):
