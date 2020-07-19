@@ -277,7 +277,7 @@ def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score,
         if score_factor is not None:
             cur_score = score[inds, label] * score_factor[inds]
         else:
-            cur_score = score[ind, lable]
+            cur_score = score[inds, label]
         keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
         keep_bbox = cur_bbox[keep, :]
         keep_score = cur_score[keep]

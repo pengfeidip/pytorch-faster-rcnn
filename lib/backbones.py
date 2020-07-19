@@ -251,4 +251,7 @@ class ResNet(nn.Module):
     def init_weights(self):
         if self.pretrained:
             torch_resnet = TORCH_RESNET[self.depth](pretrained=True)
-            self.load_state_dict(torch_resnet.state_dict())
+            try:
+                self.load_state_dict(torch_resnet.state_dict())
+            except Exception as e:
+                print(e)

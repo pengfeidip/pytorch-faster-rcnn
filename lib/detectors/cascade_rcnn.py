@@ -65,6 +65,7 @@ class CascadeRCNN(nn.Module):
         print(self.rcnn_head)
 
     def init_weights(self):
+        self.backbone.init_weights()
         self.rpn_head.init_weights()
         # init neck weights
         if self.with_neck:

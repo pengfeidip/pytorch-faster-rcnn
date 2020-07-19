@@ -29,6 +29,7 @@ class RetinaNet(nn.Module):
         print(self.bbox_head)
 
     def init_weights(self):
+        self.backbone.init_weights()
         if self.with_neck:
             self.neck.init_weights()
         self.bbox_head.init_weights()
