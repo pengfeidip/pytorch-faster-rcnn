@@ -1,6 +1,5 @@
 import torch.nn as nn
 import torch, logging
-from . import region
 import torch.nn.functional as F
 from . import utils
 import numpy as np
