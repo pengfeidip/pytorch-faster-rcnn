@@ -3,7 +3,7 @@ from mmcv.cnn import normal_init
 import numpy as np
 import logging, torch
 
-from .. import utils, debug, region, anchor
+from .. import utils, debug, region, anchor, losses
 
 # turn length representation to class representation, according to paper Generalized Focal Loss
 def length2class(length, cls_channels, stride):
@@ -210,12 +210,20 @@ class FCOSHead(nn.Module):
             self.cls_channels,
             3,
             padding=1)
-        # TODO: 
-        self.fcos_reg = nn.Conv2d(
-            self.feat_channels, 4, 3, padding=1)
+        # TODO:
+        if self.use_dfl:
+            self.fcos_reg = nn.Conv2d(self.feat_channels, self.loss_bbox.cls_channels, 3, padding=1)
+        else:
+            self.fcos_reg = nn.Conv2d(
+                self.feat_channels, 4, 3, padding=1)
+        # check if use centerness branch
         if self.use_centerness:
             self.fcos_center = nn.Conv2d(
                 self.feat_channels, 1, 3, padding=1)
+        if self.use_dfl:
+            self.reg_coef = [
+                nn.Parameter(torch.ones(self.loss_bbox.cls_channels),
+                             requires_grad=self.reg_coef_trainable) for _ in self.strides]
         self.reg_coef = nn.Parameter(
             torch.tensor(self.reg_coef, dtype=torch.float), requires_grad=self.reg_coef_trainable)
 
@@ -230,16 +238,23 @@ class FCOSHead(nn.Module):
         bias_init = float(-np.log((1-prior_prob)/ prior_prob))
         normal_init(self.fcos_cls, std=0.01, bias=bias_init)
         normal_init(self.fcos_reg, std=0.01)
-        normal_init(self.fcos_center, std=0.01)
+        if self.use_centerness:
+            normal_init(self.fcos_center, std=0.01)
         logging.info('Initialized weights for RetinaHead.')
 
     def forward(self, xs):
         cls_conv_outs = [self.cls_convs(x) for x in xs]
         reg_conv_outs = [self.reg_convs(x) for x in xs]
         cls_outs = [self.fcos_cls(x) for x in cls_conv_outs]
-        ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
-        reg_outs = [torch.exp(self.fcos_reg(x)*self.reg_coef[i]) \
-                    for i, x in enumerate(reg_conv_outs)]
+        ctr_outs = None
+        if self.use_centerness:
+            ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
+        if self.use_dfl:
+            reg_outs = [self.fcos_reg(x) * self.reg_coef[i] \
+                        for i, x in enumerate(reg_conv_outs)]
+        else:
+            reg_outs = [torch.exp(self.fcos_reg(x)*self.reg_coef[i]) \
+                        for i, x in enumerate(reg_conv_outs)]
         return cls_outs, reg_outs, ctr_outs
 
     def single_image_targets_atss(self, cls_outs, reg_outs, ctr_outs,
@@ -247,7 +262,7 @@ class FCOSHead(nn.Module):
         logging.debug('Use ATSS to find targets'.center(50, '*'))
         logging.debug('GT lables for current image: {}'.format(gt_labels.tolist()))
         logging.debug('GT bboxes for current image: {}'.format(gt_bboxes.tolist()))
-        assert len(cls_outs) == len(reg_outs) == len(ctr_outs) \
+        assert len(cls_outs) == len(reg_outs) \
             == len(self.strides) == len(lvl_anchors) 
         device = cls_outs[0].device
         grids = [x.shape[-2:] for x in cls_outs]
@@ -327,7 +342,7 @@ class FCOSHead(nn.Module):
             ctr_tars[lvl][pos_mask] = cur_ctr[pos_mask]
 
         # for debug
-        return cls_tars, reg_tars, ctr_tars
+        return cls_tars, reg_tars, ctr_tars, max_ious
 
 
     def single_image_targets(self, cls_outs, reg_outs, ctr_outs,
@@ -378,7 +393,7 @@ class FCOSHead(nn.Module):
         return cls_tars, reg_tars, ctr_tars
 
 
-    def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars):
+    def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars, max_ious):
         logging.debug('IN Calculation Loss'.center(50, '*'))
         logging.debug('reg_coef: {}'.format(self.reg_coef.tolist()))
         logging.debug('reg_mean: {}, reg_std: {}'.format(self.reg_mean, self.reg_std))
@@ -389,25 +404,36 @@ class FCOSHead(nn.Module):
         num_imgs = len(cls_tars)
         cls_outs = torch.cat([utils.concate_grid_result(x, False) for x in cls_outs], dim=-1)
         reg_outs = torch.cat([utils.concate_grid_result(x, False) for x in reg_outs], dim=-1)
-        ctr_outs = torch.cat([utils.concate_grid_result(x, False) for x in ctr_outs], dim=-1)
+        if ctr_outs is not None:
+            ctr_outs = torch.cat([utils.concate_grid_result(x, False) for x in ctr_outs], dim=-1)
         cls_tars = torch.cat([utils.concate_grid_result(x, True)  for x in cls_tars], dim=0)
         reg_tars = torch.cat([utils.concate_grid_result(x, True)  for x in reg_tars], dim=0)
         ctr_tars = torch.cat([utils.concate_grid_result(x, True)  for x in ctr_tars], dim=0)
+        max_ious = torch.cat([utils.concate_grid_result(x, True)  for x in max_ious], dim=0)
 
         chosen_mask = (cls_tars >=0).squeeze()
         pos_mask = (cls_tars > 0).squeeze()
+        
         # first calc cls loss
         num_pos_cls = pos_mask.sum().item()
-        cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
-                                 cls_tars[chosen_mask].squeeze()) / num_pos_cls
+        if self.use_qfl:
+            cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
+                                     max_ious[chosen_mask].squeeze(),
+                                     cls_tars[chosen_mask].squeeze()) / num_pos_cls
+        else:
+            cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
+                                     cls_tars[chosen_mask].squeeze()) / num_pos_cls
         
         # next calc ctr loss
-        ctr_outs = ctr_outs.view(-1, 1) # [m, 1]
-        ctr_tars = ctr_tars.squeeze()   # [m]
-        num_pos_ctr = num_pos_cls
-        pos_ctr_outs = ctr_outs[pos_mask, :]
-        pos_ctr_tars = ctr_tars[pos_mask]
-        ctr_loss = self.loss_centerness(pos_ctr_outs, pos_ctr_tars) / num_pos_ctr
+        if ctr_outs is not None:
+            ctr_outs = ctr_outs.view(-1, 1) # [m, 1]
+            ctr_tars = ctr_tars.squeeze()   # [m]
+            num_pos_ctr = num_pos_cls
+            pos_ctr_outs = ctr_outs[pos_mask, :]
+            pos_ctr_tars = ctr_tars[pos_mask]
+            ctr_loss = self.loss_centerness(pos_ctr_outs, pos_ctr_tars) / num_pos_ctr
+        else:
+            ctr_loss = losses.zero_loss(device=cls_outs.device)
 
         
         # next calc reg loss
@@ -425,12 +451,10 @@ class FCOSHead(nn.Module):
             pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
             pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
         reg_loss \
-            = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=pos_ctr_tars) / (pos_ctr_tars.sum())
+            = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
         
-        logging.debug('pos ctr samples: {}, total ctr samples: {}'.format(
-            num_pos_ctr, ctr_tars.numel()))
-        losses = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
-        return losses
+        all_loss = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
+        return all_loss
         
 
     def loss(self):
@@ -446,7 +470,9 @@ class FCOSHead(nn.Module):
         cls_outs, reg_outs, ctr_outs = self.forward(feats)
         cls_outs_img = utils.split_by_image(cls_outs)
         reg_outs_img = utils.split_by_image(reg_outs)
-        ctr_outs_img = utils.split_by_image(ctr_outs)
+        ctr_outs_img = None
+        if ctr_outs is not None:
+            ctr_outs_img = utils.split_by_image(ctr_outs)
 
         device = feats[0].device
         grids = [x.shape[-2:] for x in cls_outs_img[0]]

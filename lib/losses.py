@@ -222,28 +222,28 @@ class IoULoss(nn.Module):
 # pred has the same shape as tar, and pred is logits
 def generalized_focal_loss(pred, tar, beta=2.0):
     pred_sig = pred.sigmoid()
-    focal_weight = -(tar - pred_sig).abs().pow(beta)
+    focal_weight = (tar - pred_sig).abs().pow(beta)
     return focal_weight * F.binary_cross_entropy_with_logits(pred, tar, reduction='none')
     
 class QualityFocalLoss(nn.Module):
-    def __init__(self, beta, loss_weight=1.0):
+    def __init__(self, beta=2.0, use_sigmoid=True, loss_weight=1.0):
+        assert use_sigmoid, 'QualityFocalLoss only support sigmoid activation'
+        self.use_sigmoid = use_sigmoid
         self.beta = beta
         self.loss_weight = loss_weight
         super(QualityFocalLoss, self).__init__()
 
-    def forward(self, pred, quality, label=None):
+    def forward(self, pred, quality, label):
         '''
         pred: [n, n_cls], which is logits
-        quality: [n] if label is not None, [n, n_cls] if label is None
-        label: [n] n labels
+        quality: [n], score of each label 
+        label: [n], n labels
         '''
         n, n_cls = pred.shape
-        device = pred.device
-        if label is not None:
-            quality_mat = torch.full_like(pred, 0)
-            quality_mat[torch.arange(n), label] = quality
-            quality = quality_mat
-        loss = generalized_focal_loss(pred, quality, beta=self.beta)
+        tar = pred.new_full((n, n_cls+1), 0.0)
+        tar[torch.arange(n), label] = quality
+        tar = tar[:, 1:]
+        loss = generalized_focal_loss(pred, tar, beta=self.beta)
         return loss.sum() * self.loss_weight
 
 
@@ -269,21 +269,20 @@ def distributed_focal_loss(pred, y, left_idx, stride):
     left_idx: [n], left idx of target
     stride: number
     '''
-    print('pred', pred)
     eps = 1e-6
     n, n_cls = pred.shape
     soft = pred.softmax(-1)
     right_idx = left_idx + 1
     left_tar, right_tar = left_idx * stride, right_idx * stride
-    print('left_tar:', left_tar, 'right_tar:', right_tar, 'y:', y)
     left_pred = pred[torch.arange(n), left_idx]
     right_pred = pred[torch.arange(n), right_idx]
-    print('left_pred:', left_pred, 'right_pred:', right_pred)
     loss = (right_tar - y) * ((left_pred + eps).log()) + (y - left_tar) * ((right_pred + eps).log())
     return -loss
             
 class DistributedFocalLoss(nn.Module):
-    def __init__(self, cls_channels, loss_weight=1.0):
+    def __init__(self, cls_channels, strides, loss_weight=1.0):
+        assert len(strides) == 1 or len(strides) == 5
+        self.strides = strides
         self.cls_channels = cls_channels
         self.loss_weight = loss_weight
         super(DistributedFocalLoss, self).__init__()        
