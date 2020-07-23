@@ -5,20 +5,59 @@ import logging, torch
 
 from .. import utils, debug, region, anchor
 
+# turn length representation to class representation, according to paper Generalized Focal Loss
+def length2class(length, cls_channels, stride):
+    '''
+    length: a tensor of length
+    cls_channels: integer, number of discretization
+    stride: real number, size of the discretization length
+    '''
+    len_shape = length.shape
+    len_flat = length.view(-1).float()
+    numel = len_flat.numel()
+    max_len = (cls_channels - 1) * stride
+    len_flat = len_flat.clamp(0, max_len)
+    left_pt = (len_flat / stride).long() 
+    right_pt = left_pt + 1
+    left_bound, right_bound = left_pt * stride, right_pt * stride
+    right_prob = (len_flat - left_bound) / stride
+    left_prob = (right_bound - len_flat) / stride
+    distr = len_flat.new_full((numel, cls_channels), 0, dtype=torch.float)
+    distr[torch.arange(numel), left_pt] = left_prob
+    distr[torch.arange(numel), right_pt] = right_prob
+    return distr.view(*len_shape, -1), left_pt
 
+# turn class representation to length representation, according to paper Generalized Focal Loss
+def class2length(cls_score, stride):
+    '''
+    cls_score: [..., cls_channels], i.e. cls channels are in the last dim
+    stride: real number
+    '''
+    cls_channels = cls_score.shape[-1]
+    cls_shape = cls_score.shape[:-1]
+    cls_flat = cls_score.view(-1, cls_channels)
+    rand_var = cls_score.new([i*stride for i in range(cls_channels)])
+    inner_prod = (cls_score * rand_var).sum(-1)
+    return inner_prod
+
+
+# create tensor of shape [grid_heigh, grid_width, dim] with all values equal to 'value'
 def make_level_blanks(grids, dim, value, dtype, device):
     return [torch.full(list(grid)+[dim], value, dtype=dtype, device=device) \
             for grid in grids]
 
+# get places where l,t,r,b values are all positive
 def positive_ltrb(ltrb):
     pos_mask = ltrb > 0
     return pos_mask.all(dim=-1)
 
+# from the FCOS paper
 def centerness(ltrb):
     ltrb = ltrb + 1e-6
     l, t, r, b = [ltrb[..., i] for i in range(4)]
     return torch.sqrt((torch.min(l, r)/torch.max(l, r))*(torch.min(t, b)/torch.max(t, b)))
 
+# transform from ltrb representation to xyxy representation
 def ltrb2bbox(ltrb, stride):
     grid_size = ltrb.shape[1:]
     full_idx = utils.full_index(grid_size).to(
@@ -33,6 +72,7 @@ def ltrb2bbox(ltrb, stride):
     ])
     return bbox
 
+# transform xyxy representation to ltrb representation
 def bbox2ltrb(bbox, grid, stride):
     full_idx = utils.full_index(grid).to(device=bbox.device).to(dtype=torch.float)
     coor = full_idx * stride + stride/2.0
@@ -44,6 +84,7 @@ def bbox2ltrb(bbox, grid, stride):
     ], dim=-1)
     return ltrb
 
+# 
 def paint_value(canvas, bbox, scale, val):
     bbox = bbox * scale
     bbox = bbox.round().long()
@@ -100,11 +141,14 @@ class FCOSHead(nn.Module):
         self.reg_mean=reg_mean
         self.reg_coef=reg_coef
         self.reg_coef_trainable=reg_coef_trainable
+        
         from ..builder import build_module
-        self.loss_cls=build_module(loss_cls)
-        self.loss_bbox=build_module(loss_bbox)
-        self.loss_centerness=build_module(loss_centerness)
 
+        
+        
+        self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]
+        
+        # first check if using ATSS
         self.atss_cfg=atss_cfg
         if atss_cfg is not None:
             self.use_atss=True
@@ -114,13 +158,37 @@ class FCOSHead(nn.Module):
             logging.debug('Use ATSS sampler')
         else:
             self.use_atss=False
-
+            
+        
+        # next check loss_cls, there are two choices:
+        # FocalLoss or QualityFocalLoss(Generalized Focal Loss)
+        if loss_cls.type == 'QualityFocalLoss':
+            assert self.use_atss, 'Generalized Focal Loss only support ATSS sampler'
+            self.use_centerness = False
+            self.use_qfl = True
+            if loss_centerness is not None:
+                logging.warning('Found loss cfg for centerness while QFL loss is present, will ignore centerness.')
+        else:
+            self.use_centerness = True
+            self.use_qfl = False
+        self.loss_cls=build_module(loss_cls)
+        
+        # next check loss_bbox
         self.use_giou=loss_bbox.type == 'GIoULoss'
         if self.use_giou:
             logging.debug('Use GIoU is True')
 
-        self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]
-
+        if loss_bbox.type == 'DistributedFocalLoss':
+            self.use_dfl = True
+        else:
+            self.use_dfl = False
+        self.loss_bbox=build_module(loss_bbox)
+        
+        if self.use_centerness:
+            self.loss_centerness=build_module(loss_centerness)
+        logging.debug('use_atss: {}, use_centerness: {}, use_qfl: {}, use_giou: {}, use_dfl: {}'\
+                      .format(self.use_atss, self.use_centerness,
+                              self.use_qfl, self.use_giou, self.use_dfl))
         self.init_layers()
         
     def init_layers(self):
@@ -136,15 +204,18 @@ class FCOSHead(nn.Module):
             reg_convs.append(nn.ReLU(inplace=True))
         self.cls_convs = nn.Sequential(*cls_convs)
         self.reg_convs = nn.Sequential(*reg_convs)
+
         self.fcos_cls = nn.Conv2d(
             self.feat_channels,
             self.cls_channels,
             3,
             padding=1)
+        # TODO: 
         self.fcos_reg = nn.Conv2d(
             self.feat_channels, 4, 3, padding=1)
-        self.fcos_center = nn.Conv2d(
-            self.feat_channels, 1, 3, padding=1)
+        if self.use_centerness:
+            self.fcos_center = nn.Conv2d(
+                self.feat_channels, 1, 3, padding=1)
         self.reg_coef = nn.Parameter(
             torch.tensor(self.reg_coef, dtype=torch.float), requires_grad=self.reg_coef_trainable)
 

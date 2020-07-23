@@ -218,3 +218,81 @@ class IoULoss(nn.Module):
         if avg_factor is not None:
             loss = loss / avg_factor
         return loss.sum() * self.loss_weight
+
+# pred has the same shape as tar, and pred is logits
+def generalized_focal_loss(pred, tar, beta=2.0):
+    pred_sig = pred.sigmoid()
+    focal_weight = -(tar - pred_sig).abs().pow(beta)
+    return focal_weight * F.binary_cross_entropy_with_logits(pred, tar, reduction='none')
+    
+class QualityFocalLoss(nn.Module):
+    def __init__(self, beta, loss_weight=1.0):
+        self.beta = beta
+        self.loss_weight = loss_weight
+        super(QualityFocalLoss, self).__init__()
+
+    def forward(self, pred, quality, label=None):
+        '''
+        pred: [n, n_cls], which is logits
+        quality: [n] if label is not None, [n, n_cls] if label is None
+        label: [n] n labels
+        '''
+        n, n_cls = pred.shape
+        device = pred.device
+        if label is not None:
+            quality_mat = torch.full_like(pred, 0)
+            quality_mat[torch.arange(n), label] = quality
+            quality = quality_mat
+        loss = generalized_focal_loss(pred, quality, beta=self.beta)
+        return loss.sum() * self.loss_weight
+
+
+def multilabel_softmax_cross_entropy_with_logits(pred_logits, target):
+    '''
+    pred_logits: [n, n_cls], logits output of a predictor
+    target: [n, n_cls], target distribution
+    '''
+
+    assert pred_logits.dim() == 2
+    C, _ = pred_logits.detach().clone().max(1)
+    C = -C
+    pred_stable = pred_logits + C.unsqueeze(1)
+    left = -pred_stable
+    right = pred_stable.exp().sum(1).log().unsqueeze(1)
+    return (target * (left + right)).sum(1)
+    
+# not finished
+def distributed_focal_loss(pred, y, left_idx, stride):
+    '''
+    pred: [n, n_cls], logits
+    y: [n], target length
+    left_idx: [n], left idx of target
+    stride: number
+    '''
+    print('pred', pred)
+    eps = 1e-6
+    n, n_cls = pred.shape
+    soft = pred.softmax(-1)
+    right_idx = left_idx + 1
+    left_tar, right_tar = left_idx * stride, right_idx * stride
+    print('left_tar:', left_tar, 'right_tar:', right_tar, 'y:', y)
+    left_pred = pred[torch.arange(n), left_idx]
+    right_pred = pred[torch.arange(n), right_idx]
+    print('left_pred:', left_pred, 'right_pred:', right_pred)
+    loss = (right_tar - y) * ((left_pred + eps).log()) + (y - left_tar) * ((right_pred + eps).log())
+    return -loss
+            
+class DistributedFocalLoss(nn.Module):
+    def __init__(self, cls_channels, loss_weight=1.0):
+        self.cls_channels = cls_channels
+        self.loss_weight = loss_weight
+        super(DistributedFocalLoss, self).__init__()        
+
+    def forward(self, pred, target):
+        '''
+        pred: [n, 4 * cls_channels], logits
+        target: [n, 4 * cls_channels], target distribution
+        '''
+        loss = multilabel_softmax_cross_entropy_with_logits(pred, target)
+        return loss.sum() * self.loss_weight
+
