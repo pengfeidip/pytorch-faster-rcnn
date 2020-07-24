@@ -114,7 +114,11 @@ def topk_by_center(anchors, bbox, k):
     return k_inds_x, k_inds_y, top_anchors, k_inds_x.numel()
 
     
-                    
+'''
+TODO:
+We mix FCOS, ATSS, Generalized Focal Loss(QFL, DFL) in one FCOSHead, which can be chaotic.
+The logic is that GFL only support ATSS, and one can use QFL, DFL or both.
+'''
 class FCOSHead(nn.Module):
     def __init__(self,
                  num_classes=21,
@@ -143,7 +147,6 @@ class FCOSHead(nn.Module):
         self.reg_coef_trainable=reg_coef_trainable
         
         from ..builder import build_module
-
         
         
         self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]
@@ -157,6 +160,7 @@ class FCOSHead(nn.Module):
                 for stride in strides]
             logging.debug('Use ATSS sampler')
         else:
+            assert loss_cls.type != 'QualityFocalLoss' and loss_bbox.type != 'DistributedFocalLoss'
             self.use_atss=False
             
         
@@ -174,14 +178,8 @@ class FCOSHead(nn.Module):
         self.loss_cls=build_module(loss_cls)
         
         # next check loss_bbox
-        self.use_giou=loss_bbox.type == 'GIoULoss'
-        if self.use_giou:
-            logging.debug('Use GIoU is True')
-
-        if loss_bbox.type == 'DistributedFocalLoss':
-            self.use_dfl = True
-        else:
-            self.use_dfl = False
+        self.use_giou = loss_bbox.type == 'GIoULoss'
+        self.use_dfl = loss_bbox.type == 'DistributedFocalLoss'
         self.loss_bbox=build_module(loss_bbox)
         
         if self.use_centerness:
@@ -210,9 +208,11 @@ class FCOSHead(nn.Module):
             self.cls_channels,
             3,
             padding=1)
-        # TODO:
+
         if self.use_dfl:
-            self.fcos_reg = nn.Conv2d(self.feat_channels, self.loss_bbox.cls_channels, 3, padding=1)
+            self.fcos_reg = nn.Conv2d(self.feat_channels,
+                                      self.loss_bbox.cls_channels * 4, 3, padding=1)
+            # notice it is 16 * 4 which means cls channel is at first
         else:
             self.fcos_reg = nn.Conv2d(
                 self.feat_channels, 4, 3, padding=1)
@@ -222,10 +222,12 @@ class FCOSHead(nn.Module):
                 self.feat_channels, 1, 3, padding=1)
         if self.use_dfl:
             self.reg_coef = [
-                nn.Parameter(torch.ones(self.loss_bbox.cls_channels),
-                             requires_grad=self.reg_coef_trainable) for _ in self.strides]
-        self.reg_coef = nn.Parameter(
-            torch.tensor(self.reg_coef, dtype=torch.float), requires_grad=self.reg_coef_trainable)
+                nn.Parameter(torch.ones(self.loss_bbox.cls_channels) * x,
+                             requires_grad=self.reg_coef_trainable) for x in self.reg_coef]
+        else:
+            self.reg_coef = nn.Parameter(
+                torch.tensor(self.reg_coef, dtype=torch.float),
+                requires_grad=self.reg_coef_trainable)
 
     def init_weights(self):
         for m in self.cls_convs:
@@ -250,8 +252,11 @@ class FCOSHead(nn.Module):
         if self.use_centerness:
             ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
         if self.use_dfl:
-            reg_outs = [self.fcos_reg(x) * self.reg_coef[i] \
-                        for i, x in enumerate(reg_conv_outs)]
+            reg_outs = []
+            for i, x in enumerate(reg_conv_outs):
+                x = self.fcos_reg(x)
+                coef = torch.cat([self.reg_coef[i].view(-1, 1) for i in range(4)], dim=1)
+                reg_outs.append(x * coef.view(-1, 1, 1))
         else:
             reg_outs = [torch.exp(self.fcos_reg(x)*self.reg_coef[i]) \
                         for i, x in enumerate(reg_conv_outs)]
@@ -395,7 +400,7 @@ class FCOSHead(nn.Module):
 
     def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars, max_ious):
         logging.debug('IN Calculation Loss'.center(50, '*'))
-        logging.debug('reg_coef: {}'.format(self.reg_coef.tolist()))
+        logging.debug('reg_coef: {}'.format(self.reg_coef))
         logging.debug('reg_mean: {}, reg_std: {}'.format(self.reg_mean, self.reg_std))
         logging.debug('use_giou: {}'.format(self.use_giou))
 
@@ -437,6 +442,9 @@ class FCOSHead(nn.Module):
 
         
         # next calc reg loss
+        # TO BE CONTINUED
+        #print('reg_outs:', reg_outs.shape)
+        #print('reg_tars:', reg_tars.shape)
         pos_reg_outs = reg_outs[:, pos_mask]      # [4, m], in ltrb format
         pos_reg_tars = reg_tars[pos_mask, :].t()  # [4, m], in ltrb format
         pos_reg_tars = (pos_reg_tars - self.reg_mean) / self.reg_std
@@ -446,10 +454,17 @@ class FCOSHead(nn.Module):
             pos_reg_tars.mean(dim=1).tolist(), pos_reg_tars.std(dim=1).tolist()))
 
         # if use giou, need to turn ltrb to xyxy
+        #print('pos_reg_outs.shape:', pos_reg_outs.shape)
+        #print('pos_reg_tars.shape:', pos_reg_tars.shape)
         if self.use_giou:
             assert self.reg_mean <= 0
             pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
             pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
+        elif self.use_dfl:
+            # TO BE CONTINUED, be aware of the impact of .t()
+            pass
+
+            
         reg_loss \
             = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
         
@@ -511,7 +526,7 @@ class FCOSHead(nn.Module):
 
     def predict_single_image(self, cls_outs, reg_outs, ctr_outs, img_meta, test_cfg):
         num_lvl = len(cls_outs)
-
+        use_center = self.use_centerness
         # next calc bbox
         min_size = img_meta['scale_factor'] * test_cfg.min_bbox_size
         img_size = img_meta['img_shape'][:2]
@@ -521,32 +536,35 @@ class FCOSHead(nn.Module):
             reg_outs[i] = reg_outs[i] * self.reg_std + self.reg_mean
             bbox = ltrb2bbox(reg_outs[i], self.strides[i])
             score = cls_outs[i].sigmoid()
-            ctr_score = ctr_outs[i].sigmoid()
+            ctr_score = ctr_outs[i].sigmoid() if use_center else None
 
             bbox = bbox.view(4, -1)
             score = score.view(self.cls_channels, -1)
-            ctr_score = ctr_score.view(1, -1)
+            ctr_score = ctr_score.view(1, -1) if use_center else None
             
             
             bbox = utils.clamp_bbox(bbox, img_size)
             non_small = (bbox[2]-bbox[0] + 1>min_size) & (bbox[3]-bbox[1]+1>min_size)
             score = score[:, non_small]
             bbox = bbox[:, non_small]
-            ctr_score = ctr_score[:, non_small]
+            ctr_score = ctr_score[:, non_small] if use_center else None
             
             if test_cfg.pre_nms > 0 and test_cfg.pre_nms < score.shape[1]:
-                max_score, _ = (score * ctr_score).max(0)
+                if use_center:
+                    max_score, _ = (score * ctr_score).max(0)
+                else:
+                    max_score, _ = score.max(0)
                 _, top_inds = max_score.topk(test_cfg.pre_nms)
                 score = score[:, top_inds]
                 bbox = bbox[:, top_inds]
-                ctr_score = ctr_score[:, top_inds]
+                ctr_score = ctr_score[:, top_inds] if use_center else None
 
             bboxes.append(bbox)
             scores.append(score)
             centerness.append(ctr_score)
         mlvl_score = torch.cat(scores, dim=1)
         mlvl_bbox  = torch.cat(bboxes, dim=1)
-        mlvl_ctr = torch.cat(centerness, dim=1).view(-1)
+        mlvl_ctr = torch.cat(centerness, dim=1).view(-1) if use_center else None
         nms_label_set = list(range(0, self.cls_channels))
         label_adjust = 1
 
@@ -571,7 +589,7 @@ class FCOSHead(nn.Module):
         cls_outs, reg_outs, ctr_outs = self.forward(feats)
         cls_outs_img = utils.split_by_image(cls_outs)
         reg_outs_img = utils.split_by_image(reg_outs)
-        ctr_outs_img = utils.split_by_image(ctr_outs)
+        ctr_outs_img = utils.split_by_image(ctr_outs) if self.use_centerness else None
         
         pred_res =utils.unpack_multi_result(utils.multi_apply(
             self.predict_single_image,

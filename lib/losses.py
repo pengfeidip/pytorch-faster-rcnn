@@ -281,6 +281,7 @@ def distributed_focal_loss(pred, y, left_idx, stride):
             
 class DistributedFocalLoss(nn.Module):
     def __init__(self, cls_channels, strides, loss_weight=1.0):
+        # TODO: the calc of loss does not use strides, it simply store the setting for detectors
         assert len(strides) == 1 or len(strides) == 5
         self.strides = strides
         self.cls_channels = cls_channels
