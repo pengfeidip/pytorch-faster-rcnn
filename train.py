@@ -56,6 +56,8 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
+    shutil.copyfile(args.config_file, args.work_dir)
+
     dataset = datasets.VOCDataset(
         ann_file=config.data.train.ann_file,
         img_prefix=config.data.train.img_prefix,

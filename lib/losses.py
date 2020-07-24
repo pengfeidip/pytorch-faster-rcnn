@@ -290,8 +290,8 @@ class DistributedFocalLoss(nn.Module):
 
     def forward(self, pred, target):
         '''
-        pred: [n, 4 * cls_channels], logits
-        target: [n, 4 * cls_channels], target distribution
+        pred:   [n, cls_channels], logits
+        target: [n, cls_channels], target distribution
         '''
         loss = multilabel_softmax_cross_entropy_with_logits(pred, target)
         return loss.sum() * self.loss_weight

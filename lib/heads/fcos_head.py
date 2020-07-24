@@ -58,6 +58,7 @@ def centerness(ltrb):
     return torch.sqrt((torch.min(l, r)/torch.max(l, r))*(torch.min(t, b)/torch.max(t, b)))
 
 # transform from ltrb representation to xyxy representation
+# ltrb: [grid_h, grid_w, 4]
 def ltrb2bbox(ltrb, stride):
     grid_size = ltrb.shape[1:]
     full_idx = utils.full_index(grid_size).to(
@@ -220,10 +221,13 @@ class FCOSHead(nn.Module):
         if self.use_centerness:
             self.fcos_center = nn.Conv2d(
                 self.feat_channels, 1, 3, padding=1)
+
+
         if self.use_dfl:
-            self.reg_coef = [
-                nn.Parameter(torch.ones(self.loss_bbox.cls_channels) * x,
-                             requires_grad=self.reg_coef_trainable) for x in self.reg_coef]
+            reg_coef = torch.stack([
+                torch.ones(self.loss_bbox.cls_channels)*x for x in self.reg_coef]).float()
+            self.reg_coef = nn.Parameter(reg_coef, 
+                                         requires_grad=self.reg_coef_trainable)
         else:
             self.reg_coef = nn.Parameter(
                 torch.tensor(self.reg_coef, dtype=torch.float),
@@ -442,9 +446,6 @@ class FCOSHead(nn.Module):
 
         
         # next calc reg loss
-        # TO BE CONTINUED
-        #print('reg_outs:', reg_outs.shape)
-        #print('reg_tars:', reg_tars.shape)
         pos_reg_outs = reg_outs[:, pos_mask]      # [4, m], in ltrb format
         pos_reg_tars = reg_tars[pos_mask, :].t()  # [4, m], in ltrb format
         pos_reg_tars = (pos_reg_tars - self.reg_mean) / self.reg_std
@@ -454,19 +455,20 @@ class FCOSHead(nn.Module):
             pos_reg_tars.mean(dim=1).tolist(), pos_reg_tars.std(dim=1).tolist()))
 
         # if use giou, need to turn ltrb to xyxy
-        #print('pos_reg_outs.shape:', pos_reg_outs.shape)
-        #print('pos_reg_tars.shape:', pos_reg_tars.shape)
         if self.use_giou:
             assert self.reg_mean <= 0
             pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
             pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
+            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
         elif self.use_dfl:
-            # TO BE CONTINUED, be aware of the impact of .t()
-            pass
-
-            
-        reg_loss \
-            = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
+            cls_channels = self.loss_bbox.cls_channels
+            stride = self.loss_bbox.strides[0]
+            pos_reg_tars = pos_reg_tars.contiguous().view(-1)  # [4, m] to [4m]
+            pos_reg_tars_cls, _ = length2class(pos_reg_tars, cls_channels, stride)  # [4m, 16]
+            pos_reg_outs = pos_reg_outs.view(cls_channels, -1).t() # [16*4,m] to [16,4m] to [4m,16]
+            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars_cls) / num_pos_cls
+        else:
+            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
         
         all_loss = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
         return all_loss
@@ -533,8 +535,19 @@ class FCOSHead(nn.Module):
         assert num_lvl == len(self.strides)
         bboxes, scores, centerness = [], [], []
         for i in range(num_lvl):
-            reg_outs[i] = reg_outs[i] * self.reg_std + self.reg_mean
-            bbox = ltrb2bbox(reg_outs[i], self.strides[i])
+            if self.use_dfl:
+                lvl_reg_out = reg_outs[i] # [16*4, m, n]
+                lvl_grid_size = lvl_reg_out.shape[-2:] # [m, n]
+                lvl_reg_out = lvl_reg_out.view(self.loss_bbox.cls_channels, -1).t()
+                # from [16*4, m, n] to [16, 4*m*n] to [4*m*n, 16]
+                lvl_reg_out = lvl_reg_out.softmax(-1)
+                lvl_ltrb = class2length(lvl_reg_out, self.loss_bbox.strides[0]) # [4*m*n]
+                lvl_ltrb = lvl_ltrb * self.reg_std + self.reg_mean
+                lvl_ltrb = lvl_ltrb.view(4, *lvl_grid_size)
+                bbox = ltrb2bbox(lvl_ltrb, self.strides[i])
+            else:
+                reg_outs[i] = reg_outs[i] * self.reg_std + self.reg_mean
+                bbox = ltrb2bbox(reg_outs[i], self.strides[i])
             score = cls_outs[i].sigmoid()
             ctr_score = ctr_outs[i].sigmoid() if use_center else None
 
@@ -545,10 +558,10 @@ class FCOSHead(nn.Module):
             
             bbox = utils.clamp_bbox(bbox, img_size)
             non_small = (bbox[2]-bbox[0] + 1>min_size) & (bbox[3]-bbox[1]+1>min_size)
+
             score = score[:, non_small]
             bbox = bbox[:, non_small]
             ctr_score = ctr_score[:, non_small] if use_center else None
-            
             if test_cfg.pre_nms > 0 and test_cfg.pre_nms < score.shape[1]:
                 if use_center:
                     max_score, _ = (score * ctr_score).max(0)
