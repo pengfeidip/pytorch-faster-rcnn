@@ -464,9 +464,9 @@ class FCOSHead(nn.Module):
             cls_channels = self.loss_bbox.cls_channels
             stride = self.loss_bbox.strides[0]
             pos_reg_tars = pos_reg_tars.contiguous().view(-1)  # [4, m] to [4m]
-            pos_reg_tars_cls, _ = length2class(pos_reg_tars, cls_channels, stride)  # [4m, 16]
+            pos_reg_tars_cls, left_idx = length2class(pos_reg_tars, cls_channels, stride)  # [4m, 16]
             pos_reg_outs = pos_reg_outs.view(cls_channels, -1).t() # [16*4,m] to [16,4m] to [4m,16]
-            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars_cls) / num_pos_cls
+            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, left_idx, stride) / num_pos_cls
         else:
             reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
         

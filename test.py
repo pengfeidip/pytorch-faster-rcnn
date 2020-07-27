@@ -74,12 +74,13 @@ def main():
 
     anno_idx, out_json = 0, []
     for pred in infer_res:
-        iid, bbox_xywh, score, category \
-            = pred['image_id'], pred['bbox'], pred['score'], pred['category']
+        iid, bbox_xywh, score, category, filename \
+            = pred['image_id'], pred['bbox'], pred['score'], pred['category'], pred['file_name']
         for i, cur_bbox in enumerate(bbox_xywh):
             cur_pred = {
                 'id': anno_idx,
                 'image_id': iid,
+                'file_name': filename,
                 'bbox': [round(x.item(), 2) for x in cur_bbox],
                 'score': round(score[i].item(), 3),
                 'category_id': category[i].item()

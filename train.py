@@ -7,7 +7,7 @@ parser.add_argument('--seed', help='Random seed.')
 
 args = parser.parse_args()
 
-import os, sys, glob, random, logging
+import os, sys, glob, random, logging, shutil
 import os.path as osp
 import mmcv, torch, numpy as np
 from lib import datasets
@@ -56,7 +56,7 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
-    shutil.copyfile(args.config_file, args.work_dir)
+    shutil.copyfile(args.config_file, osp.join(args.work_dir, osp.basename(args.config_file)))
 
     dataset = datasets.VOCDataset(
         ann_file=config.data.train.ann_file,

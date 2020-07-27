@@ -246,6 +246,12 @@ class QualityFocalLoss(nn.Module):
         loss = generalized_focal_loss(pred, tar, beta=self.beta)
         return loss.sum() * self.loss_weight
 
+# logits: [n, cls_channels]
+# it applies a softmax followed by a log, it uses a stable implementation
+def log_softmax_with_logits(logits):
+    C, _ = logits.detach().max(1)
+    logits_stable = logits - C.unsqueeze(1)
+    return logits_stable - logits_stable.exp().sum(1).log().unsqueeze(1)
 
 def multilabel_softmax_cross_entropy_with_logits(pred_logits, target):
     '''
@@ -288,11 +294,18 @@ class DistributedFocalLoss(nn.Module):
         self.loss_weight = loss_weight
         super(DistributedFocalLoss, self).__init__()        
 
-    def forward(self, pred, target):
+    def forward(self, pred, y, left_idx, stride):
         '''
         pred:   [n, cls_channels], logits
         target: [n, cls_channels], target distribution
         '''
-        loss = multilabel_softmax_cross_entropy_with_logits(pred, target)
-        return loss.sum() * self.loss_weight
+        n, n_cls = pred.shape
+        log_sigma = log_softmax_with_logits(pred)
+        right_idx = left_idx + 1
+        left_tar, right_tar = left_idx * stride, right_idx * stride
+        left_pred = pred[torch.arange(n), left_idx]
+        right_pred = pred[torch.arange(n), right_idx]
+        loss = (right_tar - y) * log_sigma[torch.arange(n), left_idx] \
+               + (y - left_tar) * log_sigma[torch.arange(n), right_idx]
+        return -loss.sum() * self.loss_weight
 
