@@ -1,7 +1,7 @@
 
 model=dict(
     type='FCOS',
-    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
+    backbone=dict(type='ResNet', depth=50, frozen_stages=1, out_layers=(1, 2, 3, 4)),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
@@ -10,7 +10,7 @@ model=dict(
         extra_use_convs=True,
         extra_convs_on_inputs=False,
         num_outs=5,
-        relu_before_extra_convs=True
+        relu_before_extra_convs=False
     ),
     bbox_head=dict(
         type='FCOSHead',
@@ -19,18 +19,17 @@ model=dict(
         stacked_convs=4,
         feat_channels=256,
         strides=[8, 16, 32, 64, 128],
-        reg_std=1,
+        reg_std=600,
         reg_mean=0,
         reg_coef=[1.0, 1.0, 1.0, 1.0, 1.0],
         reg_coef_trainable=True,
         atss_cfg=dict(topk=9, scale=8),
         loss_cls=dict(
             type='QualityFocalLoss', use_sigmoid=True, loss_weight=1.0),
-        loss_bbox=dict(type='DistributedFocalLoss', cls_channels=16, strides=[75], loss_weight=1.0),
+        loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
         loss_centerness=None
     )
 )
-
 
 train_cfg = dict(
     allowed_border=-1,
@@ -43,19 +42,19 @@ test_cfg = dict(
     pre_nms=1000,
     min_bbox_size=0,
     min_score=0.05,
-    nms_iou=0.5,
+    nms_iou=0.6,
     nms_type='strict',
     max_per_img=100
 ) 
 
 lr_config=dict(
     warmup_iters=500,
-    warmup_ratio=1.0/3,
-    lr_decay={17:0.1, 23:0.1},
+    warmup_ratio=0.001,
+    lr_decay={8:0.1, 11:0.1},
 )
 
 optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
-optimizer_config=dict(grad_clip=dict(max_norm=35, norm_type=2))
+optimizer_config=dict(grad_clip=None)
 #optimizer_config=dict(grad_clip=None)
 
 ckpt_config=dict(interval=2)

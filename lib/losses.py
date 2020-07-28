@@ -252,60 +252,32 @@ def log_softmax_with_logits(logits):
     C, _ = logits.detach().max(1)
     logits_stable = logits - C.unsqueeze(1)
     return logits_stable - logits_stable.exp().sum(1).log().unsqueeze(1)
-
-def multilabel_softmax_cross_entropy_with_logits(pred_logits, target):
-    '''
-    pred_logits: [n, n_cls], logits output of a predictor
-    target: [n, n_cls], target distribution
-    '''
-
-    assert pred_logits.dim() == 2
-    C, _ = pred_logits.detach().clone().max(1)
-    C = -C
-    pred_stable = pred_logits + C.unsqueeze(1)
-    left = -pred_stable
-    right = pred_stable.exp().sum(1).log().unsqueeze(1)
-    return (target * (left + right)).sum(1)
-    
-# not finished
-def distributed_focal_loss(pred, y, left_idx, stride):
-    '''
-    pred: [n, n_cls], logits
-    y: [n], target length
-    left_idx: [n], left idx of target
-    stride: number
-    '''
-    eps = 1e-6
-    n, n_cls = pred.shape
-    soft = pred.softmax(-1)
-    right_idx = left_idx + 1
-    left_tar, right_tar = left_idx * stride, right_idx * stride
-    left_pred = pred[torch.arange(n), left_idx]
-    right_pred = pred[torch.arange(n), right_idx]
-    loss = (right_tar - y) * ((left_pred + eps).log()) + (y - left_tar) * ((right_pred + eps).log())
-    return -loss
             
-class DistributedFocalLoss(nn.Module):
-    def __init__(self, cls_channels, strides, loss_weight=1.0):
+class DistributionFocalLoss(nn.Module):
+    def __init__(self, cls_channels, stride, norm_prob, loss_weight=1.0):
         # TODO: the calc of loss does not use strides, it simply store the setting for detectors
-        assert len(strides) == 1 or len(strides) == 5
-        self.strides = strides
+        self.stride = stride
         self.cls_channels = cls_channels
         self.loss_weight = loss_weight
-        super(DistributedFocalLoss, self).__init__()        
+        self.norm_prob = norm_prob
+        super(DistributionFocalLoss, self).__init__()        
 
-    def forward(self, pred, y, left_idx, stride):
+    def forward(self, pred, y, left_idx, weight=None):
         '''
         pred:   [n, cls_channels], logits
-        target: [n, cls_channels], target distribution
+        y: [n], target value
+        left_idx: [n], left discrete bound next to y
         '''
         n, n_cls = pred.shape
+        stride = self.stride
         log_sigma = log_softmax_with_logits(pred)
         right_idx = left_idx + 1
-        left_tar, right_tar = left_idx * stride, right_idx * stride
+        y_left, y_right = left_idx * stride, right_idx * stride
         left_pred = pred[torch.arange(n), left_idx]
         right_pred = pred[torch.arange(n), right_idx]
-        loss = (right_tar - y) * log_sigma[torch.arange(n), left_idx] \
-               + (y - left_tar) * log_sigma[torch.arange(n), right_idx]
+        loss = (y_right - y) * log_sigma[torch.arange(n), left_idx] \
+               + (y - y_left) * log_sigma[torch.arange(n), right_idx]
+        if self.norm_prob:
+            loss = loss / self.stride
         return -loss.sum() * self.loss_weight
 

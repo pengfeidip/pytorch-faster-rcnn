@@ -134,8 +134,11 @@ class FCOSHead(nn.Module):
                  atss_cfg=None,
                  loss_cls=None,
                  loss_bbox=None,
+                 loss_dfl=None,
                  loss_centerness=None):
         super(FCOSHead, self).__init__()
+        from ..builder import build_module
+        # common settings
         self.num_classes=num_classes
         self.cls_channels=num_classes-1
         self.in_channels=in_channels
@@ -147,11 +150,6 @@ class FCOSHead(nn.Module):
         self.reg_coef=reg_coef
         self.reg_coef_trainable=reg_coef_trainable
         
-        from ..builder import build_module
-        
-        
-        self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]
-        
         # first check if using ATSS
         self.atss_cfg=atss_cfg
         if atss_cfg is not None:
@@ -159,14 +157,14 @@ class FCOSHead(nn.Module):
             self.anchor_creators=[
                 anchor.AnchorCreator(base=stride, scales=[atss_cfg.scale], aspect_ratios=[1.0]) \
                 for stride in strides]
-            logging.debug('Use ATSS sampler')
         else:
-            assert loss_cls.type != 'QualityFocalLoss' and loss_bbox.type != 'DistributedFocalLoss'
+            assert loss_cls.type != 'QualityFocalLoss' and loss_bbox.type != 'DistributionFocalLoss'
             self.use_atss=False
-            
+            self.level_scale_thr = [0, 64, 128, 256, 512, 1e6]  # for original FCOS setting
         
         # next check loss_cls, there are two choices:
         # FocalLoss or QualityFocalLoss(Generalized Focal Loss)
+        assert loss_cls.type in ['FocalLoss', 'QualityFocalLoss']
         if loss_cls.type == 'QualityFocalLoss':
             assert self.use_atss, 'Generalized Focal Loss only support ATSS sampler'
             self.use_centerness = False
@@ -179,15 +177,27 @@ class FCOSHead(nn.Module):
         self.loss_cls=build_module(loss_cls)
         
         # next check loss_bbox
-        self.use_giou = loss_bbox.type == 'GIoULoss'
-        self.use_dfl = loss_bbox.type == 'DistributedFocalLoss'
-        self.loss_bbox=build_module(loss_bbox)
-        
+        if loss_bbox is None:
+            assert self.use_dfl
+            self.loss_bbox = None
+        else:
+            assert loss_bbox.type == 'GIoULoss', 'Bbox loss only support GIoULoss for FCOSHead'
+            self.loss_bbox=build_module(loss_bbox)
+
+        # check if use DFL
+        if loss_dfl is not None:
+            assert loss_dfl.type == 'DistributionFocalLoss'
+            self.loss_dfl = build_module(loss_dfl)
+            self.use_dfl = True
+        else:
+            self.use_dfl = False
+
+        # build loss_centerness if use_centerness
         if self.use_centerness:
             self.loss_centerness=build_module(loss_centerness)
-        logging.debug('use_atss: {}, use_centerness: {}, use_qfl: {}, use_giou: {}, use_dfl: {}'\
+        logging.debug('use_atss: {}, use_centerness: {}, use_qfl: {}, use_dfl: {}'\
                       .format(self.use_atss, self.use_centerness,
-                              self.use_qfl, self.use_giou, self.use_dfl))
+                              self.use_qfl, self.use_dfl))
         self.init_layers()
         
     def init_layers(self):
@@ -212,7 +222,7 @@ class FCOSHead(nn.Module):
 
         if self.use_dfl:
             self.fcos_reg = nn.Conv2d(self.feat_channels,
-                                      self.loss_bbox.cls_channels * 4, 3, padding=1)
+                                      self.loss_dfl.cls_channels * 4, 3, padding=1)
             # notice it is 16 * 4 which means cls channel is at first
         else:
             self.fcos_reg = nn.Conv2d(
@@ -225,7 +235,7 @@ class FCOSHead(nn.Module):
 
         if self.use_dfl:
             reg_coef = torch.stack([
-                torch.ones(self.loss_bbox.cls_channels)*x for x in self.reg_coef]).float()
+                torch.ones(self.loss_dfl.cls_channels)*x for x in self.reg_coef]).float()
             self.reg_coef = nn.Parameter(reg_coef, 
                                          requires_grad=self.reg_coef_trainable)
         else:
@@ -259,7 +269,8 @@ class FCOSHead(nn.Module):
             reg_outs = []
             for i, x in enumerate(reg_conv_outs):
                 x = self.fcos_reg(x)
-                coef = torch.cat([self.reg_coef[i].view(-1, 1) for i in range(4)], dim=1)
+                coef = self.reg_coef[i].view(-1, 1)
+                coef = torch.cat([coef for _ in range(4)], dim=1)
                 reg_outs.append(x * coef.view(-1, 1, 1))
         else:
             reg_outs = [torch.exp(self.fcos_reg(x)*self.reg_coef[i]) \
@@ -401,12 +412,11 @@ class FCOSHead(nn.Module):
 
         return cls_tars, reg_tars, ctr_tars
 
-
+    # after finding targets, it applies designated loss settings
     def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars, max_ious):
         logging.debug('IN Calculation Loss'.center(50, '*'))
         logging.debug('reg_coef: {}'.format(self.reg_coef))
         logging.debug('reg_mean: {}, reg_std: {}'.format(self.reg_mean, self.reg_std))
-        logging.debug('use_giou: {}'.format(self.use_giou))
 
         # combine targets from all images and calculate loss at once
 
@@ -432,6 +442,8 @@ class FCOSHead(nn.Module):
         else:
             cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
                                      cls_tars[chosen_mask].squeeze()) / num_pos_cls
+
+        cls_as_weight = max_ious[pos_mask].squeeze() # [m]
         
         # next calc ctr loss
         if ctr_outs is not None:
@@ -445,31 +457,36 @@ class FCOSHead(nn.Module):
             ctr_loss = losses.zero_loss(device=cls_outs.device)
 
         
-        # next calc reg loss
-        pos_reg_outs = reg_outs[:, pos_mask]      # [4, m], in ltrb format
-        pos_reg_tars = reg_tars[pos_mask, :].t()  # [4, m], in ltrb format
+        ###### calc reg loss ######
+        # first do proper normalization
+        pos_reg_tars = reg_tars[pos_mask, :].t()  # [4, m], in ltrb format            
         pos_reg_tars = (pos_reg_tars - self.reg_mean) / self.reg_std
-        logging.debug('pos reg_out mean={}, std={}'.format(
-            pos_reg_outs.mean(dim=1).tolist(), pos_reg_outs.std(dim=1).tolist()))
-        logging.debug('pos reg_tar mean={}, std={}'.format(
-            pos_reg_tars.mean(dim=1).tolist(), pos_reg_tars.std(dim=1).tolist()))
-
-        # if use giou, need to turn ltrb to xyxy
-        if self.use_giou:
+        pos_reg_outs = reg_outs[:, pos_mask]      # [4, m] or [16*4, m], ltrb or distribution
+        if self.use_dfl:
+            cls_channels = self.loss_dfl.cls_channels
+            stride = self.loss_dfl.stride
+            pos_reg_tars = pos_reg_tars.contiguous().view(-1) # [4, m ] to [4m], ltrb
+            _, left_idx = length2class(pos_reg_tars, cls_channels, stride) # [4m, 16]
+            pos_reg_outs = pos_reg_outs.view(cls_channels, -1).t() # [16*4, m] to [16, 4m] to [4m, 16]
+            reg_loss = self.loss_dfl(pos_reg_outs, pos_reg_tars, left_idx,
+                                     weight=cls_as_weight.repeat(4).view(-1)) / num_pos_cls
+            if self.loss_bbox is not None:
+                pos_reg_out_ltrb = class2length(pos_reg_outs.softmax(-1), stride).view(4, -1) # [4m] to [4, m]
+                pos_reg_tar_ltrb = pos_reg_tars.view(4, -1) # [4m] to [4, m]
+                pos_reg_out_simple = simple_ltrb2bbox(pos_reg_out_ltrb, (0.0, 0.0))
+                pos_reg_tar_simple = simple_ltrb2bbox(pos_reg_tar_ltrb, (0.0, 0.0))
+                giou_loss = losses.giou_loss(pos_reg_out_simple, pos_reg_tar_simple)
+                giou_loss = giou_loss * cls_as_weight
+                giou_loss = giou_loss.sum() * self.loss_bbox.loss_weight / num_pos_cls
+                reg_loss = reg_loss + giou_loss
+            
+        else:
+            # in this branch, loss_bbox must be GIoULoss
             assert self.reg_mean <= 0
             pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
             pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
             reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
-        elif self.use_dfl:
-            cls_channels = self.loss_bbox.cls_channels
-            stride = self.loss_bbox.strides[0]
-            pos_reg_tars = pos_reg_tars.contiguous().view(-1)  # [4, m] to [4m]
-            pos_reg_tars_cls, left_idx = length2class(pos_reg_tars, cls_channels, stride)  # [4m, 16]
-            pos_reg_outs = pos_reg_outs.view(cls_channels, -1).t() # [16*4,m] to [16,4m] to [4m,16]
-            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, left_idx, stride) / num_pos_cls
-        else:
-            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
-        
+            
         all_loss = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
         return all_loss
         
@@ -538,7 +555,7 @@ class FCOSHead(nn.Module):
             if self.use_dfl:
                 lvl_reg_out = reg_outs[i] # [16*4, m, n]
                 lvl_grid_size = lvl_reg_out.shape[-2:] # [m, n]
-                lvl_reg_out = lvl_reg_out.view(self.loss_bbox.cls_channels, -1).t()
+                lvl_reg_out = lvl_reg_out.view(self.loss_dfl.cls_channels, -1).t()
                 # from [16*4, m, n] to [16, 4*m*n] to [4*m*n, 16]
                 lvl_reg_out = lvl_reg_out.softmax(-1)
                 lvl_ltrb = class2length(lvl_reg_out, self.loss_bbox.strides[0]) # [4*m*n]
