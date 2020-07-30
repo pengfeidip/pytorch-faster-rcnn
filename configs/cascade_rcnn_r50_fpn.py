@@ -4,7 +4,7 @@
 model=dict(
     type='CascadeRCNN',
     num_stages=3,
-    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
+    backbone=dict(type='ResNet', frozen_stages=1, out_layers=(1, 2, 3, 4)),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],

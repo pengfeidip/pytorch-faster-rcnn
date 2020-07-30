@@ -3,7 +3,7 @@
 
 model=dict(
     type='CascadeRCNN',
-    backbone=dict(type='ResNet50', frozen_stages=1, bn_requires_grad=True),
+    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,

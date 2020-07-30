@@ -1,10 +1,10 @@
 
 
-# Faster RCNN is equivalent to CascadeRCNN with one stage?
+# Faster RCNN is equivalent to CascadeRCNN with one stage
 model=dict(
     type='CascadeRCNN',
     num_stages=1,
-    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(3, )),
+    backbone=dict(type='ResNet', depth=50, frozen_stages=1, out_layers=(3, )),
     neck=None,
     rpn_head=dict(
         type='RPNHead',

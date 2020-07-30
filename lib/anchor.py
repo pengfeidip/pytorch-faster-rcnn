@@ -80,8 +80,10 @@ def anchor_target(cls_out, reg_out, cls_channels, in_anchors, in_mask, gt_bbox, 
 class AnchorCreator(object):
 
     def __init__(self, base=16, scales=[8, 16, 32],
-                 aspect_ratios=[0.5, 1.0, 2.0], device=torch.device('cpu')):
+                 aspect_ratios=[0.5, 1.0, 2.0], center_lt=False, device=torch.device('cpu')):
+
         self.device = device
+        self.center_lt = center_lt
         self.base = base
         self.scales = scales
         self.aspect_ratios = aspect_ratios
@@ -93,7 +95,8 @@ class AnchorCreator(object):
                 anchor_hs.append(base * s / np.sqrt(ar))
         self.anchor_ws = torch.tensor(anchor_ws, device=device, dtype=torch.float32)
         self.anchor_hs = torch.tensor(anchor_hs, device=device, dtype=torch.float32)
-
+        print('AnchorCreator: center_lt={}'.format(self.center_lt))
+        
     def to(self, device):
         if self.device == device:
             return True
@@ -107,9 +110,13 @@ class AnchorCreator(object):
             grid_dist_h, grid_dist_w = stride, stride
         
             center_h = torch.linspace(0, grid_dist_h * grid_h, grid_h+1,
-                                      device=self.device, dtype=torch.float32)[:-1] + grid_dist_h/2
+                                      device=self.device, dtype=torch.float32)[:-1]
+            if not self.center_lt:
+                center_h = center_h + grid_dist_h/2
             center_w = torch.linspace(0, grid_dist_w * grid_w, grid_w+1,
-                                      device=self.device, dtype=torch.float32)[:-1] + grid_dist_w/2
+                                      device=self.device, dtype=torch.float32)[:-1]
+            if not self.center_lt:
+                center_w = center_w + grid_dist_w/2
             mesh_h, mesh_w = torch.meshgrid(center_h, center_w)
             # NOTE that the corresponding is h <-> y and w <-> x
             anchor_hs = self.anchor_hs.view(-1, 1, 1)

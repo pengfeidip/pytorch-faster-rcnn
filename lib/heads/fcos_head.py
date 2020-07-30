@@ -127,6 +127,7 @@ class FCOSHead(nn.Module):
                  stacked_convs=4,
                  feat_channels=256,
                  strides=[8, 16, 32, 64, 126],
+                 anchor_center_lt=False,
                  reg_std=300,
                  reg_mean=0,
                  reg_coef=[1.0, 1.0, 1.0, 1.0, 1.0],
@@ -145,6 +146,7 @@ class FCOSHead(nn.Module):
         self.stacked_convs=stacked_convs
         self.feat_channels=feat_channels
         self.strides=strides
+        self.anchor_center_lt=anchor_center_lt
         self.reg_std=reg_std
         self.reg_mean=reg_mean
         self.reg_coef=reg_coef
@@ -155,7 +157,8 @@ class FCOSHead(nn.Module):
         if atss_cfg is not None:
             self.use_atss=True
             self.anchor_creators=[
-                anchor.AnchorCreator(base=stride, scales=[atss_cfg.scale], aspect_ratios=[1.0]) \
+                anchor.AnchorCreator(base=stride, scales=[atss_cfg.scale], aspect_ratios=[1.0],
+                                     center_lt=anchor_center_lt) \
                 for stride in strides]
         else:
             assert loss_cls.type != 'QualityFocalLoss' and loss_bbox.type != 'DistributionFocalLoss'

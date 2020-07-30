@@ -14,6 +14,7 @@ class RPNHead(AnchorHead):
                  anchor_scales=[8],
                  anchor_ratios=[0.5, 1.0, 2.0],
                  anchor_strides=[4, 8, 16, 32, 64],
+                 anchor_center_lt=False,
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[1.0, 1.0, 1.0, 1.0],
                  loss_cls=None,
@@ -24,6 +25,7 @@ class RPNHead(AnchorHead):
         self.anchor_scales=anchor_scales
         self.anchor_ratios=anchor_ratios
         self.anchor_strides=anchor_strides
+        self.anchor_center_lt=anchor_center_lt
         self.loss_cls=loss_cls
         self.loss_bbox=loss_bbox
         
@@ -33,6 +35,7 @@ class RPNHead(AnchorHead):
             anchor_scales=anchor_scales,
             anchor_ratios=anchor_ratios,
             anchor_strides=anchor_strides,
+            anchor_center_lt=anchor_center_lt,
             target_means=target_means,
             target_stds=target_stds,
             loss_cls=loss_cls,

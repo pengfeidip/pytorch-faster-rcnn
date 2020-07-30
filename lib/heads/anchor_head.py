@@ -19,6 +19,7 @@ class AnchorHead(nn.Module):
                  anchor_scales=[8],
                  anchor_ratios=[0.5, 1.0, 2.0],
                  anchor_strides=[4, 8, 16, 32, 64],
+                 anchor_center_lt=False,
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[1.0, 1.0, 1.0, 1.0],
                  loss_cls=None,
@@ -29,7 +30,9 @@ class AnchorHead(nn.Module):
         self.anchor_ratios=anchor_ratios
         self.anchor_strides=anchor_strides
         self.anchor_base_sizes=anchor_strides
-        self.anchor_creators=[AnchorCreator(base=base_size, scales=anchor_scales, aspect_ratios=anchor_ratios)
+        self.anchor_center_lt=anchor_center_lt
+        self.anchor_creators=[AnchorCreator(base=base_size, scales=anchor_scales,
+                                            aspect_ratios=anchor_ratios, center_lt=anchor_center_lt)
                               for base_size in anchor_strides]
         self.num_anchors=len(anchor_scales)*len(anchor_ratios)
         
