@@ -198,6 +198,8 @@ class FCOSHead(nn.Module):
         # build loss_centerness if use_centerness
         if self.use_centerness:
             self.loss_centerness=build_module(loss_centerness)
+
+        self.use_gfl = self.use_qfl or self.use_dfl
         logging.debug('use_atss: {}, use_centerness: {}, use_qfl: {}, use_dfl: {}'\
                       .format(self.use_atss, self.use_centerness,
                               self.use_qfl, self.use_dfl))
@@ -488,7 +490,7 @@ class FCOSHead(nn.Module):
             assert self.reg_mean <= 0
             pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
             pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
-            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars) / num_pos_cls
+            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, cls_as_weight) / num_pos_cls
             
         all_loss = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
         return all_loss
