@@ -198,13 +198,11 @@ class GIoULoss(nn.Module):
         super(GIoULoss, self).__init__()
         self.loss_weight = loss_weight
 
-    def forward(self, a, b, weight=None, avg_factor=None):
+    def forward(self, a, b, weight=None, avg_factor=1.0):
         loss = giou_loss(a, b)
         if weight is not None:
             loss = loss * weight
-        if avg_factor is not None:
-            loss = loss / avg_factor
-        return loss.sum() * self.loss_weight
+        return loss.sum() * self.loss_weight / avg_factor
 
 class IoULoss(nn.Module):
     def __init__(self, loss_weight=1.0):
@@ -233,7 +231,7 @@ class QualityFocalLoss(nn.Module):
         self.loss_weight = loss_weight
         super(QualityFocalLoss, self).__init__()
 
-    def forward(self, pred, quality, label):
+    def forward(self, pred, quality, label, weight=None, avg_factor=1.0):
         '''
         pred: [n, n_cls], which is logits
         quality: [n], score of each label 
@@ -244,7 +242,9 @@ class QualityFocalLoss(nn.Module):
         tar[torch.arange(n), label] = quality
         tar = tar[:, 1:]
         loss = generalized_focal_loss(pred, tar, beta=self.beta)
-        return loss.sum() * self.loss_weight
+        if weight is not None:
+            loss = loss * weight
+        return loss.sum() * self.loss_weight / avg_factor
 
 # logits: [n, cls_channels]
 # it applies a softmax followed by a log, it uses a stable implementation
@@ -262,7 +262,7 @@ class DistributionFocalLoss(nn.Module):
         self.norm_prob = norm_prob
         super(DistributionFocalLoss, self).__init__()        
 
-    def forward(self, pred, y, left_idx, weight=None):
+    def forward(self, pred, y, left_idx, weight=None, avg_factor=1.0):
         '''
         pred:   [n, cls_channels], logits
         y: [n], target value
@@ -279,5 +279,5 @@ class DistributionFocalLoss(nn.Module):
                + (y - y_left) * log_sigma[torch.arange(n), right_idx]
         if self.norm_prob:
             loss = loss / self.stride
-        return -loss.sum() * self.loss_weight
+        return -loss.sum() * self.loss_weight / avg_factor
 

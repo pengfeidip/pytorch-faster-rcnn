@@ -443,15 +443,15 @@ class FCOSHead(nn.Module):
         if self.use_qfl:
             cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
                                      max_ious[chosen_mask].squeeze(),
-                                     cls_tars[chosen_mask].squeeze()) / num_pos_cls
+                                     cls_tars[chosen_mask].squeeze(), avg_factor=num_pos_cls)
         else:
             cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
                                      cls_tars[chosen_mask].squeeze()) / num_pos_cls
 
-        cls_as_weight = max_ious[pos_mask].squeeze() # [m]
+        cls_as_weight, _ = cls_outs.detach()[:, pos_mask].sigmoid().max(0)
         
         # next calc ctr loss
-        if ctr_outs is not None:
+        if self.use_centerness:
             ctr_outs = ctr_outs.view(-1, 1) # [m, 1]
             ctr_tars = ctr_tars.squeeze()   # [m]
             num_pos_ctr = num_pos_cls
@@ -473,27 +473,35 @@ class FCOSHead(nn.Module):
             pos_reg_tars = pos_reg_tars.contiguous().view(-1) # [4, m ] to [4m], ltrb
             _, left_idx = length2class(pos_reg_tars, cls_channels, stride) # [4m, 16]
             pos_reg_outs = pos_reg_outs.view(cls_channels, -1).t() # [16*4, m] to [16, 4m] to [4m, 16]
-            reg_loss = self.loss_dfl(pos_reg_outs, pos_reg_tars, left_idx,
-                                     weight=cls_as_weight.repeat(4).view(-1)) / num_pos_cls
-            if self.loss_bbox is not None:
+            dfl_loss = self.loss_dfl(pos_reg_outs, pos_reg_tars, left_idx,
+                                     weight=cls_as_weight.repeat(4).view(-1), avg_factor=4.0) 
+        else:
+            dfl_loss = losses.zero_loss(device=cls_outs.device)
+            
+        # calc bbox loss, here it is usually GIoU loss
+        if self.loss_bbox is None:
+            bbox_loss = losses.zero_loss(device=cls_outs.device)
+        else:
+            if self.use_dfl:
+                stride = self.loss_dfl.stride
                 pos_reg_out_ltrb = class2length(pos_reg_outs.softmax(-1), stride).view(4, -1) # [4m] to [4, m]
                 pos_reg_tar_ltrb = pos_reg_tars.view(4, -1) # [4m] to [4, m]
                 pos_reg_out_simple = simple_ltrb2bbox(pos_reg_out_ltrb, (0.0, 0.0))
                 pos_reg_tar_simple = simple_ltrb2bbox(pos_reg_tar_ltrb, (0.0, 0.0))
-                giou_loss = losses.giou_loss(pos_reg_out_simple, pos_reg_tar_simple)
-                giou_loss = giou_loss * cls_as_weight
-                giou_loss = giou_loss.sum() * self.loss_bbox.loss_weight / num_pos_cls
-                reg_loss = reg_loss + giou_loss
+                bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple, weight=cls_as_weight)
+            elif self.use_qfl:
+                pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
+                pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
+                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=cls_as_weight)
+            else:
+                # ATSS with no GFL
+                assert self.reg_mean <= 0
+                pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
+                pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
+                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=pos_ctr_tars)
             
-        else:
-            # in this branch, loss_bbox must be GIoULoss
-            assert self.reg_mean <= 0
-            pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
-            pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
-            reg_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, cls_as_weight) / num_pos_cls
-            
-        all_loss = {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'ctr_loss': ctr_loss}
-        return all_loss
+        all_loss = {'cls_loss': cls_loss, 'ctr_loss': ctr_loss, 'dfl_loss': dfl_loss, 'bbox_loss': bbox_loss}
+        return {loss_name:loss_val for loss_name, loss_val in all_loss.items() if loss_val.item() != 0}
         
 
     def loss(self):
