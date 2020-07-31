@@ -488,7 +488,8 @@ class FCOSHead(nn.Module):
                 pos_reg_tar_ltrb = pos_reg_tars.view(4, -1) # [4m] to [4, m]
                 pos_reg_out_simple = simple_ltrb2bbox(pos_reg_out_ltrb, (0.0, 0.0))
                 pos_reg_tar_simple = simple_ltrb2bbox(pos_reg_tar_ltrb, (0.0, 0.0))
-                bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple, weight=cls_as_weight)
+                bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple,
+                                           weight=cls_as_weight, avg_factor=1.0)
             elif self.use_qfl:
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
@@ -498,7 +499,8 @@ class FCOSHead(nn.Module):
                 assert self.reg_mean <= 0
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
-                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=pos_ctr_tars)
+                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=pos_ctr_tars,
+                                           avg_factor=num_pos_cls)
             
         all_loss = {'cls_loss': cls_loss, 'ctr_loss': ctr_loss, 'dfl_loss': dfl_loss, 'bbox_loss': bbox_loss}
         return {loss_name:loss_val for loss_name, loss_val in all_loss.items() if loss_val.item() != 0}
