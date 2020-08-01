@@ -70,8 +70,8 @@ Training, testing, validating and benchmarking are all using VOC2007 dataset, sp
 Thanks to the following amazing projects:
 
 
-[mmdetection](https://github.com/open-mmlab/mmdetection)
-[simple-faster-rcnn-pytorch](https://github.com/chenyuntc/simple-faster-rcnn-pytorch)
-[pytorch-retinanet](https://github.com/kuangliu/pytorch-retinanet)
-[ATSS](https://github.com/sfzhang15/ATSS)
+[mmdetection](https://github.com/open-mmlab/mmdetection)  
+[simple-faster-rcnn-pytorch](https://github.com/chenyuntc/simple-faster-rcnn-pytorch)  
+[pytorch-retinanet](https://github.com/kuangliu/pytorch-retinanet)  
+[ATSS](https://github.com/sfzhang15/ATSS)  
 
