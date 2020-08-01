@@ -1,3 +1,7 @@
+TRAIN_ANN='/home/lee/datasets/voc2007_comb/voc2007_trainval_no_diff_.json'
+TEST_ANN='/home/lee/datasets/voc2007_comb/voc2007_test_no_diff_.json'
+TRAIN_IMGS='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
+TEST_IMGS='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
 
 model=dict(
     type='FCOS',
@@ -19,14 +23,14 @@ model=dict(
         stacked_convs=4,
         feat_channels=256,
         strides=[8, 16, 32, 64, 128],
-        reg_std=600,
+        reg_std=1200,
         reg_mean=0,
         reg_coef=[1.0, 1.0, 1.0, 1.0, 1.0],
         reg_coef_trainable=True,
         atss_cfg=dict(topk=9, scale=8),
         loss_cls=dict(
             type='QualityFocalLoss', use_sigmoid=True, loss_weight=1.0),
-        loss_bbox=dict(type='GIoULoss', loss_weight=1.0),
+        loss_bbox=dict(type='GIoULoss', loss_weight=2.0),
         loss_centerness=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)
     )
 )
@@ -53,9 +57,8 @@ lr_config=dict(
     lr_decay={17:0.1, 22:0.1},
 )
 
-optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
+optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=None)
-#optimizer_config=dict(grad_clip=None)
 
 ckpt_config=dict(interval=2)
 
@@ -86,15 +89,15 @@ test_pipeline=[
 data = dict(
     train=dict(
         imgs_per_gpu=2,
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        ann_file=TRAIN_ANN,
+        img_prefix=TRAIN_IMGS,
         pipeline=train_pipeline,
-        loader=dict(batch_size=1, num_workers=6, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
         imgs_per_gpu=2,
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        ann_file=TEST_ANN,
+        img_prefix=TRAIN_IMGS,
         pipeline=test_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=False),
     )

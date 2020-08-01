@@ -449,6 +449,7 @@ class FCOSHead(nn.Module):
                                      cls_tars[chosen_mask].squeeze()) / num_pos_cls
 
         cls_as_weight, _ = cls_outs.detach()[:, pos_mask].sigmoid().max(0)
+        #cls_as_weight = max_ious[pos_mask].squeeze()
         
         # next calc ctr loss
         if self.use_centerness:
@@ -488,12 +489,13 @@ class FCOSHead(nn.Module):
                 pos_reg_tar_ltrb = pos_reg_tars.view(4, -1) # [4m] to [4, m]
                 pos_reg_out_simple = simple_ltrb2bbox(pos_reg_out_ltrb, (0.0, 0.0))
                 pos_reg_tar_simple = simple_ltrb2bbox(pos_reg_tar_ltrb, (0.0, 0.0))
-                bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple,
-                                           weight=cls_as_weight, avg_factor=1.0)
+                bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple, weight=cls_as_weight,
+                                           avg_factor=1.0)
             elif self.use_qfl:
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
-                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=cls_as_weight)
+                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=cls_as_weight,
+                                           avg_factor=num_pos_cls)
             else:
                 # ATSS with no GFL
                 assert self.reg_mean <= 0
