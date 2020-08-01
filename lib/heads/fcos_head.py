@@ -494,7 +494,7 @@ class FCOSHead(nn.Module):
             elif self.use_qfl:
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
-                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=cls_as_weight,
+                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=None,
                                            avg_factor=num_pos_cls)
             else:
                 # ATSS with no GFL
