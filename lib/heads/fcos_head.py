@@ -232,10 +232,10 @@ class FCOSHead(nn.Module):
         else:
             self.fcos_reg = nn.Conv2d(
                 self.feat_channels, 4, 3, padding=1)
-        # check if use centerness branch
-        if self.use_centerness:
-            self.fcos_center = nn.Conv2d(
-                self.feat_channels, 1, 3, padding=1)
+            
+        # have centerness, may not use it in some circumanstance
+        self.fcos_center = nn.Conv2d(
+            self.feat_channels, 1, 3, padding=1)
 
 
         if self.use_dfl:
@@ -259,17 +259,14 @@ class FCOSHead(nn.Module):
         bias_init = float(-np.log((1-prior_prob)/ prior_prob))
         normal_init(self.fcos_cls, std=0.01, bias=bias_init)
         normal_init(self.fcos_reg, std=0.01)
-        if self.use_centerness:
-            normal_init(self.fcos_center, std=0.01)
+        normal_init(self.fcos_center, std=0.01)
         logging.info('Initialized weights for RetinaHead.')
 
     def forward(self, xs):
         cls_conv_outs = [self.cls_convs(x) for x in xs]
         reg_conv_outs = [self.reg_convs(x) for x in xs]
         cls_outs = [self.fcos_cls(x) for x in cls_conv_outs]
-        ctr_outs = None
-        if self.use_centerness:
-            ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
+        ctr_outs = [self.fcos_center(x) for x in reg_conv_outs]
         if self.use_dfl:
             reg_outs = []
             for i, x in enumerate(reg_conv_outs):
@@ -452,12 +449,12 @@ class FCOSHead(nn.Module):
         #cls_as_weight = max_ious[pos_mask].squeeze()
         
         # next calc ctr loss
+        ctr_outs = ctr_outs.view(-1, 1) # [m, 1]
+        ctr_tars = ctr_tars.squeeze()   # [m]
+        num_pos_ctr = num_pos_cls
+        pos_ctr_outs = ctr_outs[pos_mask, :]
+        pos_ctr_tars = ctr_tars[pos_mask]
         if self.use_centerness:
-            ctr_outs = ctr_outs.view(-1, 1) # [m, 1]
-            ctr_tars = ctr_tars.squeeze()   # [m]
-            num_pos_ctr = num_pos_cls
-            pos_ctr_outs = ctr_outs[pos_mask, :]
-            pos_ctr_tars = ctr_tars[pos_mask]
             ctr_loss = self.loss_centerness(pos_ctr_outs, pos_ctr_tars) / num_pos_ctr
         else:
             ctr_loss = losses.zero_loss(device=cls_outs.device)
@@ -494,7 +491,7 @@ class FCOSHead(nn.Module):
             elif self.use_qfl:
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
-                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=None,
+                bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars, weight=pos_ctr_tars,
                                            avg_factor=num_pos_cls)
             else:
                 # ATSS with no GFL
