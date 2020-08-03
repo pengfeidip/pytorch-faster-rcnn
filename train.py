@@ -55,6 +55,11 @@ def safe_mkdir(d):
         os.mkdir(d)
     except:
         pass
+
+def print_args():
+    print('config:', args.config_file)
+    print('work_dir:', args.work_dir)
+    pass
     
 def main():
     check_args()
@@ -100,6 +105,8 @@ def main():
             raise RuntimeError('Too many existing debug.log files')
     else:
         disable_logging()
+
+    print_args()
 
     # initiate dataset and dataloader
     dataset = datasets.VOCDataset(

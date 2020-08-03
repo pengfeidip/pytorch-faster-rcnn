@@ -446,6 +446,8 @@ class FCOSHead(nn.Module):
                                      cls_tars[chosen_mask].squeeze()) / num_pos_cls
 
         cls_as_weight, _ = cls_outs.detach()[:, pos_mask].sigmoid().max(0)
+        logging.debug('detached cls out: {}'.format(cls_as_weight.squeeze()))
+        logging.debug('max ious: {}'.format(max_ious.squeeze()[pos_mask]))
         #cls_as_weight = max_ious[pos_mask].squeeze()
         
         # next calc ctr loss
@@ -487,7 +489,7 @@ class FCOSHead(nn.Module):
                 pos_reg_tar_simple = simple_ltrb2bbox(pos_reg_tar_ltrb, (0.0, 0.0))
                 bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple,
                                            weight=cls_as_weight,
-                                           avg_factor=1.0)
+                                           avg_factor=num_pos_cls)
             elif self.use_qfl:
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))

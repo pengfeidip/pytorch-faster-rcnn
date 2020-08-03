@@ -113,11 +113,12 @@ class ReportHook(Hook):
         t = str(t)
         return t[:t.rfind('.')]
 
-    def report(self, avg_loss, remain_time, now):
+    def report(self, avg_loss, remain_time, lr, now):
         loss_str = ', '.join(['{}: {}'.format(k, v) for k, v in avg_loss.items()])
         print(self._simple_time(now)+': ' + ', '.join([
             loss_str,
-            'ETA: ' + self._simple_time(remain_time)
+            'ETA: ' + self._simple_time(remain_time),
+            'lr: {}'.format(lr)
         ]))
         pass
 
@@ -148,7 +149,9 @@ class ReportHook(Hook):
             tot_iters = self.trainer.get_total_iters()
             remain_iters = tot_iters - cur_iter
             remain_time = time_elapse * (remain_iters / self.report_cfg.interval)
-            self.report(self.get_avg_loss(), remain_time, now)
+            cur_lr = self.trainer.get_lr()
+            cur_lr_str = ','.join([str(round(lr, 6)) for lr in cur_lr])
+            self.report(self.get_avg_loss(), remain_time, cur_lr_str, now)
             self.tic=now
             self.loss_tracker = []
 
