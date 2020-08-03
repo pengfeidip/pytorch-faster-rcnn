@@ -20,7 +20,6 @@ class FCOS(nn.Module):
         self.bbox_head = build_module(bbox_head)
         self.train_cfg, self.test_cfg = train_cfg, test_cfg
 
-        self.init_weights()
         logging.info('Constructed FCOS detector')
         print('neck:')
         print(self.neck)

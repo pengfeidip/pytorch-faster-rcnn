@@ -21,7 +21,6 @@ class RetinaNet(nn.Module):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
 
-        self.init_weights()
         logging.info('Constructed RetinaNet')
         print('neck:')
         print(self.neck)

@@ -458,7 +458,6 @@ class FCOSHead(nn.Module):
             ctr_loss = self.loss_centerness(pos_ctr_outs, pos_ctr_tars) / num_pos_ctr
         else:
             ctr_loss = losses.zero_loss(device=cls_outs.device)
-
         
         ###### calc reg loss ######
         # first do proper normalization

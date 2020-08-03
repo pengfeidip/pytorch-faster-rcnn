@@ -208,10 +208,8 @@ class ResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
         for i in range(4):
-            setattr(self, 'layer{}'.format(i+1), make_reslayer(RES_CHANNELS[i], RES_CHANNELS[i+1], conv_cfg[i]))
-
-        #self.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
-        #self.fc = nn.Linear(2048, 1000, bias=True)
+            setattr(self, 'layer{}'.format(i+1),
+                    make_reslayer(RES_CHANNELS[i], RES_CHANNELS[i+1], conv_cfg[i]))
 
     def forward(self, x):
         out = x

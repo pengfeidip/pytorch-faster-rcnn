@@ -61,6 +61,7 @@ work_dir=None
 optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=None)
 ckpt_config=dict(interval=2)
+report_config=dict(interval=50)
 
 img_norm = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -92,7 +93,7 @@ data = dict(
         ann_file=TRAIN_ANN,
         img_prefix=TRAIN_IMGS,
         pipeline=train_pipeline,
-        loader=dict(batch_size=1, num_workers=6, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
         imgs_per_gpu=2,

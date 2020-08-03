@@ -1,4 +1,5 @@
 from torch.nn.utils import clip_grad_norm_
+from collections import OrderedDict
 import os.path as osp
 import torch, logging
 
@@ -97,3 +98,57 @@ class CkptHook(Hook):
             epoch_model = osp.join(self.trainer.work_dir, 'epoch_{}.pth'.format(epoch))
             torch.save(self.trainer.model.state_dict(), epoch_model)
             logging.info('Finished training epoch {}, saved trained model to {}'.format(epoch, epoch_model))
+
+# print loss, eta infomation on screen
+import datetime
+class ReportHook(Hook):
+    def __init__(self, trainer, priority=1):
+        super(ReportHook, self).__init__(priority)
+        self.trainer = trainer
+        self.report_cfg = trainer.report_cfg
+        self.tic = None
+        self.loss_tracker = []
+
+    def _simple_time(self, t):
+        t = str(t)
+        return t[:t.rfind('.')]
+
+    def report(self, avg_loss, remain_time, now):
+        loss_str = ', '.join(['{}: {}'.format(k, v) for k, v in avg_loss.items()])
+        print(self._simple_time(now)+': ' + ', '.join([
+            loss_str,
+            'ETA: ' + self._simple_time(remain_time)
+        ]))
+        pass
+
+    def get_avg_loss(self):
+        if len(self.loss_tracker) == 0:
+            return {}
+        loss_sum = {k:0 for k in self.loss_tracker[0].keys()}
+        loss_sum['loss'] = 0
+        for loss in self.loss_tracker:
+            tot_loss = 0
+            for k, v in loss.items():
+                loss_sum[k]+=v
+                tot_loss += v
+            loss_sum['loss'] += tot_loss
+        
+        return OrderedDict({k:round(v/len(self.loss_tracker), 3) for k, v in loss_sum.items()})
+
+
+    def after_iter(self):
+        if self.trainer.cur_loss is not None:
+            self.loss_tracker.append(self.trainer.cur_loss)
+        if self.tic is None:
+            self.tic = datetime.datetime.now()
+        cur_iter = self.trainer.cur_iter
+        if cur_iter % self.report_cfg.interval == 0:
+            now = datetime.datetime.now()
+            time_elapse = now - self.tic
+            tot_iters = self.trainer.get_total_iters()
+            remain_iters = tot_iters - cur_iter
+            remain_time = time_elapse * (remain_iters / self.report_cfg.interval)
+            self.report(self.get_avg_loss(), remain_time, now)
+            self.tic=now
+            self.loss_tracker = []
+

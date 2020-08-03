@@ -1,6 +1,8 @@
-from .hooks import OptimizerHook, Hookable, LrHook, CkptHook
+from .hooks import OptimizerHook, Hookable, LrHook, CkptHook, ReportHook
+from collections import OrderedDict
 import torch, time, copy, logging, traceback
 import os.path as osp
+
 
 class BasicTrainer(Hookable):
     def __init__(self,
@@ -12,6 +14,7 @@ class BasicTrainer(Hookable):
                  optim_cfg,
                  lr_cfg,
                  ckpt_cfg,
+                 report_cfg,
                  log_cfg=None,
                  device='cpu'):
         super(BasicTrainer, self).__init__()
@@ -25,6 +28,7 @@ class BasicTrainer(Hookable):
         self.lr_cfg=lr_cfg
         self.log_cfg=log_cfg
         self.ckpt_cfg=ckpt_cfg
+        self.report_cfg=report_cfg
 
         self.cur_iter=1
         self.cur_epoch=1
@@ -32,10 +36,12 @@ class BasicTrainer(Hookable):
         self.initial_lr=optimizer_cfg.lr
         
         self.init_optimizer()
+        self.cur_loss=None
 
         self.add_hook(OptimizerHook(self))
         self.add_hook(LrHook(self))
         self.add_hook(CkptHook(self))
+        self.add_hook(ReportHook(self))
 
     def init_optimizer(self):
         from ..builder import build_module
@@ -59,15 +65,19 @@ class BasicTrainer(Hookable):
         else:
             raise ValueError('lr must be either a float or a list of float numbers.')
 
+    # current loss maybe none if after start of current iter and before forward_train()
+    def get_loss(self):
+        return self.cur_loss
+
+    def get_total_iters(self):
+        return len(self.dataloader) * (self.total_epochs)
+
     def train(self):
         logging.info('Start a new training, start with epoch {}'.format(self.cur_epoch))
         self.model.to(self.device)
         self.model.train()
         dataset_size = len(self.dataloader)
         logging.info('Dataset size: {}'.format(dataset_size))
-        tot_iters = dataset_size * (self.total_epochs - self.cur_epoch + 1)
-        eta_iters, eta_ct = 200, 0
-        start = time.time()
         self.call_hooks('before_train_all')
         logging.info('Initial lr: {}'.format(self.initial_lr))
         for epoch in range(self.cur_epoch, self.total_epochs+1):
@@ -77,14 +87,7 @@ class BasicTrainer(Hookable):
             for iter_i, train_data in enumerate(self.dataloader):
                 try:
                     self.train_one_iter(iter_i, epoch, train_data)
-                    eta_ct += 1
                     self.cur_iter += 1
-                    if eta_ct == eta_iters:
-                        secs = time.time() - start
-                        logging.info('Eta time: {} mins:'\
-                                     .format((tot_iters - self.cur_iter)/eta_iters*secs/60))
-                        logging.info('FPS={}'.format(eta_iters/secs))
-                        eta_ct, start = 0, time.time()
                 except:
                     logging.error('Traceback: {}'.format(traceback.format_exc()))
                     print(traceback.format_exc())
@@ -110,13 +113,15 @@ class BasicTrainer(Hookable):
         logging.info('GT Bbox: {}'.format(', '.join([str(gt_bbox.shape) for gt_bbox in gt_bboxes])))
         self.optimizer.zero_grad()
         losses = self.model.forward_train(img_data, gt_bboxes, gt_labels, img_metas)
+        self.cur_loss = OrderedDict({k:v.item() for k, v in losses.items()})
 
         for loss_name, loss_val in losses.items():
             logging.info('{}: {}'.format(loss_name, loss_val.item()))
         tot_loss = sum([loss_val for _, loss_val in losses.items()])
         logging.info('{}: {}'.format('tot_loss', tot_loss.item()))
-
         tot_loss.backward()
+        self.call_hooks('after_iter')
+        
         self.call_hooks('before_step')
         self.optimizer.step()
         self.call_hooks('after_step')

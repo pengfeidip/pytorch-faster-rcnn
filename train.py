@@ -57,7 +57,6 @@ def safe_mkdir(d):
         pass
     
 def main():
-    print('args:', args)
     check_args()
     config = args.config
 
@@ -130,6 +129,7 @@ def main():
         config.optimizer_config,
         config.lr_config,
         config.ckpt_config,
+        config.report_config,
         None,
         device=device
     )
