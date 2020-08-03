@@ -57,9 +57,9 @@ lr_config=dict(
     lr_decay={17:0.1, 22:0.1},
 )
 
+work_dir=None
 optimizer=dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=None)
-
 ckpt_config=dict(interval=2)
 
 img_norm = dict(
