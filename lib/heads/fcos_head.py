@@ -1,5 +1,6 @@
 from torch import nn
 from mmcv.cnn import normal_init
+from collections import OrderedDict
 import numpy as np
 import logging, torch
 
@@ -434,16 +435,8 @@ class FCOSHead(nn.Module):
 
         chosen_mask = (cls_tars >=0).squeeze()
         pos_mask = (cls_tars > 0).squeeze()
-        
-        # first calc cls loss
         num_pos_cls = pos_mask.sum().item()
-        if self.use_qfl:
-            cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
-                                     max_ious[chosen_mask].squeeze(),
-                                     cls_tars[chosen_mask].squeeze(), avg_factor=num_pos_cls)
-        else:
-            cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
-                                     cls_tars[chosen_mask].squeeze()) / num_pos_cls
+        
 
         cls_as_weight, _ = cls_outs.detach()[:, pos_mask].sigmoid().max(0)
         logging.debug('detached cls out: {}'.format(cls_as_weight.squeeze()))
@@ -459,7 +452,7 @@ class FCOSHead(nn.Module):
         if self.use_centerness:
             ctr_loss = self.loss_centerness(pos_ctr_outs, pos_ctr_tars) / num_pos_ctr
         else:
-            ctr_loss = losses.zero_loss(device=cls_outs.device)
+            ctr_loss = None
         
         ###### calc reg loss ######
         # first do proper normalization
@@ -475,11 +468,11 @@ class FCOSHead(nn.Module):
             dfl_loss = self.loss_dfl(pos_reg_outs, pos_reg_tars, left_idx,
                                      weight=cls_as_weight.repeat(4).view(-1), avg_factor=4.0) 
         else:
-            dfl_loss = losses.zero_loss(device=cls_outs.device)
+            dfl_loss = None
             
         # calc bbox loss, here it is usually GIoU loss
         if self.loss_bbox is None:
-            bbox_loss = losses.zero_loss(device=cls_outs.device)
+            bbox_loss = None
         else:
             if self.use_dfl:
                 stride = self.loss_dfl.stride
@@ -487,12 +480,14 @@ class FCOSHead(nn.Module):
                 pos_reg_tar_ltrb = pos_reg_tars.view(4, -1) # [4m] to [4, m]
                 pos_reg_out_simple = simple_ltrb2bbox(pos_reg_out_ltrb, (0.0, 0.0))
                 pos_reg_tar_simple = simple_ltrb2bbox(pos_reg_tar_ltrb, (0.0, 0.0))
+                quality = utils.elem_iou(pos_reg_out_simple.detach(), pos_reg_tar_simple)
                 bbox_loss = self.loss_bbox(pos_reg_out_simple, pos_reg_tar_simple,
                                            weight=cls_as_weight,
                                            avg_factor=num_pos_cls)
             elif self.use_qfl:
                 pos_reg_outs = simple_ltrb2bbox(pos_reg_outs, (0.0, 0.0))
                 pos_reg_tars = simple_ltrb2bbox(pos_reg_tars, (0.0, 0.0))
+                quality = utils.elem_iou(pos_reg_outs.detach(), pos_reg_tars)
                 bbox_loss = self.loss_bbox(pos_reg_outs, pos_reg_tars,
                                            weight=cls_as_weight,
                                            avg_factor=num_pos_cls)
@@ -505,10 +500,22 @@ class FCOSHead(nn.Module):
                                            weight=pos_ctr_tars,
                                            avg_factor=num_pos_cls)
             
+        # first calc cls loss
+        if self.use_qfl:
+            quality_all = quality.new_zeros(chosen_mask.numel())
+            quality_all[pos_mask] = quality
+            quality_all = quality_all[chosen_mask]
+            cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
+                                     quality_all,
+                                     cls_tars[chosen_mask].squeeze(), avg_factor=num_pos_cls)
+        else:
+            cls_loss = self.loss_cls(cls_outs[:, chosen_mask].t(),
+                                     cls_tars[chosen_mask].squeeze()) / num_pos_cls
+            
         all_loss = {'cls_loss': cls_loss, 'ctr_loss': ctr_loss,
                     'dfl_loss': dfl_loss, 'bbox_loss': bbox_loss}
-        return {loss_name:loss_val for loss_name, loss_val in all_loss.items() \
-                if loss_val.item() != 0}
+        return OrderedDict({loss_name:loss_val for loss_name, loss_val in all_loss.items() \
+                if loss_val is not None})
         
 
     def loss(self):
@@ -578,7 +585,7 @@ class FCOSHead(nn.Module):
                 lvl_reg_out = lvl_reg_out.view(self.loss_dfl.cls_channels, -1).t()
                 # from [16*4, m, n] to [16, 4*m*n] to [4*m*n, 16]
                 lvl_reg_out = lvl_reg_out.softmax(-1)
-                lvl_ltrb = class2length(lvl_reg_out, self.loss_bbox.strides[0]) # [4*m*n]
+                lvl_ltrb = class2length(lvl_reg_out, self.loss_dfl.stride) # [4*m*n]
                 lvl_ltrb = lvl_ltrb * self.reg_std + self.reg_mean
                 lvl_ltrb = lvl_ltrb.view(4, *lvl_grid_size)
                 bbox = ltrb2bbox(lvl_ltrb, self.strides[i])
