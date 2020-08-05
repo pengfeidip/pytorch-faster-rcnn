@@ -1,6 +1,15 @@
+TRAIN_ANN  ='path_to_train_annotation'
+TEST_ANN   ='path_to_test_annotation'
+TRAIN_IMGS ='path_to_train_images'
+TEST_IMGS  ='path_to_test_images'
+
+TRAIN_ANN  ='/home/lee/datasets/voc2007_comb/voc2007_trainval_no_diff_.json'
+TEST_ANN   ='/home/lee/datasets/voc2007_comb/voc2007_test_no_diff_.json'
+TRAIN_IMGS ='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
+TEST_IMGS  ='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
 
 
-# Faster RCNN is equivalent to CascadeRCNN with one stage?
+# Faster RCNN is equivalent to CascadeRCNN with one stage
 model=dict(
     type='CascadeRCNN',
     num_stages=1,
@@ -45,8 +54,7 @@ model=dict(
             target_stds=[0.1, 0.1, 0.2, 0.2],
             reg_class_agnostic=False,
             loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=2.0),
-            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=2.0)
-        )
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=2.0))
     ]
 )
 

@@ -57,7 +57,7 @@ class CascadeRCNN(nn.Module):
         logging.info('Constructed CascadeRCNN')
         logging.info('Number of stages: {}'.format(self.num_stages))
         print('neck')
-        print(self.neck)
+        print(self.neck if self.with_neck else None)
         print('rpn')
         print(self.rpn_head)
         print('rcnn')

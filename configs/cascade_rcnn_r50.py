@@ -1,28 +1,35 @@
+TRAIN_ANN  ='path_to_train_annotation'
+TEST_ANN   ='path_to_test_annotation'
+TRAIN_IMGS ='path_to_train_images'
+TEST_IMGS  ='path_to_test_images'
 
+TRAIN_ANN  ='/home/lee/datasets/voc2007_comb/voc2007_trainval_no_diff_.json'
+TEST_ANN   ='/home/lee/datasets/voc2007_comb/voc2007_test_no_diff_.json'
+TRAIN_IMGS ='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
+TEST_IMGS  ='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
 
 
 model=dict(
     type='CascadeRCNN',
-    backbone=dict(type='ResNet50', frozen_stages=1, out_layers=(1, 2, 3, 4)),
+    backbone=dict(type='ResNet', depth=50, frozen_stages=1, out_layers=(3, )),
     rpn_head=dict(
         type='RPNHead',
         in_channels=1024,
         feat_channels=256,
-        anchor_base=16,
-        anchor_scales=[4,8,16,32],
-        anchor_ratios=[0.5,1.0,2.0],
-        cls_loss_weight=1.0,
-        bbox_loss_weight=1.0,
-        bbox_loss_beta=1.0/9.0),
+        anchor_scales=[4, 8, 16, 32],
+        anchor_ratios=[0.5, 1.0, 2.0],
+        anchor_strides=[16],
+        target_means=[0.0, 0.0, 0.0, 0.0],
+        target_stds=[1.0, 1.0, 1.0, 1.0],
+        loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
+        loss_bbox=dict(type='SmoothL1Loss', beta=1.0/9.0, loss_weight=1.0)),
     roi_extractor=dict(
-        type='SingleRoIExtractor',
-        roi_layer='RoIPool',
-        output_size=(7, 7),
-        spatial_scale=1.0/16.0,
-    )
+        type='BasicRoIExtractor',
+        roi_layers=[dict(type='RoIAlign', spatial_scale=1.0/16.0, sampling_ratio=2)],
+        output_size=(7, 7)),
     rcnn_head=[
         dict(
-            type='BBoxHead',
+            type='RCNNHead',
             in_channels=1024,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
@@ -31,10 +38,10 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.1, 0.1, 0.2, 0.2],
             reg_class_agnostic=True,
-            bbox_loss_beta=1.0
-        ),
+            loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)),
         dict(
-            type='BBoxHead',
+            type='RCNNHead',
             in_channels=1024,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
@@ -43,10 +50,10 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.05, 0.05, 0.1, 0.1],
             reg_class_agnostic=True,
-            bbox_loss_beta=1.0
-        ),
+            loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0)),
         dict(
-            type='BBoxHead',
+            type='RCNNHead',
             in_channels=1024,
             roi_out_size=(7, 7),
             fc_channels=[1024, 1024],
@@ -55,8 +62,8 @@ model=dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[0.033, 0.033, 0.067, 0.067],
             reg_class_agnostic=True,
-            bbox_loss_beta=1.0
-        )
+            loss_cls=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
+            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0))
     ]
 )
 
@@ -73,13 +80,15 @@ train_cfg = dict(
             type='RandomSampler',
             max_num=256,
             pos_num=128
-        )
+        ),
+        allowed_border=0
     ),
     rpn_proposal=dict(
         pre_nms=12000,
         post_nms=2000,
+        max_num=2000,
         nms_iou=0.7,
-        min_size=16,
+        min_bbox_size=16,
     ),
     rcnn=[
         dict(
@@ -116,10 +125,6 @@ train_cfg = dict(
     stage_loss_weight=[1, 0.5, 0.25],
     
     total_epochs=14,
-    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005),
-    log_file='train.log',
-    lr_decay={11: 0.1},
-    save_interval=2
 )
 
 
@@ -127,12 +132,24 @@ test_cfg = dict(
     rpn=dict(
         pre_nms=6000,
         post_nms=300,
+        max_num=300,
         nms_iou=0.7,
-        min_size=0.0,
+        min_bbox_size=0.0,
     ),
     rcnn=dict(min_score=0.05, nms_iou=0.3)
-) 
+)
 
+lr_config=dict(
+    warmup_iters=500,
+    warmup_ratio=0.001,
+    lr_decay={9:0.1, 12:0.1}
+)
+
+work_dir=None
+optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
+optimizer_config=dict(grad_clip=None)
+ckpt_config=dict(interval=2)
+report_config=dict(interval=50)
 
 img_norm = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -157,18 +174,21 @@ test_pipeline=[
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img']),
 ]
+
 data = dict(
     train=dict(
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        imgs_per_gpu=2,
+        ann_file=TRAIN_ANN,
+        img_prefix=TRAIN_IMGS,
         pipeline=train_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        imgs_per_gpu=2,
+        ann_file=TEST_ANN,
+        img_prefix=TEST_IMGS,
         pipeline=test_pipeline,
-        loader=dict(batch_size=1, num_workers=2, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=False),
     )
 )
 

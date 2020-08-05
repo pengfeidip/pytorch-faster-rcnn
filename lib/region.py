@@ -171,10 +171,6 @@ class IoUBalancedNegSampler(object):
             neg_ious.sum()/neg_ious.shape[0] if neg_ious.shape[0]>0 else None))
         return res_labels
 
-def ApproxMaxIoUAssigner(object):
-    def __init__(self, pos_iou=0.7, neg_iou=0.3, min_pos_iou=0.3):
-        pass
-
 
 class ProposalCreator(object):
     def __init__(self,
@@ -216,12 +212,8 @@ class ProposalCreator(object):
 
 # provide more flexible roi extractor where users can choose different roi layer for different feature levels
 class BasicRoIExtractor(nn.Module):
-    '''
-    Args:
-        feats: list([N, C, H, W]): features of different levels
-        rois:  Tensor([4, K]): K rois
-    '''
 
+    # roi_layers: a list of roi layer cfgs
     def __init__(self, roi_layers, output_size=(7, 7), finest_scale=56):
         assert isinstance(roi_layers, list)
         self.output_size = utils.to_pair(output_size)
@@ -261,7 +253,7 @@ class BasicRoIExtractor(nn.Module):
         n_rois = rois.shape[1]
         assert n_lvls <= len(feats)
         if n_lvls == 1:
-            return self.forward_one_level(feats[0], rois, 0)
+            return self.forward_single_level(feats[0], rois, 0)
 
         out_channels = feats[0].shape[-3]
         roi_outs = feats[0].new_full((n_rois, out_channels, *self.output_size), 0)
@@ -274,6 +266,9 @@ class BasicRoIExtractor(nn.Module):
             roi_outs[cur_rois_places] = cur_roi_out
         return roi_outs
 
+    # level_feats: a list of feature maps
+    # rois_list: len(rois_list)==num_imgs
+    # return: a list of roi outputs, len == num_imgs
     def forward(self, level_feats, rois_list):
         n_lvls = len(self.roi_layers)
         assert n_lvls > 0 and n_lvls <= len(level_feats)
