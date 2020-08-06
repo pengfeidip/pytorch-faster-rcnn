@@ -1,7 +1,7 @@
-TRAIN_ANN='path_to_train_annotation'
-TEST_ANN='path_to_test_annotation'
-TRAIN_IMGS='path_to_train_images'
-TEST_IMGS='path_to_test_images'
+TRAIN_ANN  = 'path_to_train_annotation'
+TEST_ANN   = 'path_to_test_annotation'
+TRAIN_IMGS = 'path_to_train_images'
+TEST_IMGS  = 'path_to_test_images'
 
 model=dict(
     type='FCOS',
@@ -38,8 +38,6 @@ model=dict(
 train_cfg = dict(
     allowed_border=-1,
     total_epochs=24,
-    log_file='train.log',
-    log_level='DEBUG'
 )
 
 test_cfg = dict(
@@ -54,7 +52,7 @@ test_cfg = dict(
 lr_config=dict(
     warmup_iters=500,
     warmup_ratio=0.001,
-    lr_decay={17:0.1, 22:0.1},
+    lr_decay={19:0.1, 23:0.1},
 )
 
 work_dir=None
