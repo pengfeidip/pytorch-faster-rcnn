@@ -3,12 +3,6 @@ TEST_ANN   ='path_to_test_annotation'
 TRAIN_IMGS ='path_to_train_images'
 TEST_IMGS  ='path_to_test_images'
 
-TRAIN_ANN  ='/home/lee/datasets/voc2007_comb/voc2007_trainval_no_diff_.json'
-TEST_ANN   ='/home/lee/datasets/voc2007_comb/voc2007_test_no_diff_.json'
-TRAIN_IMGS ='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
-TEST_IMGS  ='/home/lee/datasets/voc2007_comb/VOC2007/JPEGImages'
-
-
 # Faster RCNN is equivalent to CascadeRCNN with one stage
 model=dict(
     type='CascadeRCNN',
