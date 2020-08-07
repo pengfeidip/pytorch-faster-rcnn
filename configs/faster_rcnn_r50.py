@@ -23,7 +23,7 @@ model=dict(
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0/9.0, loss_weight=1.0)),
     roi_extractor=dict(
         type='BasicRoIExtractor',
-        roi_layers=[dict(type='RoIAlign', spatial_scale=1.0/16.0, sampling_ratio=2)],
+        roi_layers=[dict(type='RoIPool', spatial_scale=1.0/16.0, sampling_ratio=2)],
         output_size=(7, 7)),
     rcnn_head=[
         dict(
