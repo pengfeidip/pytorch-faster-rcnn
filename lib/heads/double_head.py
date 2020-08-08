@@ -20,6 +20,7 @@ class DoubleHead(BBoxHead):
                  num_classes=21,
                  target_means=[0.0, 0.0, 0.0, 0.0],
                  target_stds=[0.1, 0.1, 0.2, 0.2],
+                 add_max_op=False,
                  reg_class_agnostic=False,
                  loss_cls=None,
                  loss_bbox=None):
@@ -38,6 +39,7 @@ class DoubleHead(BBoxHead):
         self.reg_conv_strides=reg_conv_strides
         self.reg_conv_paddings=reg_conv_paddings
         self.reg_fc_channels=reg_fc_channels
+        self.add_max_op=add_max_op
         
         assert len(reg_fc_channels) > 0
         assert self.roi_out_size[0] == self.roi_out_size[1] == 7
@@ -68,8 +70,8 @@ class DoubleHead(BBoxHead):
                                          padding=self.reg_conv_paddings[i], stride=self.reg_conv_strides[i],
                                          bias=False))
             conv_layers.append(nn.BatchNorm2d(conv_channels))
+            conv_layers.append(nn.ReLU(inplace=True))
             conv_in_channels = conv_channels
-        conv_layers.append(nn.ReLU())
 
         self.conv_layer = nn.ModuleList(conv_layers)
 
@@ -118,6 +120,12 @@ class DoubleHead(BBoxHead):
         conv_x = x
         for conv in self.conv_layer:
             conv_x = conv(conv_x)
+
+        if self.add_max_op:
+            conv_x_max_w, _  = conv_x.max(dim=-1, keepdim=True)
+            conv_x_max_h, _  = conv_x.max(dim=-2, keepdim=True)
+            conv_x = conv_x_max_w + conv_x_max_h
+            
         conv_x = conv_x.view(batch_size, -1)
 
         conv_x = self.reg_fc_layer(conv_x)
