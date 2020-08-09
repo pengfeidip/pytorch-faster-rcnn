@@ -209,6 +209,35 @@ class ProposalCreator(object):
         return props_bbox[:, keep], top_scores[keep]
 
 
+class ScalableRoICrop(nn.Module):
+    ROI_OP = None
+    def __init__(self, scale=1.0, **kwargs):
+        super(ScalableRoICrop, self).__init__()
+        self.roi_op = self.ROI_OP(**kwargs)
+        self.scale=scale
+        self.kwargs=kwargs
+
+    # bbox: [n, 4], in xyxy format
+    def scale_bbox(self, bbox, scale):
+        ctr_x, ctr_y   = (bbox[:, 2]+bbox[:, 0])/2,   (bbox[:, 3] + bbox[:, 1])/2
+        half_w, half_h = (bbox[:, 2]-bbox[:, 0]+1)/2, (bbox[:, 3]-bbox[:, 1]+1)/2
+        half_w, half_h = half_w*scale, half_h*scale
+        return torch.stack([ctr_x-half_w, ctr_y-half_h, ctr_x+half_w, ctr_y+half_h], dim=1)
+
+        
+    # rois: [n, 5] where first column is batch idx
+    def forward(self, feats, rois):
+        batch_idx, bboxes = rois[:, 0:1], rois[:, 1:]
+        bboxes = self.scale_bbox(bboxes, self.scale)
+        rois = torch.cat([batch_idx, bboxes], dim=1)
+        return self.roi_op(feats, rois)
+
+class ScalableRoIPool(ScalableRoICrop):
+    ROI_OP = torchvision.ops.RoIPool
+
+class ScalableRoIAlign(ScalableRoICrop):
+    ROI_OP = torchvision.ops.RoIAlign
+    
 
 # provide more flexible roi extractor where users can choose different roi layer for different feature levels
 class BasicRoIExtractor(nn.Module):

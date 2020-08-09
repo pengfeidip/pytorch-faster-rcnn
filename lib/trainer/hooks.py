@@ -2,6 +2,7 @@ from torch.nn.utils import clip_grad_norm_
 from collections import OrderedDict
 import os.path as osp
 import torch, logging
+from .. import utils
 
 class Hook(object):
     MAX_PRIORITY = 0
@@ -108,6 +109,8 @@ class ReportHook(Hook):
         self.report_cfg = trainer.report_cfg
         self.tic = None
         self.loss_tracker = []
+        rep_log = trainer.report_cfg.get('log', 'report.log')
+        self.writer = utils.TextWriter(osp.join(trainer.work_dir, rep_log))
 
     def _simple_time(self, t):
         t = str(t)
@@ -115,13 +118,13 @@ class ReportHook(Hook):
 
     def report(self, avg_loss, remain_time, lr, now):
         loss_str = ', '.join(['{}: {}'.format(k, v) for k, v in avg_loss.items()])
-        print(self._simple_time(now)+': ' + ', '.join([
+        line = self._simple_time(now)+': ' + ', '.join([
             '[{}]'.format(self.trainer.cur_epoch),
             loss_str,
             'ETA: ' + self._simple_time(remain_time),
-            'lr: {}'.format(lr)
-        ]))
-        pass
+            'lr: {}'.format(lr)]) 
+        print(line)
+        self.writer.write_line(line)
 
     def get_avg_loss(self):
         if len(self.loss_tracker) == 0:

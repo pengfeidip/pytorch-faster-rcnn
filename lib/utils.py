@@ -407,3 +407,13 @@ def concate_grid_result(grid_res, last=True):
 
     
     
+class TextWriter(object):
+    def __init__(self, target):
+        self.target = target
+
+    def write(self, txt):
+        open(self.target, 'a').write(str(txt))
+
+    def write_line(self, txt):
+        open(self.target, 'a').write(txt+'\n')
+
