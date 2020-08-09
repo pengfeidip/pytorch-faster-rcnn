@@ -84,11 +84,7 @@ train_cfg = dict(
     ],
     stage_loss_weight=[1.0],
 
-    log_level='DEBUG',
-    
     total_epochs=14,
-    log_file='train.log',
-    save_interval=2
 )
 
 test_cfg = dict(
@@ -104,7 +100,7 @@ test_cfg = dict(
 
 lr_config=dict(
     warmup_iters=500,
-    warmup_ratio=1.0/3,
+    warmup_ratio=0.001,
     lr_decay={9:0.1, 12:0.1},
 )
 

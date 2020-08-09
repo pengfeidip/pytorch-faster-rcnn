@@ -1,3 +1,7 @@
+TRAIN_ANN  = 'path_to_train_annotation'
+TEST_ANN   = 'path_to_test_annotation'
+TRAIN_IMGS = 'path_to_train_images'
+TEST_IMGS  = 'path_to_test_images'
 
 model=dict(
     type='RetinaNet',
@@ -52,7 +56,7 @@ test_cfg = dict(
 
 lr_config=dict(
     warmup_iters=500,
-    warmup_ratio=1.0/3,
+    warmup_ratio=0.001,
     lr_decay={9:0.1, 12:0.1},
 )
 
@@ -90,18 +94,17 @@ test_pipeline=[
 data = dict(
     train=dict(
         imgs_per_gpu=2,
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        ann_file=TRAIN_ANN,
+        img_prefix=TRAIN_IMGS,
         pipeline=train_pipeline,
-        loader=dict(batch_size=1, num_workers=6, shuffle=True),
+        loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
         imgs_per_gpu=2,
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        ann_file=TEST_ANN,
+        img_prefix=TEST_IMGS,
         pipeline=test_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=False),
     )
 )
-
 

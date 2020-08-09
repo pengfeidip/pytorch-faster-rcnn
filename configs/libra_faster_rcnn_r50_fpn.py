@@ -1,6 +1,10 @@
+TRAIN_ANN  = 'path_to_train_annotation'
+TEST_ANN   = 'path_to_test_annotation'
+TRAIN_IMGS = 'path_to_train_images'
+TEST_IMGS  = 'path_to_test_images'
 
 
-# Faster RCNN is equivalent to CascadeRCNN with one stage?
+# Faster RCNN is equivalent to CascadeRCNN with one stage
 model=dict(
     type='CascadeRCNN',
     num_stages=1,
@@ -92,9 +96,6 @@ train_cfg = dict(
     stage_loss_weight=[1.0],
     
     total_epochs=14,
-    log_file='train.log',
-    log_level='DEBUG',
-    save_interval=2
 )
 
 test_cfg = dict(
