@@ -364,8 +364,8 @@ class FCOSHead(nn.Module):
             cur_ctr = cur_ctr.unsqueeze(-1)
             ctr_tars[lvl][pos_mask] = cur_ctr[pos_mask]
 
-        # for debug
-        return cls_tars, reg_tars, ctr_tars, max_ious
+
+        return cls_tars, reg_tars, ctr_tars
 
 
     def single_image_targets(self, cls_outs, reg_outs, ctr_outs,
@@ -416,7 +416,7 @@ class FCOSHead(nn.Module):
         return cls_tars, reg_tars, ctr_tars
 
     # after finding targets, it applies designated loss settings
-    def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars, max_ious):
+    def calc_loss(self, cls_outs, reg_outs, ctr_outs, cls_tars, reg_tars, ctr_tars):
         logging.debug('IN Calculation Loss'.center(50, '*'))
         logging.debug('reg_coef: {}'.format(self.reg_coef))
         logging.debug('reg_mean: {}, reg_std: {}'.format(self.reg_mean, self.reg_std))
@@ -431,7 +431,6 @@ class FCOSHead(nn.Module):
         cls_tars = torch.cat([utils.concate_grid_result(x, True)  for x in cls_tars], dim=0)
         reg_tars = torch.cat([utils.concate_grid_result(x, True)  for x in reg_tars], dim=0)
         ctr_tars = torch.cat([utils.concate_grid_result(x, True)  for x in ctr_tars], dim=0)
-        max_ious = torch.cat([utils.concate_grid_result(x, True)  for x in max_ious], dim=0)
 
         chosen_mask = (cls_tars >=0).squeeze()
         pos_mask = (cls_tars > 0).squeeze()
@@ -440,8 +439,6 @@ class FCOSHead(nn.Module):
 
         cls_as_weight, _ = cls_outs.detach()[:, pos_mask].sigmoid().max(0)
         logging.debug('detached cls out: {}'.format(cls_as_weight.squeeze()))
-        logging.debug('max ious: {}'.format(max_ious.squeeze()[pos_mask]))
-        #cls_as_weight = max_ious[pos_mask].squeeze()
         
         # next calc ctr loss
         ctr_outs = ctr_outs.view(-1, 1) # [m, 1]

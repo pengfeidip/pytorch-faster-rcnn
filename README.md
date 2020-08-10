@@ -55,7 +55,7 @@ Training, testing, validating and benchmarking are all using VOC2007 dataset, sp
 | RetinaNet_R50_FPN    | 0.41  | 0.719 | 0.411     | 0.717      |
 | DoubleHead_R50_FPN   | 0.415 | 0.744 | 0.432     | 0.758      |
 | LibraRCNN_R50_FPN    | 0.426 | 0.759 | 0.425     | 0.763      |
-| FCOS_R50_FPN         | 0.422 | 0.731 | 0.434     | 0.74       |
+| FCOS_R50_FPN         | 0.439 | 0.733 | 0.434     | 0.74       |
 | ATSS_R50_FPN         | 0.443 | 0.72  | 0.442     | 0.72       |
 | ATSS+QFL_R50_FPN     |       |       | 0.451     | 0.718      |
 | ATSS+QFL+DFL_R50_FPN |       |       | 0.449     | 0.702      |

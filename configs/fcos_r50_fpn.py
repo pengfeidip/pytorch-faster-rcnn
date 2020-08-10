@@ -15,7 +15,7 @@ model=dict(
         extra_use_convs=True,
         extra_convs_on_inputs=False,
         num_outs=5,
-        relu_before_extra_convs=True
+        relu_before_extra_convs=False
     ),
     bbox_head=dict(
         type='FCOSHead',
@@ -89,14 +89,14 @@ data = dict(
     train=dict(
         imgs_per_gpu=2,
         ann_file=TRAIN_ANN,
-        img_prefix=IMGS,
+        img_prefix=TRAIN_IMGS,
         pipeline=train_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
         imgs_per_gpu=2,
         ann_file=TEST_ANN,
-        img_prefix=IMGS,
+        img_prefix=TEST_IMGS,
         pipeline=test_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=False),
     )
