@@ -91,7 +91,8 @@ class BBoxHead(nn.Module):
         pass
 
     def refine_bboxes(self, props, labels, reg_outs, is_gts=None, img_metas=None):
-        return utils.multi_apply(self.refine_bboxes_single_image, props, labels, reg_outs, is_gts, img_metas)
+        return utils.multi_apply(
+            self.refine_bboxes_single_image, props, labels, reg_outs, is_gts, img_metas)
         
 
     # only refine bboxes, will ignore gt
@@ -135,24 +136,13 @@ class BBoxHead(nn.Module):
             else:
                 score = cls_out.softmax(dim=1)
                 _, label = score.max(dim=1)
-            if self.reg_class_agnostic:
-                reg_out = reg_out.view(-1, 4)
-            else:
-                reg_out = reg_out.view(-1, 4, self.num_classes)
-                reg_out = reg_out[torch.arange(n_props), :, label]
-            preds = utils.param2bbox(props, reg_out.t(), self.target_means, self.target_stds, img_size)
-            if cfg is not None:
-                if 'nms_type' not in cfg:
-                    nms_op = utils.multiclass_nms_mmdet
-                elif cfg.nms_type == 'official':
-                    nms_op = utils.multiclass_nms_mmdet
-                elif cfg.nms_type == 'strict':
-                    nms_op = utils.multiclass_nms_v2
-                else:
-                    raise ValueError('Unknown nms_type: {}'.format(cfg.nms_type))
-                preds, score, label = nms_op(
-                    preds.t(), score, range(1, self.num_classes), cfg.nms_iou, cfg.min_score, cfg.max_per_img)
-                preds = preds.t()
+            preds = utils.batched_param2bbox(
+                props, reg_out.t(), self.target_means, self.target_stds, img_size)
+            nms_mode = cfg.get('nms_type', 'official')
+            preds, score, label = utils.multiclass_nms(
+                preds.t(), score, range(1, self.num_classes), cfg.nms_iou, cfg.min_score,
+                cfg.max_per_img, mode=nms_mode)
+            preds = preds.t()
         return preds, score, label
             
         
@@ -165,5 +155,6 @@ class BBoxHead(nn.Module):
             img_sizes = [img_meta['img_shape'][:2] for img_meta in img_metas]
         cls_outs, reg_outs = self.forward(roi_outs)
         return utils.unpack_multi_result(
-            utils.muilti_apply(self.predict_bboxes_single_image, props, cls_outs, reg_outs, img_sizes, cfg))
+            utils.muilti_apply(
+                self.predict_bboxes_single_image, props, cls_outs, reg_outs, img_sizes, cfg))
         

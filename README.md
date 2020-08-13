@@ -50,7 +50,7 @@ Training, testing, validating and benchmarking are all using VOC2007 dataset, sp
 
 | Faster RCNN          | mAP   | AP50  | MMdet mAP | MMdet AP50 |
 | -------------------- | :---- | ----- | --------- | ---------- |
-| FasterRCNN_R50_FPN   | 0.392 | 0.741 | 0.398     | 0.753      |
+| FasterRCNN_R50_FPN   | 0.394 | 0.744 | 0.398     | 0.753      |
 | CascadeRCNN_R50_FPN  | 0.467 | 0.757 | 0.473     | 0.761      |
 | RetinaNet_R50_FPN    | 0.41  | 0.719 | 0.411     | 0.717      |
 | DoubleHead_R50_FPN   | 0.415 | 0.744 | 0.432     | 0.758      |

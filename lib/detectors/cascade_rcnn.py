@@ -34,9 +34,11 @@ class CascadeRCNN(nn.Module):
 
         if isinstance(roi_extractor, list):
             assert len(roi_extractor) >= self.num_stages
-            self.roi_extractors = nn.ModuleList([build_module(roi_extractor[i]) for i in range(self.num_stages)])
+            self.roi_extractors = nn.ModuleList([build_module(roi_extractor[i]) \
+                                                 for i in range(self.num_stages)])
         else:
-            self.roi_extractors = nn.ModuleList([build_module(roi_extractor) for _ in range(self.num_stages)])
+            self.roi_extractors = nn.ModuleList([build_module(roi_extractor) \
+                                                 for _ in range(self.num_stages)])
 
         if shared_head is not None:
             self.shared_head = build_module(shared_head)
@@ -95,7 +97,8 @@ class CascadeRCNN(nn.Module):
         rpn_gt_labels = [torch.full_like(gt_label, 1) for gt_label in gt_labels]
         if class_name(self.rpn_head) in ['GARPNHead']:
             forward_res = self.rpn_head(feats)
-            rpn_loss = self.rpn_head.loss(*(forward_res+(gt_bboxes, gt_labels, img_metas, train_cfg.rpn)))
+            rpn_loss = self.rpn_head.loss(*(forward_res+(
+                gt_bboxes, gt_labels, img_metas, train_cfg.rpn)))
             losses.update(rpn_loss)
             rpn_props = self.rpn_head.predict_bboxes_from_output(
                 *(forward_res+(img_metas, train_cfg.rpn_proposal,)))
@@ -130,7 +133,8 @@ class CascadeRCNN(nn.Module):
                 class_name(self), '\n'+'\n'.join([str(roi.shape) for roi in roi_outs])))
             
             if self.with_shared_head:
-                raise NotImplementedError('multi-image shared head is not implemented for CascadeRCNN')
+                raise NotImplementedError(
+                    'multi-image shared head is not implemented for CascadeRCNN')
             
             cls_outs, reg_outs = cur_rcnn_head(roi_outs)
             #logging.debug('cls_outs by current head: {}'.format([co.shape for co in cls_outs]))
@@ -142,7 +146,8 @@ class CascadeRCNN(nn.Module):
             
             if i < self.num_stages - 1:
                 with torch.no_grad():
-                    refined_props = cur_rcnn_head.refine_bboxes(tar_props, tar_labels, reg_outs, tar_is_gts, img_metas)
+                    refined_props = cur_rcnn_head.refine_bboxes(
+                        tar_props, tar_labels, reg_outs, tar_is_gts, img_metas)
                     logging.debug('{}: refinded props: {}'.format(
                         class_name(self), ', '.join([str(rps.shape) for rps in refined_props])))
                     props = refined_props
@@ -160,7 +165,8 @@ class CascadeRCNN(nn.Module):
         rpn_props = self.rpn_head.predict_bboxes(feats, img_metas, test_cfg.rpn)
         
         props = rpn_props[0]
-        logging.debug('{}: proposals from rpn: {}'.format(class_name(self), [pr.shape for pr in props]))
+        logging.debug('{}: proposals from rpn: {}'.format(
+            class_name(self), [pr.shape for pr in props]))
 
         img_sizes = [img_meta['img_shape'][:2] for img_meta in img_metas]
 
@@ -177,7 +183,8 @@ class CascadeRCNN(nn.Module):
 
             ms_cls_outs.append(cls_outs)
             if i < self.num_stages - 1:
-                bbox_labels = [cls_out.argmax(1) for cls_out in cls_outs] # TODO: what about use_sigmoid?
+                bbox_labels = [cls_out.argmax(1) for cls_out in cls_outs]
+                # TODO: what about use_sigmoid=True?
                 if cur_rcnn_head.use_sigmoid:
                     bbox_labels += 1
                 props = cur_rcnn_head.refine_bboxes(props, bbox_labels, reg_outs, None, img_metas)

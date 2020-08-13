@@ -91,6 +91,21 @@ def param2bbox(base, param, means=[0.0, 0.0, 0.0, 0.0], stds=[1.0, 1.0, 1.0, 1.0
         bbox = clamp_bbox(bbox, img_size)
     return bbox
 
+# param [4, n] or [4*num_cls, n]
+# return bbox[4*num_cls, n]
+def batched_param2bbox(base, param,
+                       means=[0.0, 0.0, 0.0, 0.0], stds=[1.0, 1.0, 1.0, 1.0], img_size=None):
+    assert param.shape[0] % 4 == 0
+    batch_size = param.shape[0] // 4
+    if batch_size == 1:
+        return param2bbox(base, param, means, stds, img_size)
+    param = param.view(4, batch_size, -1)
+    bboxes = []
+    for i in range(batch_size):
+        bboxes.append(param2bbox(base, param[:, i, :], means, stds, img_size))
+    return torch.stack(bboxes, dim=1).view(4*batch_size, -1)
+    
+
 def clamp_bbox(bbox, img_size):
     '''
     Args: 
@@ -191,29 +206,6 @@ def to_pair(val):
     return pair
 
 
-def multiclass_nms(bbox, score, label, label_set, nms_iou, min_score):
-    label_set = list(label_set)
-    nms_bbox, nms_score, nms_label = [], [], []
-    for cur_label in label_set:
-        chosen = (label==cur_label)
-        if chosen.sum()==0:
-            continue
-        cur_bbox = bbox[:, chosen]
-        cur_score = score[chosen]
-        non_small = cur_score > min_score
-        cur_score = cur_score[non_small]
-        cur_bbox = cur_bbox[:, non_small]
-        keep = tv.ops.nms(cur_bbox.t(), cur_score, nms_iou)
-        nms_score.append(cur_score[keep])
-        nms_bbox.append(cur_bbox[:, keep])
-        nms_label.append(
-            label.new_full((len(keep), ), cur_label)
-        )
-
-    if len(nms_bbox) != 0:
-        nms_bbox, nms_score, nms_label = torch.cat(nms_bbox, 1), torch.cat(nms_score), torch.cat(nms_label)
-    return nms_bbox, nms_score, nms_label
-
 # the strict impl
 def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score,
                       max_num=None, score_factor=None):
@@ -295,11 +287,73 @@ def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score,
             return bboxes[topk], scores[topk], labels[topk]
     else:
         bboxes = bbox.new_zeros((0, 4))
-        scores = bbox.new_zeros((0, ), dtype=torch.long)
+        scores = bbox.new_zeros((0, ), dtype=torch.float)
         labels = bbox.new_zeros((0, ), dtype=torch.float)
 
     return bboxes, scores, labels
 
+# apply torch nms in batched fashion
+# bbox:[n, 4], score:[n], label:[n]
+def batched_nms(bbox, score, label, nms_iou, class_agnostic=False):
+    numel = score.numel()
+    if numel == 0:
+        return bbox, score, label
+    if class_agnostic:
+        nms_bbox = bbox
+    else:
+        max_range = bbox.max()
+        nms_bbox = bbox + (label*max_range).to(bbox).view(numel, 1)
+    keep = tv.ops.nms(nms_bbox, score, nms_iou)
+    return bbox[keep, :], score[keep], label[keep]
+
+# bbox[n, 4] or [n, 4*cls_channel], score: [n] or [n, cls_channel]
+def multiclass_nms(bbox, score, nms_channel, nms_iou, min_score=-1,
+                   max_num=None, score_factor=None, mode='official'):
+    assert mode in ['official', 'strict']
+    assert score.dim() == 2, 'multiclass_nms only applies to multi-channel score'
+    cls_channel = score.shape[1]
+    num_bbox = bbox.shape[0]
+    simple_bbox = bbox.shape[1] == 4
+    if mode == 'official':
+        label = torch.full_like(score, -1).to(torch.long)
+        for cha in nms_channel:
+            label[:, cha] = cha
+        chosen = (label!=-1)
+        if simple_bbox:
+            bbox = bbox.unsqueeze(2).expand(-1, -1, cls_channel)
+        else:
+            bbox = bbox.view(num_bbox, 4, cls_channel)
+        bbox = bbox.permute(0, 2, 1)
+        chosen = (score >= min_score) & chosen
+        if score_factor is not None:
+            if score_factor.dim()==1:
+                score_factor = score_factor.unsqueeze(1)
+            score = score * score_factor
+        nms_bbox = bbox[chosen]
+        nms_score = score[chosen]
+        nms_label = label[chosen]
+    else:
+        # in strict mode, one bbox has only one label and participate in one nms
+        score, label = score.max(1)
+        chosen = (label > -1)
+        for cha in nms_channel:
+            chosen = chosen & (label==cha)
+        if not simple_bbox:
+            bbox = bbox.view(num_bbox, 4, cls_channel)[torch.arange(num_bbox), :, label] # [n, 4]
+        chosen = (score >= min_score) & chosen
+        if score_factor is not None:
+            score = score * score_factor
+        nms_bbox = bbox[chosen, :]
+        nms_score = score[chosen]
+        nms_label = label[choesn]
+    
+    keep_bbox, keep_score, keep_label = batched_nms(nms_bbox, nms_score, nms_label, nms_iou)
+    if max_num is not None and keep_score.numel() > max_num:
+        keep_bbox = keep_bbox[:max_num]
+        keep_score = keep_score[:max_num]
+        keep_label = keep_label[:max_num]
+    return keep_bbox, keep_score, keep_label
+        
 
 def one_hot_embedding(label, n_cls):
     n = len(label)

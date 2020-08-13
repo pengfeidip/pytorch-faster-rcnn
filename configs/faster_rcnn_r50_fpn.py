@@ -1,3 +1,7 @@
+TRAIN_ANN  ='path_to_train_annotation'
+TEST_ANN   ='path_to_test_annotation'
+TRAIN_IMGS ='path_to_train_images'
+TEST_IMGS  ='path_to_test_images'
 
 
 # Faster RCNN is equivalent to CascadeRCNN with one stage
@@ -65,7 +69,7 @@ train_cfg = dict(
     ),
     rpn_proposal=dict(
         pre_nms=2000,
-        post_nms=2000, # used to be post_nms
+        post_nms=2000,
         max_num=2000,
         nms_iou=0.7,
         min_bbox_size=0,
@@ -90,7 +94,7 @@ train_cfg = dict(
 test_cfg = dict(
     rpn=dict(
         pre_nms=1000,
-        post_nms=1000, # same as post_nms
+        post_nms=1000,
         max_num=1000,
         nms_iou=0.7,
         min_bbox_size=0.0,
@@ -107,7 +111,7 @@ lr_config=dict(
 optimizer=dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 optimizer_config=dict(grad_clip=dict(max_norm=35, norm_type=2))
 ckpt_config=dict(interval=2)
-
+report_config=dict(interval=50)
 
 img_norm = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
@@ -119,7 +123,7 @@ train_pipeline=[
     dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm),
-    #dict(type='Pad', size_divisor=32),
+    dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
 ]
@@ -129,7 +133,7 @@ test_pipeline=[
     dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.0),
     dict(type='Normalize', **img_norm),
-    #dict(type='Pad', size_divisor=32),
+    dict(type='Pad', size_divisor=32),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img']),
 ]
@@ -137,15 +141,15 @@ test_pipeline=[
 data = dict(
     train=dict(
         imgs_per_gpu=2,
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_trainval/voc2007_trainval_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        ann_file=TRAIN_ANN,
+        img_prefix=TRAIN_IMGS,
         pipeline=train_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=True),
     ),
     test=dict(
         imgs_per_gpu=2,
-        ann_file='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/voc2007_test/voc2007_test_no_difficult.json',
-        img_prefix='/home/server2/4T/liyiqing/dataset/PASCAL_VOC_07/mmdet_voc2007/VOC2007/JPEGImages',
+        ann_file=TEST_ANN,
+        img_prefix=TEST_IMGS,
         pipeline=test_pipeline,
         loader=dict(batch_size=1, num_workers=4, shuffle=False),
     )
