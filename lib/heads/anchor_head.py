@@ -254,17 +254,10 @@ class AnchorHead(nn.Module):
         else:
             nms_label_set = list(range(1, self.num_classes))
             label_adjust = 0
-        if 'nms_type' not in test_cfg:
-            nms_op = utils.multiclass_nms_mmdet
-        elif test_cfg.nms_type == 'official':
-            nms_op = utils.multiclass_nms_mmdet
-        elif test_cfg.nms_type == 'strict':
-            nms_op = utils.multiclass_nms_v2
-        else:
-            raise ValueError('Unknown nms_type: {}'.format(test_cfg.nms_type))
-        keep_bbox, keep_score, keep_label = nms_op(
+        nms_mode = test_cfg.get('nms_type', 'official')
+        keep_bbox, keep_score, keep_label = utils.multiclass_nms(
             mlvl_pred_bbox.t(), mlvl_cls_score.t(), nms_label_set,
-            test_cfg.nms_iou, test_cfg.min_score, test_cfg.max_per_img)
+            test_cfg.nms_iou, test_cfg.min_score, test_cfg.max_per_img, mode=nms_mode)
         keep_label += label_adjust
         return keep_bbox.t(), keep_score, keep_label
 

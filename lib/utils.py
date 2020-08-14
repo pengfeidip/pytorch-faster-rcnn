@@ -206,92 +206,6 @@ def to_pair(val):
     return pair
 
 
-# the strict impl
-def multiclass_nms_v2(bbox, score, label_set, nms_iou, min_score,
-                      max_num=None, score_factor=None):
-    label_set = list(label_set)
-    
-    score, label = score.max(1)
-    bboxes, scores, labels = [], [], []
-    for cur_label in label_set:
-        chosen = (label == cur_label) & (score > min_score)
-        if not chosen.any():
-            continue
-        cur_bbox = bbox[chosen, :]
-        if score_factor is not None:
-            cur_score = score[chosen] * score_factor[chosen]
-        else:
-            cur_score = score[chosen]
-        keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
-        keep_bbox = cur_bbox[keep, :]
-        keep_score = cur_score[keep]
-        keep_label = torch.full_like(keep_score, cur_label).long()
-        bboxes.append(keep_bbox)
-        scores.append(keep_score)
-        labels.append(keep_label)
-
-    if bboxes:
-        bboxes = torch.cat(bboxes)
-        scores = torch.cat(scores)
-        labels = torch.cat(labels)
-        if max_num is not None and bboxes.shape[0] > max_num:
-            _, topk = scores.topk(max_num)
-            return bboxes[topk], scores[topk], labels[topk]
-
-    else:
-        bboxes = bbox.new_zeros((0, 4))
-        scores = bbox.new_zeros((0, ), dtype=torch.long)
-        labels = bbox.new_zeros((0, ), dtype=torch.float)
-                
-    return bboxes, scores, labels
-
-
-'''
-Args:
-    bbox:  [1000, 4]
-    score: [1000, 21], it is score not logits
-    label_set: iterable
-    nms_iou: 0.5
-    min_score: 0.05
-'''
-# the official impl
-def multiclass_nms_mmdet(bbox, score, label_set, nms_iou, min_score,
-                         max_num=None, score_factor=None):
-    assert bbox.shape[0] == score.shape[0]
-    label_set = list(label_set)
-
-    bboxes, scores, labels = [], [], []
-    for label in label_set:
-        inds = score[:, label] > min_score
-        if not inds.any():
-            continue
-        cur_bbox = bbox[inds, :]
-        if score_factor is not None:
-            cur_score = score[inds, label] * score_factor[inds]
-        else:
-            cur_score = score[inds, label]
-        keep = tv.ops.nms(cur_bbox, cur_score, nms_iou)
-        keep_bbox = cur_bbox[keep, :]
-        keep_score = cur_score[keep]
-        keep_label = torch.full_like(keep_score, label).long()
-        bboxes.append(keep_bbox)
-        scores.append(keep_score)
-        labels.append(keep_label)
-
-    if bboxes:
-        bboxes = torch.cat(bboxes)
-        scores = torch.cat(scores)
-        labels = torch.cat(labels)
-        if max_num is not None and bboxes.shape[0] > max_num:
-            _, topk = scores.topk(max_num)
-            return bboxes[topk], scores[topk], labels[topk]
-    else:
-        bboxes = bbox.new_zeros((0, 4))
-        scores = bbox.new_zeros((0, ), dtype=torch.float)
-        labels = bbox.new_zeros((0, ), dtype=torch.float)
-
-    return bboxes, scores, labels
-
 # apply torch nms in batched fashion
 # bbox:[n, 4], score:[n], label:[n]
 def batched_nms(bbox, score, label, nms_iou, class_agnostic=False):
@@ -335,9 +249,9 @@ def multiclass_nms(bbox, score, nms_channel, nms_iou, min_score=-1,
     else:
         # in strict mode, one bbox has only one label and participate in one nms
         score, label = score.max(1)
-        chosen = (label > -1)
+        chosen = (label < -1)
         for cha in nms_channel:
-            chosen = chosen & (label==cha)
+            chosen = chosen | (label==cha)
         if not simple_bbox:
             bbox = bbox.view(num_bbox, 4, cls_channel)[torch.arange(num_bbox), :, label] # [n, 4]
         chosen = (score >= min_score) & chosen
@@ -345,7 +259,7 @@ def multiclass_nms(bbox, score, nms_channel, nms_iou, min_score=-1,
             score = score * score_factor
         nms_bbox = bbox[chosen, :]
         nms_score = score[chosen]
-        nms_label = label[choesn]
+        nms_label = label[chosen]
     
     keep_bbox, keep_score, keep_label = batched_nms(nms_bbox, nms_score, nms_label, nms_iou)
     if max_num is not None and keep_score.numel() > max_num:
